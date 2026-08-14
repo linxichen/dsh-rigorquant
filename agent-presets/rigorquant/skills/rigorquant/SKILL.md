@@ -114,9 +114,18 @@ When a method's correctness hinges on an unproven claim (convexity of a set,
 convergence of a scheme, correctness of a sampler, uniqueness of a
 decomposition), settle it BEFORE implementing. The jacobian MCP lane
 (`mcp__jacobian__math_find` / `math_run`) is ON by default and
-self-provisions; when a trigger fires and the tools are missing, OFFER the
-user `npx -y jacobian upgrade` (installs the managed Python runtime) and run
-it on approval — fall back to an isolated proof subagent meanwhile. Triggers and the full automatic flow:
+self-provisions. Missing pieces are AUTO-INSTALLED, never prompted:
+
+- Lane tools absent → run `npx -y jacobian upgrade` yourself, verify with
+  `npx -y jacobian doctor --json`, retry.
+- A lean call reports `TOOLCHAIN_RESOLUTION` or `MATHLIB_MANIFEST` → run
+  `bash <this skill's dir>/scripts/provision-lean.sh` (idempotent; installs
+  elan + pinned Lean toolchain + jacobian's Mathlib runtime; first run takes
+  minutes — use a background job with a long timeout), then retry the call.
+- While any install runs, fall back to an isolated proof subagent; record
+  what was installed in the audit.
+
+Triggers and the full automatic flow:
 [references/escalation.md](references/escalation.md).
 
 ## Lifecycle

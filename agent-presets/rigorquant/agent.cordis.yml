@@ -81,8 +81,11 @@
       (Is this set actually convex? Does this iterative scheme converge? Does
       this sampler hit the target distribution? Is this decomposition unique?),
       settle the claim BEFORE implementing — with the jacobian MCP tools
-      (mcp__jacobian__math_find / mcp__jacobian__math_run) when configured, or
-      by launching an isolated proof subagent. Do not handwave.
+      (mcp__jacobian__math_find / mcp__jacobian__math_run). The lane is wired
+      and self-provisioning; when a missing piece is reported
+      (TOOLCHAIN_RESOLUTION / MATHLIB_MANIFEST / absent tools), AUTO-INSTALL
+      it per the rigorquant skill (no user prompt), then retry — or launch an
+      isolated proof subagent while the install runs. Do not handwave.
 
       LIFECYCLE: PASS → auto-implement the validated method and proceed to the
       next stage or sub-problem. BLOCKED: the same exact gap persisting for 3
@@ -293,8 +296,12 @@
     command: npx
     args: ['-y', 'jacobian', 'mcp']
     env:
-      # Pin the Mathlib runtime jacobian's lean.check requires; the preset's
-      # install script provisions it (see mcp/jacobian.md). Removing this
-      # env falls back to jacobian's default search.
+      # Pin the Mathlib runtime jacobian's lean.check requires (see
+      # mcp/jacobian.md). Removing it falls back to jacobian's default search.
       JACOBIAN_LEAN_RUNTIME: !!js "(process.env.JACOBIAN_LEAN_RUNTIME || (process.env.HOME || '') + '/.local/share/jacobian/lean')"
+      # Always expose elan's bin dir to the lane, so the agentic provisioning
+      # script (skills/rigorquant/scripts/provision-lean.sh) makes the pinned
+      # toolchain resolvable at CALL time — no dsh restart needed after an
+      # in-session auto-install.
+      PATH: !!js "process.env.PATH + ':' + (process.env.HOME || '') + '/.elan/bin'"
     toolCallTimeoutMs: 120000

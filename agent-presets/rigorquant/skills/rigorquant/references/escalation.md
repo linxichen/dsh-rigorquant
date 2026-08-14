@@ -24,18 +24,24 @@ Automatic escalation flow when a trigger fires:
 2. Present → use them directly (exact symbolic results, SAT/SMT with proof
    artifacts, convexity/feasibility certificates, verifier lanes —
    producer ≠ checker).
-3. Absent (first escalation on this machine) → OFFER the user the one-time
-   runtime install: "May I run `npx -y jacobian upgrade`? It installs the
-   pinned Python runtime (~160 MB) once." On approval run it, then verify
-   with `npx -y jacobian doctor --json` (expect handshake ok and the
-   math.find / math.run tools). The preset's own config already wires the
-   lane — nothing to hand-edit. (`jacobian setup` is NOT the right command
-   for DSH: it refuses without one of jacobian's native client targets —
-   claude/cursor/opencode/codex/gemini — and this row already plays that
-   role.) HMR picks the lane up after a composition reload; if the tools are
-   still absent, note that a session restart brings them in.
-4. Never block the method work on the lane: while unavailable, fall back to
-   Lane 2 (isolated proof subagent) and record that in the audit.
+3. Absent (first escalation on this machine) → AUTO-INSTALL, no prompt:
+   run `npx -y jacobian upgrade`, verify with `npx -y jacobian doctor --json`
+   (expect handshake ok and the math.find / math.run tools), then retry.
+   (`jacobian setup` is NOT the right command for DSH: it refuses without one
+   of jacobian's native client targets — claude/cursor/opencode/codex/gemini —
+   and the preset's mcp-jacobian row already plays that role.)
+4. Lean lane error → AUTO-PROVISION, no prompt: if a lean capability call
+   (`lean.statement.propose/compare`, `lean.proof_state.inspect`,
+   `lean.check`) returns `TOOLCHAIN_RESOLUTION` or `MATHLIB_MANIFEST`, run
+   `bash <this skill's dir>/scripts/provision-lean.sh` (idempotent; installs
+   elan, the pinned toolchain v4.31.0, persists ~/.elan/bin on PATH, and
+   builds jacobian's pinned Mathlib runtime; first run takes minutes — launch
+   it as a background job with a long timeout and keep working). Then retry
+   the lean call. The preset row already appends ~/.elan/bin to the lane's
+   child PATH, so the toolchain resolves at call time with no dsh restart.
+5. Never block the method work on the lane: while any install runs, fall back
+   to Lane 2 (isolated proof subagent) and record in the audit what was
+   installed and that it succeeded.
 
 Caveats: jacobian is pre-stable; its catalog decides what it can check — read
 the catalog (math.find / `operation://catalog`) before claiming coverage.
@@ -59,6 +65,6 @@ Jin's own gate: Lean 4 + pinned Mathlib, `lake build` + axiom audit, trust
 boundary `propext`/`Classical.choice`/`Quot.sound` only, no `sorry`/`admit`.
 Use only when a fully machine-checked proof is genuinely required (e.g. a
 novel analytical result you will publish or build a product on). Cost is
-high; do not default to it. Jacobian's `lean.check` lane (once the pinned
-Mathlib runtime is provisioned per mcp/jacobian.md) is the lower-friction
-entry point.
+high; do not default to it. Jacobian's `lean.check` lane is the lower-friction entry point; the
+provisioning script (scripts/provision-lean.sh) supplies the pinned Mathlib
+runtime automatically (see Lane 1 step 4).

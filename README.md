@@ -47,9 +47,10 @@ uv sync --project env            # creates env/uv.lock — commit it
 ```
 
 The jacobian escalation lane is already wired and self-provisioning
-(`npx -y jacobian mcp`). On first escalation the agent offers the one-time
-runtime install (`npx -y jacobian upgrade`) for you — see
-[mcp/jacobian.md](mcp/jacobian.md).
+(`npx -y jacobian mcp`). Missing pieces are auto-installed by the framework
+agent — the Python runtime (`npx -y jacobian upgrade`) and the full Lean
+lane (`scripts/provision-lean.sh`: elan + pinned toolchain + Mathlib) — with
+no prompts or restarts. See [mcp/jacobian.md](mcp/jacobian.md).
 
 ## Repository layout
 

@@ -26,32 +26,36 @@ because this preset's `mcp-jacobian` row already IS the DSH client config.
 
 Requires Node 18+ and CPython 3.12/3.13 (or `uv`).
 
-## Lean lane (lean.check) — one-time Mathlib provisioning
+## Lean lane (lean.check) — agentic auto-provisioning
 
-jacobian's core Lean lane (`lean.statement.propose`, `lean.statement.compare`,
-`lean.proof_state.inspect`) needs only the pinned toolchain:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:v4.31.0
-# ensure ~/.elan/bin is on PATH for the dsh process
-```
-
-The full machine-check lane `lean.check` additionally needs the pinned
-Mathlib runtime (this repo's preset already exports `JACOBIAN_LEAN_RUNTIME` to
-`~/.local/share/jacobian/lean`, where the install below puts it):
+The Lean lane provisions itself: when a lean capability call returns
+`TOOLCHAIN_RESOLUTION` or `MATHLIB_MANIFEST`, the framework agent runs the
+bundled idempotent script — no prompts, no manual steps:
 
 ```sh
-L=~/.local/share/jacobian/lean && mkdir -p "$L"
-for f in lakefile.toml lean-toolchain lake-manifest.json JacobianLeanProofState.lean JacobianLeanRuntime.lean; do
-  curl -fsSL "https://raw.githubusercontent.com/morluto/jacobian/jacobian-v0.12.0/lean/$f" -o "$L/$f"
-done
-cd "$L" && ~/.elan/bin/lake update && ~/.elan/bin/lake build
+bash agent-presets/rigorquant/skills/rigorquant/scripts/provision-lean.sh
 ```
 
-`lake update` pulls Mathlib's prebuilt olean cache; `lake build` then compiles
-only the project's own modules. Pin the tag to the installed jacobian version
-(here v0.12.0) so the manifest's Mathlib commit matches the package's
-pinned `MATHLIB_COMMIT`.
+It installs elan + the pinned toolchain (`leanprover/lean4:v4.31.0`),
+persists `~/.elan/bin` on PATH, and builds jacobian's pinned Mathlib runtime
+at `~/.local/share/jacobian/lean` (the preset's `mcp-jacobian` row exports
+`JACOBIAN_LEAN_RUNTIME` there and appends `~/.elan/bin` to the lane's child
+PATH, so the toolchain resolves at call time with no dsh restart). First run
+takes minutes (`lake update` pulls Mathlib's prebuilt olean cache); it is
+safe to re-run. `JACOBIAN_TAG`/`LEAN_TOOLCHAIN` env overrides re-pin the
+script if jacobian's versions move.
+
+What each lane needs:
+
+- `lean.statement.propose`, `lean.statement.compare`,
+  `lean.proof_state.inspect` — pinned toolchain only.
+- `lean.check` (CORE profile) — pinned toolchain.
+- `lean.check` (MATHLIB profile) — toolchain + Mathlib runtime.
+
+The manual commands the script wraps (for reference): elan-init install,
+`elan toolchain install leanprover/lean4:v4.31.0`, then download the 5-file
+Lean project from `morluto/jacobian` at the installed version tag and
+`lake update && lake build`.
 
 ## What the model sees
 
