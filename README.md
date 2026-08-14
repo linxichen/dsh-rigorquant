@@ -30,6 +30,19 @@ Full design record: [docs/architecture.md](docs/architecture.md).
 
 ## Install
 
+Two install forms:
+
+**Bundle (skill layer)** — one command, makes the `rigorquant` skill available
+to every session of a profile; the repo declares a `dsh.bundle` manifest so
+the ecosystem's `dsh plugin add` path works:
+
+```sh
+dsh plugin --profile web add github:linxichen/dsh-rigorquant
+```
+
+**Preset (full framework)** — the RigorQuant agent preset (persona +
+orchestration + tools) with the bundled skill:
+
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
@@ -57,6 +70,8 @@ no prompts or restarts. See [mcp/jacobian.md](mcp/jacobian.md).
 ## Repository layout
 
 ```
+package.json                dsh.bundle manifest (dsh plugin add support)
+cordis.patch.yml            bundle patch: registers the rigorquant skill
 agent-presets/rigorquant/   preset composition + persona + bundled skill
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
@@ -65,8 +80,9 @@ docs/architecture.md        grilled decision record + sources
 
 ## Publishing
 
-This repo is a community DSH plugin distribution (preset + skill form). It is
-tagged [`dsh-plugin`](https://github.com/topics/dsh-plugin) and discoverable by
+This repo is a community DSH plugin distribution (bundle + preset + skill
+form): it declares a `dsh.bundle` manifest in `package.json`, is tagged
+[`dsh-plugin`](https://github.com/topics/dsh-plugin), and is discoverable by
 the ecosystem's topic-based indexes — see
 [dsh-find-plugins](https://github.com/Nagi-ovo/dsh-find-plugins) and the
 [awesome-deepseek-harness](https://github.com/0xsline/awesome-deepseek-harness)

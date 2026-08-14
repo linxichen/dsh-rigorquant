@@ -45,8 +45,10 @@
 10. **Lifecycle** — PASS → auto-implement + proceed; BLOCKED → same exact gap
     3 consecutive rounds → deliver strongest derivation + exact gap; BUDGET →
     5 orchestrator rounds → checkpoint + report (no cost ceiling yet).
-11. **Publishing** — repo distributes an agent preset + bundled skill
-    (install.sh), MIT, `dsh-plugin` GitHub topic.
+11. **Publishing** — repo distributes a bundle (package.json
+    `dsh.bundle.patch` + cordis.patch.yml registering the skill), an agent
+    preset + bundled skill (install.sh), MIT, `dsh-plugin` GitHub topic —
+    compliant with the awesome-list `dsh plugin add` convention.
 
 ## Repo map
 

@@ -28,6 +28,18 @@ RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一
 
 ## 安装
 
+两种安装形态：
+
+**Bundle（技能层）**——一条命令，让某个 profile 的所有会话都能使用
+`rigorquant` 技能；仓库声明了 `dsh.bundle` manifest，生态的
+`dsh plugin add` 安装路径可直接使用：
+
+```sh
+dsh plugin --profile web add github:linxichen/dsh-rigorquant
+```
+
+**Preset（完整框架）**——RigorQuant 智能体预设（persona + 编排 + 工具）及内置技能：
+
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
@@ -54,6 +66,8 @@ jacobian 升级通道已接好并可自供给（`npx -y jacobian mcp`）。缺�
 ## 仓库结构
 
 ```
+package.json                dsh.bundle manifest（支持 dsh plugin add）
+cordis.patch.yml            bundle patch：注册 rigorquant 技能
 agent-presets/rigorquant/   preset 组合 + persona + 内置技能
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
@@ -62,7 +76,8 @@ docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
 
 ## 发布
 
-本仓库是社区 DSH 插件发行物（preset + 技能形态），已打上
+本仓库是社区 DSH 插件发行物（bundle + preset + 技能形态）：`package.json`
+声明 `dsh.bundle` manifest，已打上
 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 标签，可被生态内基于
 topic 的索引发现——约定参见
 [dsh-find-plugins](https://github.com/Nagi-ovo/dsh-find-plugins) 与
