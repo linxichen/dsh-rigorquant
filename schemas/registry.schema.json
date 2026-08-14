@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/linxichen/dsh-rigorquant/schemas/registry.schema.json",
+  "title": "RigorQuant registry.json",
+  "description": "The approach-family registry, keyed by sub-problem id (SPn) so each sub-problem keeps its own blockedReason/blockedRounds state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task", "rounds", "subproblems"],
+  "properties": {
+    "task": { "type": "string" },
+    "rounds": { "type": "integer", "minimum": 0 },
+    "subproblems": {
+      "type": "object",
+      "description": "Map keyed by sub-problem id (SP1, SP2, ...).",
+      "additionalProperties": { "$ref": "#/definitions/subproblem" }
+    }
+  },
+  "definitions": {
+    "subproblem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "families"],
+      "properties": {
+        "status": {
+          "enum": ["active", "blocked", "passed", "dead", "unknown"]
+        },
+        "blockedReason": { "type": "string" },
+        "blockedRounds": { "type": "integer", "minimum": 0 },
+        "evidence_level": {
+          "enum": [
+            "falsification-surviving",
+            "independently re-derived",
+            "certificate-checked",
+            "formally verified"
+          ]
+        },
+        "families": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/family" }
+        }
+      }
+    },
+    "family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["familyId", "idea", "routes"],
+      "properties": {
+        "familyId": { "type": "string" },
+        "idea": { "type": "string" },
+        "routes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/route" }
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routeId", "status", "outputs"],
+      "properties": {
+        "routeId": { "type": "string" },
+        "status": { "enum": ["active", "blocked", "dead", "passed"] },
+        "blockedReason": { "type": "string" },
+        "mechanism": { "type": "string" },
+        "outputs": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

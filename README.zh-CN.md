@@ -3,20 +3,21 @@
 [English](README.md) | **简体中文**
 
 面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的
-**无人值守、长时运行的实证/计算数学研究**框架——覆盖经济学、金融、组合构建与
-优化、模拟、计算经济/金融等领域。
+**会话内无人值守、长时运行的实证/计算数学研究**框架——覆盖经济学、金融、组合
+构建与优化、模拟、计算经济/金融等领域。
 
-RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一个有隔离墙的
+RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一个上下文隔离的
 多智能体研究实验室：
 
 - **并行探索者**提出候选方法（`subagent`，空白上下文）。
-- **隔离的真值轨道**独立重推导简化情形下的解析闭式解、不变量与界——用两种
-  不同手段各推一遍。
+- **真值轨道**独立重推导简化情形下的解析闭式解、不变量与界——用两种不同手段
+  各推一遍（两次独立的 `subagent_ground_truth` 调用）。
 - **对抗者**只凭反例淘汰路线。
 - **四重校验电池**（闭式解相等、精确不变量、解析界、统计强化）在数值实现
   **之前**运行。
 - 随机工作采用**固定种子 + 大数定律**约定。
-- **jacobian MCP 升级通道**（Lean 作为最后手段）在实现前解决证明关键性断言。
+- **jacobian MCP 升级通道**（opt-in；Lean 作为手动外部通道）在实现前解决证明
+  关键性断言。
 - **PASS → 自动实现并继续；BLOCKED → 同一缺口连续 3 轮 → 交付最强推导 + 精确
   缺口；BUDGET → 5 轮 → 存档 + 报告。**
 
@@ -25,6 +26,9 @@ RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一
 [Lean 审计](https://github.com/jinshanmu/CrouzeixConjecture/tree/main/Lean)）
 与陶哲轩的 blueprint/等式理论项目，并落到数值工作。完整设计记录：
 [docs/architecture.md](docs/architecture.md)。
+
+**"无人值守"的准确含义：**框架在**单个会话内**无人值守运行；跨会话边界会解除
+goal，需要一次人工回合（"continue"）重新武装；它不会跨重启自主续跑。
 
 ## 安装
 
@@ -43,25 +47,22 @@ dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
-./install.sh                    # 将 RigorQuant preset 安装到 $DSH_HOME
+./install.sh                    # 安装 preset + 技能 + 计算通道
 # ./install.sh --skill-only     # 或只安装 rigorquant 技能，供任意 preset 使用
 ```
 
 启动一个新的 DSH 会话并选择 **RigorQuant** preset，然后说：
 
-> rigorquant：为 [问题] 推导并验证一个方法，先在简化情形上验证，
-> 再做数值实现。
+> rigorquant：为 [问题] 推导并验证一个方法，先在简化情形上验证，再做数值实现。
 
 ## 计算通道（一次性）
 
-```sh
-uv sync --project env            # 生成 env/uv.lock —— 请提交它
-```
-
-jacobian 升级通道已接好并可自供给（`npx -y jacobian mcp`）。缺失组件由框架
-智能体**自动安装**——Python 运行时（`npx -y jacobian upgrade`）与完整 Lean
-通道（`scripts/provision-lean.sh`：elan + 固定工具链 + Mathlib）——无需询问、
-无需重启。详见 [mcp/jacobian.md](mcp/jacobian.md)。
+`install.sh` 会把固定的 uv 计算通道安装到 `$DSH_HOME/share/rigorquant/env`
+（见 [env/README.md](env/README.md)）。jacobian 升级通道默认**关闭**且已
+**固定版本**（`jacobian@0.12.0`）：先启用 `mcp-jacobian` 行，框架在一次性
+配置前会**请求批准**（`npx -y jacobian@0.12.0 upgrade`，或通过
+`scripts/provision-lean.sh` 安装 Lean 工具链）。详见
+[mcp/jacobian.md](mcp/jacobian.md)。
 
 ## 仓库结构
 
@@ -72,27 +73,27 @@ agent-presets/rigorquant/   preset 组合 + persona + 内置技能
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
-studies/                    每个任务一个研究文件夹（见下）
+studies/                    每个任务一个研究文件夹（Mode B；本仓库的活跃研究，
+                            不随 npm bundle 发布）
 ```
 
 ## 研究（Study）
 
 一个 **study** 是一个自包含的 rigorquant 任务，各处内部结构完全一致：持久化
-成果位于 study 根目录（`study.json`、`registry.json`、`journal.md`、
-`derivations/`、`audits/`、`artifacts/`），应当提交；所有草稿都在被
-git 忽略的 `interim/` 中。两种模式，由位置决定：
+成果位于 study 根目录（`study.json`、`STUDY.md`、`registry.json`、
+`journal.md`、`derivations/`、`audits/`、`artifacts/`），应当提交；所有草稿
+都在被 git 忽略的 `interim/` 中。两种模式，由位置决定：
 
 - **一仓库一研究** — `study.json` 在仓库根目录。
-- **一仓库多研究** — `studies/<slug>/study.json`；清单即
-  `studies/*/study.json`。
+- **一仓库多研究** — `studies/<slug>/study.json`；清单即 `studies/*/study.json`。
 
-启动时检测到已有 study 则静默续跑；新 study 只问一次（模式 + slug），之后
-不再询问。详见 [docs/architecture.md](docs/architecture.md) 第 12 条。
+启动时检测到已有 study 则静默续跑；新 study 只问一次（模式 + slug），之后不再
+询问。详见 [docs/architecture.md](docs/architecture.md) 第 12 条。
 
 ## 发布
 
-本仓库是社区 DSH 插件发行物（bundle + preset + 技能形态）：`package.json`
-声明 `dsh.bundle` manifest，已打上
+本仓库是社区 DSH 插件发行物（bundle + preset + 技能形态）：`package.json` 声明
+`dsh.bundle` manifest，已打上
 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 标签，可被生态内基于
 topic 的索引发现——约定参见
 [dsh-find-plugins](https://github.com/Nagi-ovo/dsh-find-plugins) 与

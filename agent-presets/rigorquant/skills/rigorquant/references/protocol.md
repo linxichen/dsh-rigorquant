@@ -9,10 +9,14 @@ Primary sources:
 ## Jin's rules, translated to empirical/computational work
 
 1. **Epistemic isolation where it matters.** For novel sub-problems: no web,
-   no prior conversations, no project files. Assume a complete affirmative
-   result exists and work iteratively until found. (For `known` sub-problems
-   the method track stays open — building on existing analytical results is
-   an explicit goal.)
+   no prior conversations, no project files. Do **not** assume a complete
+   affirmative result exists — prove it or find a counterexample, and record an
+   explicit `unknown` if neither lands. (For `known` sub-problems the method
+   track stays open — building on existing analytical results is an explicit
+   goal.) Isolation is **procedural**, not a capability boundary: context
+   isolation between the root and its subagents is harness-enforced, but web
+   access, filesystem scope, and recursion are enforced only by the per-role
+   delegation tools (see SKILL.md) — never describe them as a "wall".
 2. **Diverse portfolio, no premature convergence.** Begin with genuinely
    different formulations. Do not tell most agents the favored approach.
    Group by mathematical idea in `registry.json`, not by wording. Redirect
@@ -45,8 +49,16 @@ Primary sources:
 
 ## The round cycle in full
 
-1. Explorers fan out (blank-context subagents).
-2. Ground-truth track re-derives the check targets twice, independently.
+1. Explorers fan out (blank-context `subagent` calls).
+2. Ground-truth track re-derives the check targets twice, independently (two
+   separate `subagent_ground_truth` calls, different means).
 3. Adversary audits both tracks, runs the battery, hunts counterexamples.
 4. Root synthesizes: registry update → block/redirect decisions → PASS or
    relaunch (with new redirections; never an identical relaunch).
+
+Proof and refutation tracks run in parallel: while one agent proves a claim,
+another hunts a counterexample. The correct outcome may be impossibility,
+non-identifiability, divergence, or a counterexample — record `unknown`
+rather than forcing PASS, and tag every claim with its evidence level
+(falsification-surviving / independently re-derived / certificate-checked /
+formally verified; see lifecycle.md).
