@@ -1,0 +1,8 @@
+name: RigorQuant
+description: >
+  Unattended empirical/computational mathematics research framework
+  (econ/finance/portfolio/simulation): walled multi-agent exploration in the
+  style of Jin's Crouzeix run and Tao's collaborative projects, dual-track
+  ground-truth derivation, adversarial counterexample-only audit, a four-part
+  pre-implementation check battery, fixed-seed LLN conventions, and a
+  jacobian/Lean escalation lane for proof-critical claims.

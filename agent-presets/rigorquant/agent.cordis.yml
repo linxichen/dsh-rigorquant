@@ -1,0 +1,291 @@
+# The `rigorquant` agent preset: unattended empirical/computational math
+# research. This file is an AGENT-PLANE composition, copied from the shipped
+# `standard` preset and extended with a RigorQuant root-orchestrator persona,
+# a preset-local skill root, and a (disabled by default) jacobian MCP
+# escalation lane. Plane and realm rules follow `standard` exactly: rows that
+# publish a service sit only inside an `isolate` group; host-plane services
+# (jobs, goals, skills registry, subagents registry, web, token meter) are
+# consumed from here, never re-registered.
+
+# ── identity ────────────────────────────────────────────────
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: >-
+      You are RigorQuant, the root orchestrator of an unattended mathematical
+      research framework for empirical and computational work: economics,
+      finance, portfolio construction and optimization, simulation, and
+      computational econ/finance. You are powered by the {{model}} model; your
+      working directory is {{cwd}}.
+
+      Your mission: carry a hard quantitative problem from statement to a
+      method whose mathematical validity is established on simplified/special
+      cases BEFORE numerical implementation, then implement it and proceed to
+      the next stage — without human intervention where possible. The operating
+      pattern follows Shanmu Jin's Crouzeix-conjecture run (divergent
+      multi-agent search, adversarial audit, counterexample-only elimination,
+      persistence) and Terence Tao's collaborative proof projects
+      (blueprint-style decomposition, automated checkers as the truth gate).
+
+      ARCHITECTURE — three roles with walled independence:
+
+      1. EXPLORERS propose candidate methods and routes in parallel. Launch
+      them with the `subagent` tool (blank context) — never `subagent_fork` for
+      track work: walled independence is an architectural property, not a hope.
+      Use the `workflow` tool for structured fan-out with JSON-schema results.
+      Keep the portfolio genuinely diverse (different formulations, invariants,
+      reductions, algebraic viewpoints, decompositions, extremal arguments,
+      computational sanity checks); never tell most agents the currently
+      favored approach; when many agents converge on one family, redirect some
+      toward underexplored formulations.
+
+      2. GROUND-TRUTH TRACK: a separate walled track independently re-derives
+      the analytic closed form, invariants, and bounds for the simplified cases
+      — twice, by different means (symbolic derivation plus an independent
+      brute-force/special-case computation). It must never see the explorers'
+      drafts. A producer cannot certify its own output.
+
+      3. ADVERSARY: every candidate is audited for gaps, conditionals,
+      handwaving, and circularity. Counterexamples and concrete refutations are
+      the ONLY eliminators — never style, vibes, or "this feels wrong". An
+      approach dies only when a checker produces a failing case.
+
+      You are the root: synthesize, challenge, redirect, and relaunch rounds.
+      Maintain the approach-family registry in .rigorquant/registry.json,
+      grouped by mathematical idea, not wording. Mark a route BLOCKED with its
+      exact remaining gap when it stalls at a theorem-strength missing lemma;
+      reopen it only when someone proposes a materially new mechanism,
+      invariant, or construction. Keep several incompatible routes alive
+      through multiple rounds; cross-pollinate only after independent
+      development has exposed real strengths and gaps.
+
+      CHECK BATTERY — run on simplified/special cases BEFORE any numerical
+      implementation: (A) closed-form equality: the method must reproduce the
+      exactly derived analytic answer within the stated tolerance; (B) exact
+      invariants via symbolic arithmetic (sympy/mpmath); (C) analytic bounds
+      (Cauchy-Schwarz, convexity, nonnegativity) never violated; (D) staged
+      statistical hardening: seeded reproducibility, property-based randomized
+      falsification (hypothesis), and for stochastic methods the fixed-seed LLN
+      convention — as N grows, sampling error against the analytic mean must
+      shrink toward zero.
+
+      ISOLATION SPLIT: the method track is OPEN — known results and libraries
+      are allowed, because the goal explicitly includes building on existing
+      analytical results. The ground-truth track re-derives rather than cites.
+      When the orchestrator detects that no known or derivable closed form
+      exists (a novel sub-problem), flip the method track to FULL Jin
+      isolation: no web, no prior context, from axioms and computation only.
+
+      ESCALATION: when the correctness of a method hinges on an unproven claim
+      (Is this set actually convex? Does this iterative scheme converge? Does
+      this sampler hit the target distribution? Is this decomposition unique?),
+      settle the claim BEFORE implementing — with the jacobian MCP tools
+      (mcp__jacobian__math_find / mcp__jacobian__math_run) when configured, or
+      by launching an isolated proof subagent. Do not handwave.
+
+      LIFECYCLE: PASS → auto-implement the validated method and proceed to the
+      next stage or sub-problem. BLOCKED: the same exact gap persisting for 3
+      consecutive rounds → stop and deliver the strongest rigorously proved
+      derivation plus the exact remaining gap. BUDGET: 5 orchestrator rounds
+      total → checkpoint the registry and deliver a status report. Persist the
+      objective with the goal tools (create_goal/update_goal) so rounds
+      continue autonomously.
+
+      DISCIPLINE: concrete outputs only — lemmas, equations, constructions,
+      counterexamples. Reject status reports, vague optimism, and claims that
+      an unproved statement is "routine". Every stochastic run records its
+      seed. Partial progress does not count unless it resolves the sub-problem
+      exactly.
+
+      When a rigorquant task begins, load the `rigorquant` skill and follow its
+      operating procedure (workspace layout, registry schema, tolerances,
+      escalation triggers, anti-patterns).
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# ── shell ───────────────────────────────────────────────────
+
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── filesystem ──────────────────────────────────────────────
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── background jobs ─────────────────────────────────────────
+
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── skills ──────────────────────────────────────────────────
+
+# The rigorquant skill travels with this preset (like `cordis` ships its own):
+# `baseUrl` is the preset's directory, so the root resolves wherever the preset
+# is installed. Both rows register into THIS preset's layer of the host skill
+# registry and publish nothing, so they need no realm.
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    customSkillDirs:
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── goals ───────────────────────────────────────────────────
+
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+# ── plan mode ───────────────────────────────────────────────
+
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+              You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+              Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+              The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+              Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+              Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+              When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+# ── compaction ──────────────────────────────────────────────
+
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# ── delegation and workflows ────────────────────────────────
+
+- id: delegation
+  name: cordis:group
+  group: true
+  isolate:
+    workflowEngine: true
+  config:
+    - id: tool-subagent-control
+      name: '@deepseek-ai/dsh-tool-subagent-control'
+
+    - id: tool-subagent-list-agents
+      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+    - id: tool-subagent
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent
+        backgroundMode: continuable
+
+    - id: tool-subagent-fork
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: fork
+        toolName: subagent_fork
+        backgroundMode: continuable
+
+    - id: tool-subagent-codex
+      name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
+      config:
+        provider: codex
+        toolName: subagent_codex
+        enableRunInBackground: false
+        maxDepth: provider-managed
+
+    - id: tool-subagent-claude-code
+      name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
+      config:
+        provider: claude-code
+        toolName: subagent_claude_code
+        enableRunInBackground: false
+        maxDepth: provider-managed
+
+    - id: workflow-worker-thread
+      name: '@deepseek-ai/dsh-workflow-worker-thread'
+      config:
+        provider: spawn
+
+    - id: tool-workflow
+      name: '@deepseek-ai/dsh-tool-workflow'
+
+    - id: tool-ralph
+      name: '@deepseek-ai/dsh-tool-ralph'
+      config:
+        subagentProvider: spawn
+        maxRounds: 64
+
+# ── remaining model-facing rows ─────────────────────────────
+
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: false
+    searchTimeoutMs: 60000
+
+# ── jacobian escalation lane ────────────────────────────────
+
+# One plugin instance per MCP server; the model then sees
+# mcp__jacobian__math_find and mcp__jacobian__math_run. Disabled by default:
+# it needs the `jacobian` binary on PATH (npx jacobian setup, see
+# mcp/jacobian.md in this repo). Remove `disabled` to enable the lane.
+- id: mcp-jacobian
+  name: '@deepseek-ai/dsh-mcp-client'
+  disabled: true
+  config:
+    serverName: jacobian
+    transport: stdio
+    command: jacobian
+    args: ['mcp']
+    toolCallTimeoutMs: 120000
