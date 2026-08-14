@@ -6,15 +6,21 @@ NetworkX, Z3, Python-FLINT, cvc5 backends, SAT/SMT proof artifacts, and a
 pinned-Lean formal-check lane. Its model is "a producer cannot certify its own
 output" — the same principle as this framework's walled tracks.
 
-## Install
+## Install — automatic
+
+The lane is already wired in the preset: the `mcp-jacobian` row spawns
+`npx -y jacobian mcp` and self-provisions on first use (no lifecycle scripts;
+npx caches the package). No config editing is needed.
+
+Optional one-time persistent install (recommended on first escalation — the
+framework agent offers it automatically):
 
 ```sh
-npx jacobian setup          # or: npm install -g jacobian && jacobian doctor
+npx jacobian setup          # launcher + pinned Python runtime (~160 MB)
+jacobian doctor             # verify
 ```
 
-Requires Node 18+ and CPython 3.12/3.13 (or `uv`). Then enable the lane by
-removing `disabled: true` from the `mcp-jacobian` row in
-`agent-presets/rigorquant/agent.cordis.yml`.
+Requires Node 18+ and CPython 3.12/3.13 (or `uv`).
 
 ## What the model sees
 

@@ -46,12 +46,10 @@ Start a new DSH session and pick the **RigorQuant** preset. Then:
 uv sync --project env            # creates env/uv.lock — commit it
 ```
 
-Enable the optional escalation lane:
-
-```sh
-npx jacobian setup               # then remove `disabled: true` on the
-                                 # mcp-jacobian row in the preset composition
-```
+The jacobian escalation lane is already wired and self-provisioning
+(`npx -y jacobian mcp`). On first escalation the agent offers the one-time
+persistent install (`npx jacobian setup`) for you — see
+[mcp/jacobian.md](mcp/jacobian.md).
 
 ## Repository layout
 

@@ -277,15 +277,18 @@
 # ── jacobian escalation lane ────────────────────────────────
 
 # One plugin instance per MCP server; the model then sees
-# mcp__jacobian__math_find and mcp__jacobian__math_run. Disabled by default:
-# it needs the `jacobian` binary on PATH (npx jacobian setup, see
-# mcp/jacobian.md in this repo). Remove `disabled` to enable the lane.
+# mcp__jacobian__math_find and mcp__jacobian__math_run. The lane is ON by
+# default and self-provisions: `npx -y` fetches the launcher on first spawn
+# (the package runs no lifecycle scripts). When the binary or runtime is
+# missing the row activates without tools (failOnStartupError is false), so
+# the preset mounts either way. The escalation flow offers the user the
+# one-time persistent install (`npx jacobian setup`) on first use — see the
+# `rigorquant` skill's references/escalation.md.
 - id: mcp-jacobian
   name: '@deepseek-ai/dsh-mcp-client'
-  disabled: true
   config:
     serverName: jacobian
     transport: stdio
-    command: jacobian
-    args: ['mcp']
+    command: npx
+    args: ['-y', 'jacobian', 'mcp']
     toolCallTimeoutMs: 120000

@@ -112,9 +112,11 @@ computation until one is found. Full protocol:
 
 When a method's correctness hinges on an unproven claim (convexity of a set,
 convergence of a scheme, correctness of a sampler, uniqueness of a
-decomposition), settle it BEFORE implementing: jacobian MCP lane
-(`mcp__jacobian__math_find` / `math_run`) when configured, else an isolated
-proof subagent. Triggers and wiring:
+decomposition), settle it BEFORE implementing. The jacobian MCP lane
+(`mcp__jacobian__math_find` / `math_run`) is ON by default and
+self-provisions; when a trigger fires and the tools are missing, OFFER the
+user `npx jacobian setup` and run it on approval — fall back to an isolated
+proof subagent meanwhile. Triggers and the full automatic flow:
 [references/escalation.md](references/escalation.md).
 
 ## Lifecycle
