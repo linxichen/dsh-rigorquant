@@ -48,7 +48,7 @@ uv sync --project env            # creates env/uv.lock — commit it
 
 The jacobian escalation lane is already wired and self-provisioning
 (`npx -y jacobian mcp`). On first escalation the agent offers the one-time
-persistent install (`npx jacobian setup`) for you — see
+runtime install (`npx -y jacobian upgrade`) for you — see
 [mcp/jacobian.md](mcp/jacobian.md).
 
 ## Repository layout

@@ -25,12 +25,15 @@ Automatic escalation flow when a trigger fires:
    artifacts, convexity/feasibility certificates, verifier lanes —
    producer ≠ checker).
 3. Absent (first escalation on this machine) → OFFER the user the one-time
-   persistent install: "May I run `npx jacobian setup`? It installs the
-   launcher and its pinned Python runtime (~160 MB) once." On approval run it,
-   then verify with `jacobian doctor`. The preset's own config already wires
-   the lane — nothing to hand-edit. HMR picks the lane up after a composition
-   reload; if the tools are still absent, note that a session restart brings
-   them in.
+   runtime install: "May I run `npx -y jacobian upgrade`? It installs the
+   pinned Python runtime (~160 MB) once." On approval run it, then verify
+   with `npx -y jacobian doctor --json` (expect handshake ok and the
+   math.find / math.run tools). The preset's own config already wires the
+   lane — nothing to hand-edit. (`jacobian setup` is NOT the right command
+   for DSH: it refuses without one of jacobian's native client targets —
+   claude/cursor/opencode/codex/gemini — and this row already plays that
+   role.) HMR picks the lane up after a composition reload; if the tools are
+   still absent, note that a session restart brings them in.
 4. Never block the method work on the lane: while unavailable, fall back to
    Lane 2 (isolated proof subagent) and record that in the audit.
 

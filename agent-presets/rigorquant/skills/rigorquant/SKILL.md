@@ -115,8 +115,8 @@ convergence of a scheme, correctness of a sampler, uniqueness of a
 decomposition), settle it BEFORE implementing. The jacobian MCP lane
 (`mcp__jacobian__math_find` / `math_run`) is ON by default and
 self-provisions; when a trigger fires and the tools are missing, OFFER the
-user `npx jacobian setup` and run it on approval — fall back to an isolated
-proof subagent meanwhile. Triggers and the full automatic flow:
+user `npx -y jacobian upgrade` (installs the managed Python runtime) and run
+it on approval — fall back to an isolated proof subagent meanwhile. Triggers and the full automatic flow:
 [references/escalation.md](references/escalation.md).
 
 ## Lifecycle

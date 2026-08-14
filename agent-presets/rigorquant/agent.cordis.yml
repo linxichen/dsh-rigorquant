@@ -1,7 +1,7 @@
 # The `rigorquant` agent preset: unattended empirical/computational math
 # research. This file is an AGENT-PLANE composition, copied from the shipped
 # `standard` preset and extended with a RigorQuant root-orchestrator persona,
-# a preset-local skill root, and a (disabled by default) jacobian MCP
+# a preset-local skill root, and a self-provisioning jacobian MCP
 # escalation lane. Plane and realm rules follow `standard` exactly: rows that
 # publish a service sit only inside an `isolate` group; host-plane services
 # (jobs, goals, skills registry, subagents registry, web, token meter) are
@@ -282,8 +282,9 @@
 # (the package runs no lifecycle scripts). When the binary or runtime is
 # missing the row activates without tools (failOnStartupError is false), so
 # the preset mounts either way. The escalation flow offers the user the
-# one-time persistent install (`npx jacobian setup`) on first use — see the
-# `rigorquant` skill's references/escalation.md.
+# one-time runtime install (`npx -y jacobian upgrade`) on first use — `setup`
+# only targets jacobian's native clients (claude/cursor/codex/…), while the
+# DSH client config is this row itself. See references/escalation.md.
 - id: mcp-jacobian
   name: '@deepseek-ai/dsh-mcp-client'
   config:

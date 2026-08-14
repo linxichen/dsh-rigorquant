@@ -12,13 +12,17 @@ The lane is already wired in the preset: the `mcp-jacobian` row spawns
 `npx -y jacobian mcp` and self-provisions on first use (no lifecycle scripts;
 npx caches the package). No config editing is needed.
 
-Optional one-time persistent install (recommended on first escalation — the
+Optional one-time runtime install (recommended on first escalation — the
 framework agent offers it automatically):
 
 ```sh
-npx jacobian setup          # launcher + pinned Python runtime (~160 MB)
-jacobian doctor             # verify
+npx -y jacobian upgrade     # install the pinned Python runtime (~160 MB)
+npx -y jacobian doctor --json   # verify: handshake ok, math.find + math.run
 ```
+
+`jacobian setup` is for jacobian's own client targets (claude, cursor,
+opencode, codex, gemini) and refuses without one — DSH is not one of them,
+because this preset's `mcp-jacobian` row already IS the DSH client config.
 
 Requires Node 18+ and CPython 3.12/3.13 (or `uv`).
 
