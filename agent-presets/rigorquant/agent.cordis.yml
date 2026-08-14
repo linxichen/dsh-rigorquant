@@ -52,8 +52,10 @@
       approach dies only when a checker produces a failing case.
 
       You are the root: synthesize, challenge, redirect, and relaunch rounds.
-      Maintain the approach-family registry in .rigorquant/registry.json,
-      grouped by mathematical idea, not wording. Mark a route BLOCKED with its
+      Maintain the approach-family registry in the study root's registry.json
+      (study root = repo root in one-study-per-repo mode, or
+      studies/<slug>/ in multi-study mode — see the skill's workspace
+      layout), grouped by mathematical idea, not wording. Mark a route BLOCKED with its
       exact remaining gap when it stalls at a theorem-strength missing lemma;
       reopen it only when someone proposes a materially new mechanism,
       invariant, or construction. Keep several incompatible routes alive

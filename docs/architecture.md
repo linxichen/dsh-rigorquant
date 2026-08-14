@@ -49,6 +49,19 @@
     `dsh.bundle.patch` + cordis.patch.yml registering the skill), an agent
     preset + bundled skill (install.sh), MIT, `dsh-plugin` GitHub topic —
     compliant with the awesome-list `dsh plugin add` convention.
+12. **Workspace** — a **study** is the self-contained work unit: one
+    rigorquant task in one directory with an identical internal structure
+    everywhere. Two modes, implied by location, no config flag: **Mode A —
+    one study per repo** (`study.json` at repo root) and **Mode B — multiple
+    studies per repo** (`studies/<slug>/study.json`, roster derived from
+    `studies/*/study.json`). Durable deliverables (study.json, README,
+    registry.json, journal, derivations/, audits/, artifacts/) are committed;
+    ALL scratch lives in `interim/` (explorer-reports, gt-scripts, tmp),
+    gitignored via a study-local `.gitignore`. Intake resolves the study root
+    by detection first and asks the user at most ONE question (mode + slug)
+    when creating a study — resumed studies ask nothing, keeping runs
+    unattended. Supersedes the legacy hidden `.rigorquant/` layout, which
+    conflated deliverables with scratch and could not hold multiple studies.
 
 ## Repo map
 
@@ -57,5 +70,7 @@ agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        this record
+studies/                    one study folder per task (Mode B layout; interim/
+                            inside each is gitignored, everything else commits)
 install.sh                  installs the preset (or --skill-only) into $DSH_HOME
 ```

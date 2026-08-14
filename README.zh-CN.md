@@ -72,7 +72,22 @@ agent-presets/rigorquant/   preset 组合 + persona + 内置技能
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
+studies/                    每个任务一个研究文件夹（见下）
 ```
+
+## 研究（Study）
+
+一个 **study** 是一个自包含的 rigorquant 任务，各处内部结构完全一致：持久化
+成果位于 study 根目录（`study.json`、`registry.json`、`journal.md`、
+`derivations/`、`audits/`、`artifacts/`），应当提交；所有草稿都在被
+git 忽略的 `interim/` 中。两种模式，由位置决定：
+
+- **一仓库一研究** — `study.json` 在仓库根目录。
+- **一仓库多研究** — `studies/<slug>/study.json`；清单即
+  `studies/*/study.json`。
+
+启动时检测到已有 study 则静默续跑；新 study 只问一次（模式 + slug），之后
+不再询问。详见 [docs/architecture.md](docs/architecture.md) 第 12 条。
 
 ## 发布
 

@@ -1,10 +1,37 @@
 # Lifecycle, registry, and termination
 
+## study.json schema
+
+Created at intake (SKILL.md Step 1); internal references recorded anywhere in
+a study (registry.json, journal.md, audits) are study-root-relative.
+
+```json
+{
+  "slug": "kebab-case study id",
+  "title": "one-line title",
+  "mode": "repo-root | studies/<slug>",
+  "repo_root": "<absolute path resolved at intake, informational>",
+  "env_lane": "<repo-root-relative path to the pinned uv lane>",
+  "run_env": "uv run --project env python <script>",
+  "task_id": "<problem id>",
+  "created": "YYYY-MM-DD",
+  "statement": "the problem statement",
+  "success_criterion": "what a validated method must deliver",
+  "subproblems": [{ "id": "SPn", "name": "...", "status": "known|novel",
+                    "success_criterion": "..." }],
+  "simplified_cases": ["..."],
+  "seeds": { "task_seed": 0, "convention": "per-run seed = task_seed + run_index" },
+  "tolerances": { "exact_lane": "...", "numeric_lane": "...", "lln_grid": "..." },
+  "budget": { "max_orchestrator_rounds": 5 },
+  "status": "per-sub-problem status + current round"
+}
+```
+
 ## Terminal states
 
 - **PASS** — the check battery passes on the simplified cases. Auto-implement
   the method (write it into the target artifact/codebase with its audit trail
-  reference), mark the sub-problem PASS in task.json, and proceed to the next
+  reference), mark the sub-problem PASS in study.json, and proceed to the next
   stage/sub-problem. No user confirmation required by default.
 - **BLOCKED** — the SAME exact gap persisted for 3 consecutive orchestrator
   rounds. Stop the sub-problem: deliver the strongest rigorously proved
@@ -31,7 +58,7 @@
           "status": "active | blocked | dead | passed",
           "blockedReason": "exact remaining gap (only when blocked)",
           "mechanism": "what changed when reopened",
-          "outputs": ["paths to concrete derivations/artifacts"]
+          "outputs": ["study-root-relative paths to concrete derivations/artifacts"]
         }
       ]
     }

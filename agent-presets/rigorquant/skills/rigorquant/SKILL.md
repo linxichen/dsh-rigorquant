@@ -34,19 +34,60 @@ enter the round loop.
 2. Choose simplified/special cases per sub-problem: the smallest
    hand-computable settings that still exercise the method (2 assets, 2–3
    dimensions, low N).
-3. Record the **seed** for every stochastic run in `task.json`.
+3. Record the **seed** for every stochastic run in `study.json`.
 
-## Step 1 — Workspace setup
+For a new task, resolve the study workspace (Step 1) and create `study.json`
+before entering the round loop.
+
+## Step 1 — Study workspace
+
+A **study** is one self-contained rigorquant task — a single directory with
+the identical internal structure in every repo. All paths in this skill are
+relative to the **study root** unless prefixed otherwise.
+
+### Resolve the study root (detect first, ask once, never re-ask)
+
+1. Walk up from the working directory looking for `study.json`. Found → that
+   directory is the study root: continue the study, ask nothing.
+2. The repo root contains `studies/*/study.json` → a multi-study repo. Read
+   the roster (each study's `slug` from its `study.json`); if the user named
+   a study, continue it; otherwise ask ONE question: continue which study, or
+   create a new one (new slug).
+3. Neither → a new study. Ask ONE `ask_user_question` (recommended default
+   first), then never again:
+   - **Mode A — one study per repo:** study root = repo root. Recommended
+     when the repo is dedicated to this research.
+   - **Mode B — multiple studies per repo:** study root = `studies/<slug>/`.
+     Recommended when the repo also holds other code or several research
+     topics.
+4. Create the study: `study.json` (schema in lifecycle.md), the folders
+   below, and a `.gitignore` containing `interim/` — in Mode B inside the
+   study folder; in Mode A append `interim/` to the repo-root `.gitignore`.
+   Persist mode, slug, `repo_root`, and `env_lane` in `study.json`; resumes
+   never re-ask.
+
+### Study layout (identical in both modes)
 
 ```
-.rigorquant/
-├── task.json            # problem statement, sub-problems, seeds, env path
-├── registry.json        # approach-family registry (see lifecycle.md schema)
-├── derivations/         # ground-truth derivations, two independent per claim
-├── audits/              # adversary reports + check-battery results
-├── artifacts/           # PASS: final validated method + audit trail
-└── journal.md           # round log (append every round)
+<study-root>/
+├── study.json          # identity: slug, title, mode, statement, subproblems,
+│                       #   seeds, budget, status, repo_root, env_lane
+├── README.md           # human-facing summary, refreshed at checkpoints
+├── registry.json       # approach-family registry (see lifecycle.md schema)
+├── journal.md          # append-only round log (append every round)
+├── derivations/        # ground-truth derivations, two independent per claim
+├── audits/             # adversary reports + check-battery results
+├── artifacts/          # PASS: final validated method + audit trail
+├── interim/            # ALL scratch work — never committed:
+│   ├── explorer-reports/
+│   ├── gt-scripts/
+│   └── tmp/
+└── .gitignore          # contains: interim/
 ```
+
+Everything except `interim/` is meant to be committed to git. Internal
+references recorded in registry.json / journal.md / audits are
+study-root-relative.
 
 Create the goal tool objective for the whole task (`create_goal`). Every
 round the orchestrator returns; the goal-round driver relaunches it.
@@ -56,8 +97,9 @@ round the orchestrator returns; the goal-round driver relaunches it.
 The pinned uv lane lives in the dsh-rigorquant checkout (`env/pyproject.toml`,
 see env/README.md in the repo). Run subagent code with
 `uv run --project <lane> python ...`. If the lane is not found, `uv sync` it
-once and record the path in `task.json`. Never let subagents `pip install`
-into the ambient interpreter: reproducibility is a gate (D).
+once and record the repo-root-relative path in `study.json` (`env_lane`).
+Never let subagents `pip install` into the ambient interpreter:
+reproducibility is a gate (D).
 
 ## Step 3 — The round loop (orchestrator)
 

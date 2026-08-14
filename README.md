@@ -76,7 +76,24 @@ agent-presets/rigorquant/   preset composition + persona + bundled skill
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources
+studies/                    one study folder per task (see below)
 ```
+
+## Studies
+
+A **study** is one self-contained rigorquant task with an identical folder
+structure everywhere: durable deliverables at the study root (`study.json`,
+`registry.json`, `journal.md`, `derivations/`, `audits/`, `artifacts/`) are
+meant to be committed; all scratch lives in a gitignored `interim/`. Two
+modes, implied by location:
+
+- **One study per repo** — `study.json` at the repo root.
+- **Multiple studies per repo** — `studies/<slug>/study.json`; the roster is
+  `studies/*/study.json`.
+
+Intake detects an existing study and continues it silently; a new study asks
+one question (mode + slug) and never asks again. See
+[docs/architecture.md](docs/architecture.md) §12.
 
 ## Publishing
 
