@@ -40,7 +40,8 @@ fi
 
 # Copy SRC into a staging directory, then atomically swap it into DEST. This
 # never leaves DEST missing on interruption and never silently destroys local
-# modifications mid-copy.
+# modifications mid-copy. Runtime caches and the uv virtualenv are stripped:
+# they are rebuilt by `uv sync` and must never be installed.
 install_dir() {
   src="$1" dest="$2"
   parent="$(dirname "$dest")"
@@ -48,6 +49,8 @@ install_dir() {
   stage="$parent/.$(basename "$dest").tmp.$$"
   rm -rf "$stage"
   cp -R "$src" "$stage"
+  find "$stage" \( -name '.venv' -o -name '__pycache__' \) -type d -prune -exec rm -rf {} \; 2>/dev/null || true
+  find "$stage" \( -name '*.pyc' -o -name '.DS_Store' \) -delete 2>/dev/null || true
   rm -rf "$dest"
   mv "$stage" "$dest"
 }
