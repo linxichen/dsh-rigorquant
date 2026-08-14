@@ -38,8 +38,12 @@ Automatic escalation flow when a trigger fires:
    Lane 2 (isolated proof subagent) and record that in the audit.
 
 Caveats: jacobian is pre-stable; its catalog decides what it can check — read
-`operation://catalog` before claiming coverage. See mcp/jacobian.md in the
-repo root for details.
+the catalog (math.find / `operation://catalog`) before claiming coverage.
+The installed Lean lane exposes `lean.statement.propose`,
+`lean.statement.compare`, and `lean.proof_state.inspect` (core Lean, no
+Mathlib); the full machine-check lane is `lean.check`, which additionally
+needs the pinned Mathlib runtime (elan toolchain + lake build — provisioned by
+mcp/jacobian.md). See mcp/jacobian.md in the repo root for details.
 
 ## Lane 2 — isolated proof subagent (full Jin protocol)
 
@@ -55,5 +59,6 @@ Jin's own gate: Lean 4 + pinned Mathlib, `lake build` + axiom audit, trust
 boundary `propext`/`Classical.choice`/`Quot.sound` only, no `sorry`/`admit`.
 Use only when a fully machine-checked proof is genuinely required (e.g. a
 novel analytical result you will publish or build a product on). Cost is
-high; do not default to it. Jacobian's `lean.check` lane, when available in
-its catalog, is the lower-friction entry point.
+high; do not default to it. Jacobian's `lean.check` lane (once the pinned
+Mathlib runtime is provisioned per mcp/jacobian.md) is the lower-friction
+entry point.

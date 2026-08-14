@@ -26,6 +26,33 @@ because this preset's `mcp-jacobian` row already IS the DSH client config.
 
 Requires Node 18+ and CPython 3.12/3.13 (or `uv`).
 
+## Lean lane (lean.check) — one-time Mathlib provisioning
+
+jacobian's core Lean lane (`lean.statement.propose`, `lean.statement.compare`,
+`lean.proof_state.inspect`) needs only the pinned toolchain:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:v4.31.0
+# ensure ~/.elan/bin is on PATH for the dsh process
+```
+
+The full machine-check lane `lean.check` additionally needs the pinned
+Mathlib runtime (this repo's preset already exports `JACOBIAN_LEAN_RUNTIME` to
+`~/.local/share/jacobian/lean`, where the install below puts it):
+
+```sh
+L=~/.local/share/jacobian/lean && mkdir -p "$L"
+for f in lakefile.toml lean-toolchain lake-manifest.json JacobianLeanProofState.lean JacobianLeanRuntime.lean; do
+  curl -fsSL "https://raw.githubusercontent.com/morluto/jacobian/jacobian-v0.12.0/lean/$f" -o "$L/$f"
+done
+cd "$L" && ~/.elan/bin/lake update && ~/.elan/bin/lake build
+```
+
+`lake update` pulls Mathlib's prebuilt olean cache; `lake build` then compiles
+only the project's own modules. Pin the tag to the installed jacobian version
+(here v0.12.0) so the manifest's Mathlib commit matches the package's
+pinned `MATHLIB_COMMIT`.
+
 ## What the model sees
 
 - `mcp__jacobian__math_find` — discover typed operations in the active catalog

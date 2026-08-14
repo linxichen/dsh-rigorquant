@@ -292,4 +292,9 @@
     transport: stdio
     command: npx
     args: ['-y', 'jacobian', 'mcp']
+    env:
+      # Pin the Mathlib runtime jacobian's lean.check requires; the preset's
+      # install script provisions it (see mcp/jacobian.md). Removing this
+      # env falls back to jacobian's default search.
+      JACOBIAN_LEAN_RUNTIME: !!js "(process.env.JACOBIAN_LEAN_RUNTIME || (process.env.HOME || '') + '/.local/share/jacobian/lean')"
     toolCallTimeoutMs: 120000
