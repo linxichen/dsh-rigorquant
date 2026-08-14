@@ -1,5 +1,7 @@
 # dsh-rigorquant
 
+**English** | [简体中文](README.zh-CN.md)
+
 Unattended, long-running **empirical/computational mathematics research** for
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) — economics,
 finance, portfolio construction/optimization, simulation, computational
@@ -29,7 +31,7 @@ Full design record: [docs/architecture.md](docs/architecture.md).
 ## Install
 
 ```sh
-git clone https://github.com/<you>/dsh-rigorquant
+git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
 ./install.sh                    # installs the RigorQuant preset into $DSH_HOME
 # ./install.sh --skill-only     # or just the rigorquant skill, for any preset
@@ -63,10 +65,11 @@ docs/architecture.md        grilled decision record + sources
 
 ## Publishing
 
-This repo is a community DSH plugin distribution (preset + skill form).
-Tag it [`dsh-plugin`](https://github.com/topics/dsh-plugin) when publishing;
-see [dsh-find-plugins](https://github.com/Nagi-ovo/dsh-find-plugins) and the
+This repo is a community DSH plugin distribution (preset + skill form). It is
+tagged [`dsh-plugin`](https://github.com/topics/dsh-plugin) and discoverable by
+the ecosystem's topic-based indexes — see
+[dsh-find-plugins](https://github.com/Nagi-ovo/dsh-find-plugins) and the
 [awesome-deepseek-harness](https://github.com/0xsline/awesome-deepseek-harness)
-list for the ecosystem conventions.
+list for the conventions.
 
 MIT License.
