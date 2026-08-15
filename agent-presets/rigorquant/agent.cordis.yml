@@ -167,7 +167,12 @@
 
     # Per-role delegation tools. Each role gets its own model-facing tool so the
     # persona, tool allowlist, and recursion cap are per-role, not per-call.
-    # `maxDepth: 0` forbids a child from delegating further. Only `web_search`
+    # `maxDepth` is the ABSOLUTE cap on the spawned child's depth, and a child
+    # is always at depth >= 1 — so `maxDepth: 0` blocks ALL delegation (no
+    # child can ever exist), while `maxDepth: 1` allows exactly one level: the
+    # root orchestrates children, and each child inherits these same rows and
+    # cannot delegate further (its own child would be depth 2 > 1).
+    # Only `web_search`
     # is filtered (web_fetch is already off via the tool-web row's `fetch: false`);
     # filesystem scope is NOT enforceable with the spawn provider, so the
     # ground-truth "no web" is a real boundary while file isolation stays
@@ -178,7 +183,7 @@
         provider: spawn
         toolName: subagent
         backgroundMode: continuable
-        maxDepth: 0
+        maxDepth: 1
         persona: >-
           You are a RigorQuant explorer. Propose one candidate method or route
           for the given sub-problem, with concrete outputs: lemmas, equations,
@@ -192,7 +197,7 @@
         provider: spawn
         toolName: subagent_ground_truth
         backgroundMode: continuable
-        maxDepth: 0
+        maxDepth: 1
         persona: >-
           You are a RigorQuant oracle working in epistemic isolation. Given a
           target (a closed form, invariant, or bound to re-derive, or an
@@ -210,7 +215,7 @@
         provider: spawn
         toolName: subagent_adversary
         backgroundMode: continuable
-        maxDepth: 0
+        maxDepth: 1
         persona: >-
           You are a RigorQuant adversary. Audit candidate methods and the checks
           themselves for gaps, conditionals, handwaving, and circularity. A

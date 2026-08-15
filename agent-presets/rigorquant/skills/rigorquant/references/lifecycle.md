@@ -15,11 +15,22 @@ a study (registry.json, journal.md, audits) are study-root-relative.
   "task_id": "<problem id>",
   "created": "YYYY-MM-DD",
   "statement": "the problem statement",
-  "success_criterion": "what a validated method must deliver",
+  "broad_criterion": "the ORIGINAL broad claim a PASS must deliver, verbatim — never re-scoped to the simplified cases",
+  "success_criterion": "summary of the broad criterion plus the stage evidence required",
   "subproblems": [
     { "id": "SPn", "name": "...", "status": "known|novel",
+      "stage": "reference-case|generalization|domain-scale",
       "success_criterion": "...", "evidence_level": "..." }
   ],
+  "validity_stages": {
+    "stage3_general_claim": { "claim": "...", "evidence_level": "...", "outputs": ["..."] },
+    "stage5_domain_scale": { "instance": "...", "outputs": ["..."] }
+  },
+  "deliverables": {
+    "paper": "required",
+    "slides": "required | not-required:<reason recorded at intake>",
+    "web": "optional | required"
+  },
   "simplified_cases": ["..."],
   "seeds": { "task_seed": 0, "convention": "per-run seed = task_seed + run_index" },
   "tolerances": {
@@ -42,6 +53,22 @@ Notes on the schema:
   check-battery.md): deterministic methods use condition-aware absolute and
   relative tolerances; stochastic methods agree in standard-error /
   confidence-interval units, never a universal `1e-12`.
+- **Deliverables rule:** `paper` is always `"required"`; `slides` is
+  `"required"` unless the intake records a reason for `"not-required"`;
+  `web` is `"optional"` unless the study will produce interactive/visual
+  artifacts (widgets, movies, dashboards), in which case it is `"required"`.
+  The artifacts are produced at PASS only, assembled from validated records
+  (see references/deliverables.md); `rq_check.py` enforces the declaration at
+  intake and existence + structure + no-overclaim at PASS.
+- **Coverage rule:** the union of sub-problem stages must cover the original
+  statement. Every general question requires at least one `generalization`
+  sub-problem (the broad claim is its criterion) and at least one
+  `domain-scale` sub-problem (certification on a genuinely non-special
+  instance). A study whose simplified cases are box/ball/simplex/ellipsoid
+  must not PASS on box/ball/simplex/ellipsoid evidence alone.
+  `scripts/rq_check.py --study <study-root>` enforces this at intake and at
+  PASS, and refuses a PASS without `validity_stages` stage-3 and stage-5
+  evidence.
 
 ## registry.json schema (subproblems map)
 
@@ -113,9 +140,23 @@ stages:
 
 Call the battery a sanity gate unless stages 3–6 are also satisfied.
 
+Stages 3 and 5 are **mandatory for a broad claim**, not optional polish:
+stage 3 = the general validity claim with all hypotheses and an evidence
+level; stage 5 = the full battery on a genuinely non-special instance. Record
+them in `study.json` `validity_stages`. A PASS recorded without stage-3 and
+stage-5 evidence is invalid, and the meta-validator
+(`python3 scripts/rq_check.py --study <study-root>`) refuses it.
+
 ## Terminal states
 
-- **PASS** — the staged validity case (above) passes for the sub-problem.
+- **PASS** — the staged validity case (above) passes for the sub-problem. A
+  study-level PASS additionally requires the `validity_stages` stage-3 and
+  stage-5 evidence recorded, the declared `deliverables` produced
+  (`artifacts/paper/main.tex`; `artifacts/slides/main.tex` when required;
+  `artifacts/web/index.html` when required — assembled from validated records
+  per references/deliverables.md), AND the meta-validator to accept it (run
+  `python3 scripts/rq_check.py --study <study-root>` before declaring). A
+  battery-only PASS on special cases is not a study PASS.
   Auto-implementation is allowed only under a safety protocol: create a branch
   or worktree, declare a **frozen write scope** (only the target artifact
   files), run the target's tests, and keep a rollback path (the pre-change

@@ -7,7 +7,9 @@ description: >
   ground-truth derivation, adversarial counterexample-only audit, a four-part
   pre-implementation check battery (closed-form equality, exact invariants,
   analytic bounds, statistical hardening), fixed-seed LLN conventions, a
-  jacobian/Lean escalation lane, and the PASS/BLOCKED/BUDGET lifecycle. Load
+  jacobian/Lean escalation lane, the PASS/BLOCKED/BUDGET lifecycle, and the
+  reference-case → generalization → domain-scale stage order enforced by the
+  rq_check meta-validator. Load
   when the user asks for rigorous quantitative research, method validation
   before implementation, long unattended numerical work, or says "rigorquant".
 ---
@@ -18,8 +20,10 @@ You are running an **empirical and computational** mathematics research
 framework: economics, finance, portfolio construction/optimization, simulation,
 computational econ/finance. The goal is a method whose **mathematical validity
 is established on simplified/special cases before numerical implementation** —
-not a theorem for its own sake. When correctness hinges on an unproven claim,
-escalate to proof-grade verification first (see escalation.md).
+not a theorem for its own sake. Special cases are the scaffold, not the
+destination: the study is complete only when the broad original question is
+answered. When correctness hinges on an unproven claim, escalate to
+proof-grade verification first (see escalation.md).
 
 **Unattended, precisely:** the framework runs unattended within one live
 session. Crossing a session boundary disarms the goal; one human turn
@@ -35,10 +39,27 @@ enter the round loop.
    method" success criterion. Mark each sub-problem `known` (an analytical
    result likely exists) or `novel` (no known closed form) — a hint only; the
    orchestrator may override by detection (see protocol.md).
-2. Choose simplified/special cases per sub-problem: the smallest
+2. **Coverage check (mandatory).** The union of sub-problems must cover the
+   ORIGINAL statement, not just the simplified cases. If the question is
+   general (e.g. "any convex body", "any distribution class"), at least one
+   sub-problem — the **generalization sub-problem** (stage `generalization`) —
+   must carry the broad claim as its success criterion, and at least one
+   (stage `domain-scale`) must certify the method on a genuinely non-special
+   instance. Record the broad claim verbatim in `study.json`
+   `broad_criterion`. `rq_check.py` rejects a study at intake without both.
+3. Choose simplified/special cases per sub-problem: the smallest
    hand-computable settings that still exercise the method (2 assets, 2–3
-   dimensions, low N).
-3. Record the **seed** for every stochastic run in `study.json`.
+   dimensions, low N). These are scaffolding for the broad claim — never the
+   definition of success.
+4. Record the **seed** for every stochastic run in `study.json`.
+5. **Declare deliverables (mandatory).** Record in `study.json`
+   `deliverables`: `paper` (always `"required"`), `slides`
+   (`"required"` unless a reason for `"not-required"` is recorded at intake),
+   `web` (`"optional"` or `"required"` — required when the study will produce
+   interactive/visual artifacts: widgets, movies, dashboards). The paper and
+   slides are produced ONLY at PASS, assembled from validated records (see
+   stage 4 and references/deliverables.md). `rq_check.py` enforces the
+   declaration at intake and the artifacts at PASS.
 
 For a new task, resolve the study workspace (Step 1) and create `study.json`
 before entering the round loop.
@@ -86,6 +107,9 @@ relative to the **study root** unless prefixed otherwise.
 ├── derivations/        # ground-truth derivations, two independent per claim
 ├── audits/             # adversary reports + check-battery results
 ├── artifacts/          # PASS: final validated method + audit trail
+│   ├── paper/          #   mandatory white paper (main.tex)
+│   ├── slides/         #   Beamer deck (main.tex) when required
+│   └── web/            #   interactive HTML (index.html) when required
 ├── interim/            # ALL scratch work — never committed:
 │   ├── explorer-reports/
 │   ├── gt-scripts/
@@ -148,7 +172,36 @@ Each orchestrator round = fan-out → ground truth → adversary → synthesize.
    ONLY by a concrete failing case. It writes the audit report.
 4. **Synthesize:** update `registry.json` (group by mathematical idea), mark
    BLOCKED routes with their exact gap, redirect over-crowded families, and
-   either PASS (implement + next stage) or relaunch with redirection.
+   either advance a stage or relaunch with redirection.
+
+**Stage order (each sub-problem passes only by its own success criterion):**
+
+1. **Reference-case gate** — the check battery on the simplified cases.
+   Passing it certifies the *implementation*, never the general claim.
+2. **Generalization** — lift the validated method to the general case in the
+   statement: state the general validity claim with ALL hypotheses (mixing
+   bound, warm start, rounding promise), tag it with an evidence level, and
+   analyze EVERY access model in the statement concretely (for a sublevel set
+   {x : f(x) < a}: membership = one evaluation of f, separation = one
+   subgradient, exact per-step cost, and how r, R of the well-rounded promise
+   are obtained for general f).
+3. **Domain-scale certification** — run the full battery on at least one
+   genuinely non-special instance whose ground truth was derived independently
+   for this purpose. A study whose simplified cases are box/ball/simplex/
+   ellipsoid must not PASS on box/ball/simplex/ellipsoid evidence alone.
+4. **Deliverables** — produce the declared artifacts (white paper
+   `artifacts/paper/main.tex`, Beamer slides `artifacts/slides/main.tex`, and
+   `artifacts/web/index.html` when required) by ASSEMBLING the validated
+   records (registry, derivations, audits, battery results) — never by writing
+   new claims. Structure and the no-overclaim rule:
+   [references/deliverables.md](references/deliverables.md). `rq_check.py`
+   verifies existence, structure, and that the paper does not overclaim the
+   recorded evidence levels.
+
+A study declares PASS only when the broad criterion is satisfied by stages
+1–3 together AND the declared stage-4 deliverables exist. A battery-only PASS
+on special cases is BLOCKED, not PASS — record the exact missing stage as the
+blockedReason.
 
 **Proof and refutation tracks (parallel).** Do not assume an affirmative result
 exists. For every load-bearing claim, run the refutation track alongside the
@@ -166,8 +219,10 @@ battery is a **reference-case sanity gate** — passing it does not establish
 general validity; the staged validity case in check-battery.md does. Before
 declaring PASS, run the meta-validator
 (`python3 scripts/rq_check.py --study <study-root>`): it validates the state
-files, checks evidence completeness and falsifiability, and refuses a PASS
-without mandatory evidence.
+files, enforces the coverage gate (a `generalization` sub-problem + a
+`domain-scale` sub-problem), and refuses a PASS without the stage-3 general
+claim and stage-5 domain-scale evidence (lifecycle.md "Validity stages"). A
+battery-only PASS on special cases is refused.
 
 | Gate | Question | Instrument |
 |---|---|---|
@@ -231,7 +286,12 @@ rounds) → checkpoint + report. Schema and rules:
 - One ground-truth agent performing both "independent" derivations.
 - Eliminating a route on style/vibes instead of a counterexample.
 - Accepting "matches at fixed parameters" as validity.
-- Passing the reference-case sanity gate as general validity.
+- Passing the reference-case sanity gate as general validity (hard gate:
+  BLOCKED/UNKNOWN, never PASS — the battery certifies the implementation;
+  stages 2–3 of the stage order certify the broad claim).
+- Writing the paper or slides DURING the search (they are stage-4 PASS
+  artifacts assembled from validated records; prose written mid-search anchors
+  the method track and burns budget rounds).
 - Partial-progress exits ("best effort" summaries are not a PASS).
 - Unseeded stochastic claims.
 - Handwaving an unproven load-bearing claim instead of escalating.

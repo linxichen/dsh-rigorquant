@@ -108,10 +108,33 @@ study claiming empirical or financial validity, also check:
 - **MCMC mixing** — report effective sample size and mixing diagnostics, not
   raw chain length.
 
+## Stage 5 — domain-scale stress test (mandatory for broad claims)
+
+The battery above certifies the implementation on reference cases only. For
+any general claim, stage 5 runs the SAME battery on at least one genuinely
+non-special instance — not another box/ball/simplex/ellipsoid. Requirements:
+
+- **Non-special instance:** e.g. a p-norm ball with p ∉ {1, 2, ∞}, a
+  convex-quadratic set {x : xᵀMx + bᵀx ≤ a}, an intersection of bodies, or a
+  sublevel set {x : f(x) < a} with a genuinely non-special f.
+- **Independent ground truth:** the instance's closed forms (volume, marginal
+  law, first two moments) are derived twice, independently, specifically for
+  this instance — never recycled from the reference cases.
+- **Concrete oracle realization:** every access model in the statement is
+  realized (for {x : f(x) < a}: membership = one evaluation of f, separation =
+  one subgradient), with the exact per-step cost and the well-rounded /
+  rounding promise (how r, R are obtained) stated.
+- Seeded N-grid hardening (D) and the multiplicity rules apply unchanged.
+
+A broad PASS cites the stage-5 audit; `rq_check.py` refuses a broad PASS
+without it.
+
 ## Pass standard
 
 A, B, C all pass (with recorded tolerances), D1 mandatory, D2–D4 run to the
-extent the sub-problem admits; the empirical gates pass when they apply. The
+extent the sub-problem admits; the empirical gates pass when they apply. For
+a broad claim the stage-5 domain-scale stress test above is mandatory, and
+the study records its `validity_stages` evidence. The
 audit file records, for each check: its declaration (above), the statement
 checked, tolerance, seed, exact numbers, PASS/FAIL, the two independent
 ground-truth derivations that supplied the targets, and the hashes of the
