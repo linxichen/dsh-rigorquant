@@ -43,6 +43,13 @@ sections (the validator checks these markers case-insensitively):
    notes (e.g. correctness-but-slow regimes), delegation caveats, d-range.
 6. **Reproduction** — seeds table, the compute-lane command, the validator
    command.
+7. **Bibliography (mandatory at PASS).** Load-bearing external claims are
+   cited with proper BibTeX: `\cite{...}` commands in the text and a `refs.bib`
+   next to `main.tex` with complete entries (author, title, journal, volume,
+   pages, year, DOI/URL). The validator compiles the full pipeline including
+   `bibtex` and refuses the PASS on missing `.bib` files or unresolved
+   citations. Pinned URLs belong in the `.bib` entries, not as bare prose
+   links.
 
 No-overclaim rules (validator-enforced):
 
@@ -106,6 +113,11 @@ Required structure (on top of the paper-subset rules):
 9. **Self-test questions** — 3–5 check-your-understanding questions whose
    answers follow from the slides.
 10. **Reproduction** — seeds, the pinned-lane command, the validator command.
+11. **References frame + BibTeX** — the deck ends with a References frame using
+    `\bibliography{...}`; it may share the paper's `refs.bib` via a relative
+    path (e.g. `\bibliography{../paper/refs}`). `\cite{...}` commands mark
+    every load-bearing external theorem. Unresolved citations fail the
+    validator.
 
 The validator's structural gate (`\documentclass{beamer}`, existence) plus the
 mandatory compile gate above are the machine checks; the pedagogical
@@ -120,7 +132,10 @@ parameters, or movies of the walks. It must state the provenance of every
 number it displays (which artifact file, which seed). Optional otherwise.
 When required, the validator also checks that the page parses as HTML
 (no unexpected/mis-nested closing tags, and an `</html>` close), since an
-artifact must render before success is claimed.
+artifact must render before success is claimed. The page must carry a
+**References section** (`id="references"` or a References heading) listing
+every external source with properly labeled anchors (author, title, year, and
+URL as the `href`); bare URLs with no anchor text fail the check.
 
 ## Assembly workflow
 

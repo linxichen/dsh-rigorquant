@@ -194,21 +194,67 @@ def tex_compile_command(engine: str, target: Path):
     return [engine, "-interaction=nonstopmode", "-halt-on-error", str(target)]
 
 
+UNDEFINED_CITE_RE = re.compile(
+    r"Citation [^\n]* undefined|There were undefined references", re.IGNORECASE)
+
+
+def find_bibtex(engine: str):
+    exe = Path(engine).parent / "bibtex"
+    if exe.is_file() and os.access(exe, os.X_OK):
+        return str(exe)
+    for base in ("/Library/TeX/texbin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"):
+        exe = Path(base) / "bibtex"
+        if exe.is_file() and os.access(exe, os.X_OK):
+            return str(exe)
+    return None
+
+
+def bib_files_of(tex: Path):
+    """Resolved .bib files referenced by \\bibliography{...} in the TeX source."""
+    out = []
+    text = tex.read_text(errors="replace")
+    for m in re.finditer(r"\\bibliography\s*\{([^}]*)\}", text):
+        for name in m.group(1).split(","):
+            name = name.strip()
+            if name:
+                out.append((tex.parent / (name + ".bib")).resolve())
+    return out
+
+
 def compile_tex_artifact(engine: str, tex: Path, label: str, problems):
-    """Compile a TeX artifact; a failed or missing render refuses the PASS."""
-    try:
-        cp = subprocess.run(
-            tex_compile_command(engine, tex), cwd=str(tex.parent),
-            capture_output=True, timeout=300)
-    except (subprocess.TimeoutExpired, OSError) as e:
-        problems.append(f"PASS refused: {label} compile check failed: {e}")
-        return
-    if cp.returncode != 0:
-        log = (cp.stdout + cp.stderr).decode(errors="replace")
-        tail = log[-600:]
+    """Full pipeline (engine + BibTeX + reruns) for a TeX artifact; a failed
+    render or unresolved citations refuse the PASS."""
+    name = Path(engine).name
+    base = [engine, "-interaction=nonstopmode", "-halt-on-error", str(tex)]
+    if name == "tectonic":
+        steps = [[engine, str(tex)]]
+    elif name == "latexmk":
+        steps = [[engine, "-pdf", "-interaction=nonstopmode", "-halt-on-error", str(tex)]]
+    else:
+        steps = [base]
+        bibtex = find_bibtex(engine)
+        if bibtex is not None:
+            steps.append([bibtex, tex.stem])
+        steps += [base, base]
+    logs = []
+    for step in steps:
+        try:
+            cp = subprocess.run(step, cwd=str(tex.parent), capture_output=True, timeout=300)
+        except (subprocess.TimeoutExpired, OSError) as e:
+            problems.append(f"PASS refused: {label} compile check failed: {e}")
+            return
+        logs.append((cp.stdout + cp.stderr).decode(errors="replace"))
+        if cp.returncode != 0:
+            problems.append(
+                f"PASS refused: {label} fails compilation ({step[0]} exit "
+                f"{cp.returncode}); log tail: {logs[-1][-600:]}")
+            return
+    # Only the FINAL engine pass is authoritative: the first pass legitimately
+    # warns "Citation ... undefined" before bibtex has produced the .bbl.
+    if UNDEFINED_CITE_RE.search(logs[-1]):
         problems.append(
-            f"PASS refused: {label} fails compilation (exit {cp.returncode}); "
-            f"log tail: {tail}")
+            f"PASS refused: {label} has unresolved citations (undefined-citation "
+            f"warnings in the FINAL build pass); fix the \\cite keys or the .bib entries")
 
 
 class _HTMLBalanceParser(HTMLParser):
@@ -310,6 +356,17 @@ def check_deliverables(study, root: Path, problems):
                     "PASS refused: paper asserts 'formally verified' but no claim in "
                     "study.json / registry.json carries that evidence level "
                     "(no-overclaim rule)")
+        bibs = bib_files_of(paper)
+        if not bibs:
+            problems.append(
+                "PASS refused: paper has no \\bibliography{...} command "
+                "(proper BibTeX references are mandatory)")
+        else:
+            missing_bib = [str(b) for b in bibs if not b.exists()]
+            if missing_bib:
+                problems.append(
+                    "PASS refused: paper bibliography file(s) missing: "
+                    f"{missing_bib}")
         if engine is not None:
             compile_tex_artifact(engine, paper, "artifacts/paper/main.tex", problems)
     if slides_req.startswith("required"):
@@ -321,6 +378,17 @@ def check_deliverables(study, root: Path, problems):
             t = slides.read_text(errors="replace")
             if "\\documentclass" not in t or "beamer" not in t.lower():
                 problems.append("PASS refused: slides/main.tex is not a Beamer document")
+            bibs = bib_files_of(slides)
+            if not bibs:
+                problems.append(
+                    "PASS refused: slides have no \\bibliography{...} command "
+                    "(proper BibTeX references are mandatory; may share the paper's refs.bib)")
+            else:
+                missing_bib = [str(b) for b in bibs if not b.exists()]
+                if missing_bib:
+                    problems.append(
+                        "PASS refused: slides bibliography file(s) missing: "
+                        f"{missing_bib}")
             if engine is not None:
                 compile_tex_artifact(engine, slides, "artifacts/slides/main.tex", problems)
     if web_req == "required":
@@ -344,6 +412,22 @@ def check_deliverables(study, root: Path, problems):
             if not parser.stack or parser.stack[-1] != "html":
                 problems.append(
                     "PASS refused: artifacts/web/index.html does not close its <html> tag")
+            raw = web.read_text(errors="replace")
+            if not (re.search(r'id\s*=\s*["\']references["\']', raw, re.IGNORECASE)
+                    or re.search(r"<h[1-6][^>]*>\s*references", raw, re.IGNORECASE)):
+                problems.append(
+                    "PASS refused: artifacts/web/index.html has no references "
+                    "section (id=\"references\" or a References heading)")
+            for m in re.finditer(
+                    r'<a\b[^>]*href\s*=\s*"https?://[^"]*"[^>]*>(.*?)</a>',
+                    raw, re.IGNORECASE | re.DOTALL):
+                txt = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+                if not txt or re.match(r"https?://", txt):
+                    problems.append(
+                        "PASS refused: artifacts/web/index.html has an external "
+                        "link without proper anchor text (bare URLs are not "
+                        "references); label each link with author, title, year")
+                    break
 
 
 def check_registry(study, root: Path, problems):
