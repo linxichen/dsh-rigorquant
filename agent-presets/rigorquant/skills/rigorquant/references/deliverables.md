@@ -145,3 +145,25 @@ URL as the `href`); bare URLs with no anchor text fail the check.
 2. Writer emits the .tex files; no numerical value enters the paper unless it
    appears in one of those records.
 3. `python3 scripts/rq_check.py --study <study-root>` gates the result.
+
+## Document-adversary gate (validator-enforced at PASS)
+
+Stage-4 documents are written for the declared audience's technical level, and
+symbol conventions are never assumed:
+
+- **Notation/Definitions section (paper) and frame (slides) are mandatory.**
+  Every symbol the document uses must appear there with its convention made
+  explicit — `B(x,r)` as the Euclidean ball, `poly(...)` as polynomial
+  dependence, `O^*`, `R/r` as the condition number, `\delta`, `\tau`/IAT,
+  `TV`, subgradients, `S^{d-1}`, `Unif`, etc. "Everyone knows this" is not a
+  definition.
+- **Conditional symbol audit.** The validator scans the document for a known
+  registry of load-bearing symbols; for each one that appears, the
+  Notation/Definitions block must contain its defining witness (e.g. `B(` must
+  be witnessed by ``ball''). A used-but-undefined symbol refuses the PASS.
+- **Audience statement.** The slides must name their audience and
+  prerequisites (e.g. ``Econ Ph.D. students, second graduate course; no
+  convex-body geometry assumed''). A document that cannot say who it is for
+  fails the gate.
+- The gate checks documentation hygiene; it does not certify the mathematics
+  (that remains the job of the check battery and the adversary).

@@ -297,6 +297,62 @@ class _HTMLBalanceParser(HTMLParser):
         self.errors.append(f"mis-nested </{tag}> (open: <{self.stack[-1]}>)")
 
 
+def notation_block(text: str, is_beamer: bool = False) -> str:
+    """Extract the Notation/Definitions block from a LaTeX document."""
+    if is_beamer:
+        m = re.search(
+            r"\\begin\{frame\}[^\n{]*\{[^}]*?(?:notation|definitions)[^}]*\}"
+            r"(.*?)\\end\{frame\}",
+            text, re.IGNORECASE | re.DOTALL)
+        return m.group(1) if m else ""
+    m = re.search(r"\\(?:section|subsection)\*?\{[^}]*?(?:notation|definitions)",
+                  text, re.IGNORECASE)
+    if not m:
+        return ""
+    rest = text[m.end():]
+    nxt = re.search(r"\\section\*?\{", rest)
+    return rest[:nxt.start()] if nxt else rest
+
+
+# Symbol -> witnesses that must appear in the Notation/Definitions block
+# whenever the symbol is USED anywhere in the document.
+SYMBOL_REQUIREMENTS = [
+    (r"B\(", ["ball"]),
+    (r"\\operatorname\{Unif\}", ["uniform"]),
+    (r"S\^\{d-1\}", ["sphere"]),
+    (r"poly", ["polynomial"]),
+    (r"O\^\*", ["polylog", "o^*", "hides"]),
+    (r"\\mathrm\{TV\}|total-variation", ["total-variation", "tv"]),
+    (r"R/r", ["condition number", "aspect ratio"]),
+    (r"\\delta", ["step"]),
+    (r"\\tau", ["autocorrelation", "iat"]),
+    (r"subgradient", ["subgradient"]),
+]
+
+
+def check_document_notation(text: str, label: str, problems, is_beamer: bool = False):
+    """Document-adversary gate: a Notation/Definitions block must exist and
+    define every load-bearing symbol the document uses."""
+    block = notation_block(text, is_beamer)
+    if not block:
+        problems.append(
+            f"PASS refused: {label} has no Notation/Definitions section; all "
+            f"symbols must be defined and conventions never assumed "
+            f"(e.g. B( ) as the Euclidean ball, poly(...), O^*, R/r, tau)")
+        return
+    low_block = block.lower()
+    doc = text.lower()
+    for pattern, witnesses in SYMBOL_REQUIREMENTS:
+        used = re.search(pattern, doc, re.IGNORECASE)
+        if not used:
+            continue
+        if not any(w in low_block for w in witnesses):
+            problems.append(
+                f"PASS refused: {label} uses {used.group(0)!r} but its "
+                f"Notation/Definitions block does not define it (expected a "
+                f"witness among {witnesses})")
+
+
 def check_deliverables(study, root: Path, problems):
     """Stage-4 deliverable gates: declaration at intake; existence + structure +
     no-overclaim at PASS (references/deliverables.md)."""
@@ -367,6 +423,8 @@ def check_deliverables(study, root: Path, problems):
                 problems.append(
                     "PASS refused: paper bibliography file(s) missing: "
                     f"{missing_bib}")
+        check_document_notation(text, "artifacts/paper/main.tex", problems,
+                                is_beamer=False)
         if engine is not None:
             compile_tex_artifact(engine, paper, "artifacts/paper/main.tex", problems)
     if slides_req.startswith("required"):
@@ -389,6 +447,14 @@ def check_deliverables(study, root: Path, problems):
                     problems.append(
                         "PASS refused: slides bibliography file(s) missing: "
                         f"{missing_bib}")
+            check_document_notation(t, "artifacts/slides/main.tex", problems,
+                                    is_beamer=True)
+            if not re.search(r"graduate course|prerequisite|audience|Econ Ph\.?D",
+                             t, re.IGNORECASE):
+                problems.append(
+                    "PASS refused: slides do not state their audience and "
+                    "prerequisites (a document must say who it is for and what "
+                    "technical level it assumes)")
             if engine is not None:
                 compile_tex_artifact(engine, slides, "artifacts/slides/main.tex", problems)
     if web_req == "required":
