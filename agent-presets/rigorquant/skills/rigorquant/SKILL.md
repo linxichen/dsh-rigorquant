@@ -150,6 +150,21 @@ neither resolves, ask the user where the lane is; never `uv sync` a stray lane
 inside the user's project. Never let subagents `pip install` into the ambient
 interpreter: reproducibility is a gate (D).
 
+## Step 2b — Literature lane (known/novel intake)
+
+The intake sweep is **mandatory** for every study, and skippable only on an
+explicit user assertion at intake — recorded as `literature.phase: "skipped"`
+plus a verbatim `skip_reason`, which the validator requires. Otherwise run the
+lane before trusting a sub-problem's known/novel mark: walled citation-graph traversal
+per line (backward references + forward citations + related work + surveys),
+then an independent literature adversary for validity + freshness. Only
+mathematically proven impossibilities (verified negatives) cross to the novel
+lane, provenance-stripped — never hints, never semi-positives, never 'open' or
+'settled'. Verified state lives in literature/known-results.json; the validator
+refuses a known mark, a negative export, or a citation without a verified
+record. Procedure and schemas: [references/literature.md](references/literature.md);
+spec: docs/literature-lane.md (Decision 14).
+
 ## Step 3 — The round loop (orchestrator)
 
 Each orchestrator round = fan-out → ground truth → adversary → synthesize.
@@ -285,8 +300,19 @@ If the open method track produces no closed form / invariant / bound that
 survives its own re-derivation after a bounded number of attempts, flip the
 method track to **full Jin isolation**: no web, no prior context, no local
 files; work from axioms and computation. Do not assume an affirmative result
-exists — prove it or find a counterexample. Full protocol:
-[references/protocol.md](references/protocol.md).
+exists — prove it or find a counterexample.
+
+The toggle is a **different tool, not a different instruction**: call
+`subagent_novel` instead of `subagent`. That row (like `subagent_ground_truth`)
+denies `web_search`, `web_fetch`, `skill` and every delegation tool, so the
+isolation is enforced by the composition rather than by asking an open role to
+pretend. Never re-use `subagent` with "please ignore the web".
+
+The only thing you may pass a blind role beyond the problem statement and its
+simplified cases is the **verified-negatives list** from the literature lane,
+provenance-stripped — never a source, never "this is open", never a settled
+result. Full protocol: [references/protocol.md](references/protocol.md);
+membrane: [references/literature.md](references/literature.md).
 
 ## Escalation
 

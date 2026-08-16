@@ -56,8 +56,8 @@
           "id": { "type": "string", "pattern": "^SP[0-9]+$" },
           "name": { "type": "string" },
           "status": {
-            "enum": ["known", "novel"],
-            "description": "intake hint about whether an analytical result likely exists"
+            "enum": ["known", "novel", "impossible"],
+            "description": "`known`/`novel` are intake hints about whether an analytical result likely exists. `impossible` is an OUTCOME, not a hint: the literature lane routed the sub-problem away because the result is proven impossible (docs/literature-lane.md C5). It requires a verified-current 'impossible' record plus that record's math-lane escalation (§4)."
           },
           "stage": {
             "enum": ["reference-case", "generalization", "domain-scale"],
@@ -194,6 +194,39 @@
         "max_orchestrator_rounds": { "type": "integer", "minimum": 1 },
         "max_cost_usd": { "type": ["number", "null"] },
         "max_wall_minutes": { "type": ["number", "null"] }
+      }
+    },
+    "literature": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "the literature lane's state (Decision 14). Optional: a study that never ran the lane omits it. rq_check.py fires the literature gate only when this object is present.",
+      "properties": {
+        "phase": {
+          "enum": ["not-run", "running", "concluded", "skipped"],
+          "description": "`skipped` is the one honest escape from the mandatory intake sweep (docs/literature-lane.md §10) and requires `skip_reason`: the explicit user assertion that made the sweep unnecessary."
+        },
+        "skip_reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "the user's explicit intake assertion, recorded verbatim. Required when phase is `skipped`."
+        },
+        "consulted_at": { "type": "string" },
+        "map_file": { "type": "string" },
+        "negative_exports_file": { "type": "string" },
+        "completeness_file": { "type": "string" },
+        "refs_seed_file": { "type": "string" },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_lines": { "type": "integer", "minimum": 1 },
+            "max_depth": { "type": "integer", "minimum": 1 },
+            "max_papers_per_line": { "type": "integer", "minimum": 1 },
+            "max_rounds": { "type": "integer", "minimum": 1 },
+            "max_cost_usd": { "type": ["number", "null"] },
+            "max_wall_minutes": { "type": ["number", "null"] }
+          }
+        }
       }
     },
     "status": {

@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/linxichen/dsh-rigorquant/agent-presets/rigorquant/skills/rigorquant/schemas/known-results.schema.json",
+  "title": "RigorQuant literature known-results.json",
+  "description": "The verified literature map, keyed by sub-problem id (SPn). Entries are settled/impossible/superseded/open; verified state lives ONLY here, never in interim dossiers (a dossier is advisory evidence, not a verified record).",
+  "type": "object",
+  "additionalProperties": {
+    "type": "array",
+    "items": { "$ref": "#/definitions/entry" }
+  },
+  "definitions": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "claim", "sources"],
+      "properties": {
+        "category": {
+          "enum": ["settled", "impossible", "superseded", "open"],
+          "description": "settled = proven true; impossible = proven false/intractable (a verified negative); superseded = stale; open = neither settled nor impossible"
+        },
+        "claim": { "type": "string" },
+        "negative_export": {
+          "type": "boolean",
+          "description": "true when this impossible entry was exported to the novel lane as a provenance-stripped constraint"
+        },
+        "escalation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "study-root-relative path to the math-lane record that accepted this impossibility (docs/literature-lane.md §4). Required before a sub-problem may be routed away as impossible: the literature lane certifies that the literature says X, never that X is true."
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/source" }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paper_id", "version", "access_date", "retrieval_method", "adversarial_check"],
+      "properties": {
+        "paper_id": {
+          "type": "string",
+          "description": "canonical identifier: arXiv:XXXX.XXXXX, DOI:10.x/..., or a normalized title"
+        },
+        "version": { "type": "string" },
+        "access_date": { "type": "string" },
+        "retrieval_method": {
+          "enum": ["arxiv-api", "author-page", "open-repo", "preprint", "openalex", "user-mirror"]
+        },
+        "adversarial_check": { "$ref": "#/definitions/check" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "checked_by", "date", "evidence"],
+      "properties": {
+        "status": {
+          "enum": ["verified-current", "verified-stale", "unverifiable", "false-claim"],
+          "description": "only verified-current counts as a verified record; unverifiable (abstract-only) is a lower confidence tier and never load-bearing"
+        },
+        "checked_by": { "type": "string" },
+        "date": { "type": "string" },
+        "evidence": {
+          "type": "string",
+          "description": "study-root-relative path to the lit-adversary's per-claim verdict"
+        }
+      }
+    }
+  }
+}

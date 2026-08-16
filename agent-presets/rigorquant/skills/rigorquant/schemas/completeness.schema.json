@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/linxichen/dsh-rigorquant/agent-presets/rigorquant/skills/rigorquant/schemas/completeness.schema.json",
+  "title": "RigorQuant literature completeness.json",
+  "description": "The per-line completeness checklist (docs/literature-lane.md §6). It is the anti-premature-termination artifact: a line may not conclude until every mandatory sweep is recorded, so 'the model finished early' is a FAILING condition rather than the default. rq_check.py refuses an absent checklist, a missing sweep, and an empty sweep.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lines"],
+  "properties": {
+    "lines": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/line" }
+    }
+  },
+  "definitions": {
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "subproblem_id", "sweeps", "frontier", "stop_reason"],
+      "properties": {
+        "line": {
+          "type": "string",
+          "minLength": 1,
+          "description": "the line slug, matching interim/lit/<line-slug>/"
+        },
+        "subproblem_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "the sub-problem this line was swept for (SPn)"
+        },
+        "sweeps": { "$ref": "#/definitions/sweeps" },
+        "frontier": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "unvisited papers still on the frontier; empty only when the line truly closed"
+        },
+        "stop_reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "why this line stopped -- leaf-currency, foundational sink, or citation closure, stated concretely"
+        },
+        "termination": {
+          "enum": ["leaf-currency", "foundational-sink", "citation-closure"]
+        },
+        "rounds": { "type": "integer", "minimum": 1 },
+        "papers_read": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sweeps": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "every mandatory sweep of docs/literature-lane.md §6. Each value states what was actually swept; an empty value is a refused claim of coverage, not a pass.",
+      "required": [
+        "forward_citations",
+        "related_work",
+        "surveys",
+        "adjacent_fields",
+        "retractions_and_versions",
+        "author_pages"
+      ],
+      "properties": {
+        "forward_citations": { "type": "string", "minLength": 1 },
+        "related_work": { "type": "string", "minLength": 1 },
+        "surveys": { "type": "string", "minLength": 1 },
+        "adjacent_fields": { "type": "string", "minLength": 1 },
+        "retractions_and_versions": { "type": "string", "minLength": 1 },
+        "author_pages": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

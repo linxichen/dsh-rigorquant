@@ -169,3 +169,96 @@ def test_npm_ignore_excludes_python_bytecode():
         assert n.exists(), "missing %s (bytecode would ship)" % n
         text = n.read_text()
         assert "__pycache__" in text and "*.pyc" in text
+
+
+def test_no_document_calls_an_isolation_boundary_a_wall():
+    """docs/literature-lane.md A6: shipped text may not over-claim enforcement.
+
+    Only web + delegation are tool-enforced; bash-curl and cross-lane filesystem
+    reads are procedural. Every mention of the word must therefore be a denial.
+    """
+    negations = ("never", "not ", "no ", "n't")
+    context = r"isolat|blind|enforce|procedural|separation|membrane"
+    claims = ("bit-level isolation", "fully isolated", "sandboxed lane",
+              "cannot reach the network")
+    offenders = []
+    for doc in docs() + [REPO / "agent-presets/rigorquant/agent.cordis.yml"]:
+        # Paragraph scope: the denial routinely sits a line away from the word.
+        for block in re.split(r"\n\s*\n", doc.read_text()):
+            low = block.lower()
+            if not re.search(context, low):
+                continue
+            if any(w in low for w in negations):
+                continue
+            hit = re.search(r"\bwalls?\b", low) or next(
+                (c for c in claims if c in low), None)
+            if hit:
+                offenders.append("%s: %s" % (doc.relative_to(REPO),
+                                             " ".join(block.split())[:120]))
+    assert not offenders, "isolation over-claims:\n" + "\n".join(offenders)
+
+
+def _decision_numbers():
+    arch = (REPO / "docs/architecture.md").read_text()
+    listed = set(re.findall(r"^\s*(\d+)\.\s+\*\*", arch, re.MULTILINE))
+    headed = set(re.findall(r"^## Decision (\d+)", arch, re.MULTILINE))
+    return listed | headed
+
+
+def test_every_decision_reference_resolves():
+    """A cited `Decision N` that architecture.md never records is drift."""
+    known = _decision_numbers()
+    assert known, "architecture.md records no decisions; update this test"
+    offenders = []
+    sources = docs() + [REPO / f for f in tracked_files() if f.startswith("tests/")]
+    for src in sources:
+        for n, line in enumerate(src.read_text().splitlines(), 1):
+            for num in re.findall(r"[Dd]ecision (\d+)", line):
+                if num not in known:
+                    offenders.append("%s:%d: Decision %s" % (src.relative_to(REPO), n, num))
+    assert not offenders, (
+        "references to decisions architecture.md never records:\n" + "\n".join(offenders))
+
+
+def _spawned_role_tool_names():
+    """Model-facing tool names of the enabled spawn-provider delegation rows."""
+    text = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    names = []
+    for part in re.split(r"\n    - id: ", text)[1:]:
+        if re.search(r"^\s*disabled: true", part, re.MULTILINE):
+            continue
+        if "provider: spawn" not in part:
+            continue
+        m = re.search(r"toolName:\s*(\S+)", part)
+        if m:
+            names.append(m.group(1))
+    return names
+
+
+def test_the_shipped_procedure_names_every_delegation_role():
+    """A walled role nothing routes work to is enforcement no one can reach.
+
+    `subagent_novel` existed in the composition while every shipped procedure
+    still told the orchestrator to re-use the open explorer under the novelty
+    toggle -- the role was unreachable by instruction.
+    """
+    skills = REPO / "agent-presets/rigorquant/skills"
+    corpus = "\n".join(p.read_text() for p in skills.rglob("*.md"))
+    missing = [n for n in _spawned_role_tool_names() if n not in corpus]
+    assert not missing, (
+        "the composition defines roles no shipped skill instructs anyone to use: %s" % missing)
+
+
+def test_schemas_are_valid_json():
+    """A schema that does not parse breaks every study the gate loads it for."""
+    for s in (SKILL_DIR / "schemas").glob("*.schema.json"):
+        json.loads(s.read_text())  # raises on malformed JSON
+
+
+def test_install_script_installs_literature_skills():
+    """Decision 15: arxiv + academic-paper-search ship to $DSH_HOME/skills/."""
+    install = (REPO / "install.sh").read_text()
+    for skill in ("arxiv", "academic-paper-search"):
+        assert ('$DSH_HOME/skills/%s"' % skill) in install or \
+               ('$DSH_HOME/skills/%s ' % skill) in install, \
+               "install.sh never installs %s globally" % skill

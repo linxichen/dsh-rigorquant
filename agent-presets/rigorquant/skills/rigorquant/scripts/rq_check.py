@@ -62,6 +62,11 @@ PAPER_SECTIONS = ("statement", "method", "validity", "certification",
 # the PASS gates. Documented in references/lifecycle.md.
 PASS_CLAIM_RE = re.compile(r"^\s*PASS\b", re.IGNORECASE)
 
+LITERATURE_MAP_DEFAULT = "literature/known-results.json"
+NEGATIVE_EXPORTS_DEFAULT = "literature/negative-exports.json"
+COMPLETENESS_DEFAULT = "literature/completeness.json"
+REFS_SEED_DEFAULT = "literature/refs-seed.bib"
+
 
 class Problems(list):
     def add(self, check_id, message):
@@ -182,8 +187,8 @@ _TYPES = {
 }
 _SUPPORTED = {
     "$schema", "$id", "title", "description", "type", "required", "properties",
-    "additionalProperties", "items", "enum", "pattern", "minItems", "minimum",
-    "exclusiveMinimum", "exclusiveMaximum", "definitions", "$ref",
+    "additionalProperties", "items", "enum", "pattern", "minItems", "minLength",
+    "minimum", "exclusiveMinimum", "exclusiveMaximum", "definitions", "$ref",
 }
 
 
@@ -221,6 +226,9 @@ def validate_json_schema(instance, schema, root=None, path="", errs=None):
     if "pattern" in schema and isinstance(instance, str):
         if not re.search(schema["pattern"], instance):
             errs.append("%s: %r does not match %s" % (where, instance, schema["pattern"]))
+    if "minLength" in schema and isinstance(instance, str):
+        if len(instance) < schema["minLength"]:
+            errs.append("%s: needs at least %d character(s)" % (where, schema["minLength"]))
     if isinstance(instance, (int, float)) and not isinstance(instance, bool):
         if "minimum" in schema and instance < schema["minimum"]:
             errs.append("%s: %r < minimum %r" % (where, instance, schema["minimum"]))
@@ -1018,6 +1026,396 @@ def check_declared_hashes(root: Path, problems):
                         "artifacts on its line" % (p.name, declared[:12]))
 
 
+# ------------------------------------------------------------ literature gate
+#
+# Decision 14: the literature lane. Verified literature state lives ONLY in
+# literature/known-results.json (+ negative-exports.json); interim dossiers are
+# advisory and are never counted as verified records. The gate fires only when
+# study.json carries a 'literature' object, so studies that never ran the lane
+# are unaffected (backward compatible with pre-lane studies).
+
+
+def _norm_id(s):
+    s = str(s).strip().lower()
+    s = re.sub(r"^https?://(dx\.)?doi\.org/", "", s)
+    s = re.sub(r"^(arxiv|doi)\s*:?\s*", "", s)
+    s = s.strip("{}'\"")
+    return " ".join(s.split())
+
+
+def _verified_source_ids(map_data):
+    """paper_id values whose adversarial check is verified-current.
+
+    Sources of `open` entries are excluded: the lane may have fetched the paper,
+    but the question it was fetched for is still open, so nothing may be cited
+    as a result on its authority (docs/literature-lane.md §11).
+    """
+    ids = set()
+    for entries in (map_data or {}).values():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("category") == "open":
+                continue
+            for src in entry.get("sources") or []:
+                if not isinstance(src, dict):
+                    continue
+                if (src.get("adversarial_check") or {}).get("status") == "verified-current":
+                    ids.add(_norm_id(src.get("paper_id", "")))
+    return ids
+
+
+def bib_entries_of(bib_path):
+    """Parse @type{key,...} entries with stdlib regex (no external parser)."""
+    if not bib_path.exists():
+        return {}
+    text = bib_path.read_text(errors="replace")
+    entries = {}
+    for m in re.finditer(r"@\w+\s*\{\s*([^,\s]+)\s*,", text):
+        body = text[m.end():]
+        nxt = re.search(r"@\w+\s*\{", body)
+        body = body[:nxt.start()] if nxt else body
+        entries[m.group(1)] = body
+    return entries
+
+
+def _bib_entry_ids(body):
+    ids = set()
+    for field in ("doi", "eprint"):
+        m = re.search(r"\b" + field + r"\s*=\s*([^\s,}]+)", body, re.IGNORECASE)
+        if m:
+            ids.add(_norm_id(m.group(1)))
+    return ids
+
+
+def _bib_titles(body):
+    """Normalized titles from a BibTeX entry, for paper_id = normalized-title."""
+    titles = set()
+    for m in re.finditer(r"\btitle\s*=\s*\{([^}]*)\}", body, re.IGNORECASE):
+        titles.add(_norm_id(m.group(1)))
+    for m in re.finditer(r'\btitle\s*=\s*"([^"]*)"', body, re.IGNORECASE):
+        titles.add(_norm_id(m.group(1)))
+    return titles
+
+
+def _check_completeness(lit, root: Path, problems):
+    """The anti-premature-termination gate (§6). Returns the swept sub-problem ids.
+
+    The mandatory sweeps are read from the schema's own `required` list, so the
+    validator never carries a second copy of them (Decision 13, rule 3).
+    """
+    comp_file = lit.get("completeness_file") or COMPLETENESS_DEFAULT
+    comp_path = root / comp_file
+    if not comp_path.exists():
+        problems.add(
+            "literature.completeness-missing",
+            "literature gate: %s missing -- the lane may not conclude without a "
+            "per-line completeness checklist; 'the model finished early' is a "
+            "failing condition, not the default" % comp_file)
+        return set()
+    try:
+        data = json.loads(comp_path.read_text())
+    except json.JSONDecodeError as e:
+        problems.add("literature.completeness-invalid",
+                     "literature gate: %s is not valid JSON: %s" % (comp_file, e))
+        return set()
+
+    schema = load_schema("completeness.schema.json")
+    if schema is None:
+        problems.add("schema.missing",
+                     "shipped schema completeness.schema.json not found next to "
+                     "the validator")
+        return set()
+    for e in validate_json_schema(data, schema):
+        problems.add("literature.completeness-schema",
+                     "%s does not match completeness.schema.json: %s" % (comp_file, e))
+
+    mandatory = schema["definitions"]["sweeps"]["required"]
+    swept = set()
+    for line in (data.get("lines") or []) if isinstance(data, dict) else []:
+        if not isinstance(line, dict):
+            continue
+        swept.add(line.get("subproblem_id"))
+        sweeps = line.get("sweeps")
+        if not isinstance(sweeps, dict):
+            continue
+        for name in mandatory:
+            value = sweeps.get(name)
+            if isinstance(value, str) and not value.strip():
+                problems.add(
+                    "literature.completeness-empty-sweep",
+                    "literature gate: line %r records an empty mandatory sweep (%s) "
+                    "in %s -- state what was actually swept, or the line is not done"
+                    % (line.get("line"), name, comp_file))
+    return swept
+
+
+def check_literature_gate(study, root: Path, problems):
+    lit = study.get("literature")
+    if not isinstance(lit, dict):
+        return
+
+    # §10: the intake sweep is mandatory, skippable ONLY on an explicit user
+    # assertion -- which must then be on the record, not in someone's memory.
+    if lit.get("phase") == "skipped":
+        if not (lit.get("skip_reason") or "").strip():
+            problems.add(
+                "literature.skip-unrecorded",
+                "literature gate: literature.phase is 'skipped' with no `skip_reason` -- "
+                "the sweep is skippable only on an explicit user assertion at intake, "
+                "and that assertion has to be recorded to count")
+        return
+
+    map_file = lit.get("map_file") or LITERATURE_MAP_DEFAULT
+    map_path = root / map_file
+    map_data = None
+    if not map_path.exists():
+        problems.add("literature.map-missing",
+                     "literature gate: %s missing -- the lane must leave a verified "
+                     "known-results map before marking a sub-problem known or "
+                     "exporting a negative" % map_file)
+    else:
+        try:
+            map_data = json.loads(map_path.read_text())
+        except json.JSONDecodeError as e:
+            problems.add("literature.map-invalid",
+                         "literature gate: %s is not valid JSON: %s" % (map_file, e))
+            map_data = None
+        if map_data is not None:
+            schema = load_schema("known-results.schema.json")
+            if schema is None:
+                problems.add("schema.missing",
+                             "shipped schema known-results.schema.json not found "
+                             "next to the validator")
+            else:
+                for e in validate_json_schema(map_data, schema):
+                    problems.add("literature.map-schema",
+                                 "%s does not match known-results.schema.json: %s"
+                                 % (map_file, e))
+
+    verified = _verified_source_ids(map_data)
+
+    # The declared phase and the record on disk must agree: a lane that never ran
+    # cannot have verified anything, and one still running has not concluded.
+    phase = lit.get("phase") or "not-run"
+    if verified and phase != "concluded":
+        problems.add(
+            "literature.phase",
+            "literature gate: study.json literature.phase is %r but %s already "
+            "carries verified-current records -- only a concluded lane may hold "
+            "verified state" % (phase, map_file))
+
+    def verified_entries(spid):
+        entries = (map_data or {}).get(spid) if isinstance(map_data, dict) else None
+        out = []
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                for src in entry.get("sources") or []:
+                    if (isinstance(src, dict)
+                            and (src.get("adversarial_check") or {}).get("status") == "verified-current"):
+                        out.append(entry)
+                        break
+        return out
+
+    # (1) a 'known' mark must be backed by an independently verified record.
+    for sp in study.get("subproblems") or []:
+        if not isinstance(sp, dict):
+            continue
+        if sp.get("status") == "known" and not verified_entries(sp.get("id")):
+            problems.add(
+                "literature.known-unverified",
+                "literature gate: sub-problem %s is marked 'known' but %s has no "
+                "verified-current record for it -- a 'known' mark must be backed by "
+                "an independently verified literature source" % (sp.get("id"), map_file))
+
+        # (1a) C5: routed away as impossible. The answer IS the impossibility, so
+        #      the study's conclusion rests on it -- §4 makes that load-bearing and
+        #      sends it to the math lane before the study may rely on it.
+        if sp.get("status") == "impossible":
+            spid = sp.get("id")
+            impossible = [e for e in verified_entries(spid)
+                          if e.get("category") == "impossible"]
+            if not impossible:
+                problems.add(
+                    "literature.impossible-unverified",
+                    "literature gate: sub-problem %s is routed away as impossible but "
+                    "%s has no verified-current 'impossible' record for it -- an "
+                    "impossibility is an answer, and it owes the same provenance as one"
+                    % (spid, map_file))
+                continue
+            for entry in impossible:
+                target = entry.get("escalation")
+                if not target:
+                    problems.add(
+                        "literature.impossible-unescalated",
+                        "literature gate: the 'impossible' record for %s carries no "
+                        "`escalation` -- a conclusion that RESTS on an impossibility is "
+                        "load-bearing and must be accepted by the math lane first "
+                        "(the literature lane never certifies that a claim is true)" % spid)
+
+    # (1c) a declared escalation must be readable, wherever it is declared: an
+    #      escalation nobody can open is a claim, not a record.
+    if isinstance(map_data, dict):
+        for spid, entries in map_data.items():
+            for entry in entries if isinstance(entries, list) else []:
+                target = entry.get("escalation") if isinstance(entry, dict) else None
+                if target and not (root / target).exists():
+                    problems.add(
+                        "literature.escalation-missing",
+                        "literature gate: the %s record for %s declares escalation %r, "
+                        "which does not exist" % (entry.get("category"), spid, target))
+
+    # (1b) the completeness checklist: a verified record may not exist for a
+    #      line the lane never swept, and no mandatory sweep may be empty.
+    swept = _check_completeness(lit, root, problems)
+    if isinstance(map_data, dict):
+        for spid, entries in map_data.items():
+            if not isinstance(entries, list):
+                continue
+            if not any(isinstance(e, dict) and e.get("category") != "open" for e in entries):
+                continue
+            if spid not in swept:
+                problems.add(
+                    "literature.completeness-line-missing",
+                    "literature gate: %s carries a non-open record for %s but the "
+                    "completeness checklist has no completeness line for it -- a line "
+                    "that was never swept cannot produce a verified record" % (map_file, spid))
+
+    # (2) every exported negative must trace to an 'impossible' verified entry.
+    exports_file = lit.get("negative_exports_file") or NEGATIVE_EXPORTS_DEFAULT
+    exports_path = root / exports_file
+    exports_data = None
+    if exports_path.exists():
+        try:
+            exports_data = exports = json.loads(exports_path.read_text())
+        except json.JSONDecodeError as e:
+            problems.add("literature.exports-invalid",
+                         "literature gate: %s is not valid JSON: %s" % (exports_file, e))
+            exports = None
+        if isinstance(exports, dict):
+            schema = load_schema("negative-exports.schema.json")
+            if schema is None:
+                problems.add("schema.missing",
+                             "shipped schema negative-exports.schema.json not found "
+                             "next to the validator")
+            else:
+                for e in validate_json_schema(exports, schema):
+                    problems.add("literature.exports-schema",
+                                 "%s does not match negative-exports.schema.json: %s"
+                                 % (exports_file, e))
+            for ex in exports.get("exports") or []:
+                if not isinstance(ex, dict):
+                    continue
+                spid = ex.get("subproblem_id")
+                pid = _norm_id(ex.get("source_paper_id", ""))
+                ok = False
+                entries = (map_data or {}).get(spid) if isinstance(map_data, dict) else None
+                for entry in (entries or []):
+                    if not isinstance(entry, dict) or entry.get("category") != "impossible":
+                        continue
+                    for src in entry.get("sources") or []:
+                        if (isinstance(src, dict)
+                                and _norm_id(src.get("paper_id", "")) == pid
+                                and (src.get("adversarial_check") or {}).get("status") == "verified-current"):
+                            ok = True
+                if not ok:
+                    problems.add(
+                        "literature.negative-unverified",
+                        "literature gate: exported negative for %s from %r does not trace "
+                        "to an 'impossible' entry with a verified-current source in %s -- "
+                        "a negative cannot appear from nowhere"
+                        % (spid, ex.get("source_paper_id"), map_file))
+
+    # (2b) the map's negative_export flag and the exports file are one fact
+    #      recorded twice; they may not disagree.
+    exported_pairs = set()
+    if isinstance(exports_data, dict):
+        for ex in exports_data.get("exports") or []:
+            if isinstance(ex, dict):
+                exported_pairs.add((ex.get("subproblem_id"), _norm_id(ex.get("source_paper_id", ""))))
+    if isinstance(map_data, dict):
+        for spid, entries in map_data.items():
+            for entry in entries if isinstance(entries, list) else []:
+                if not isinstance(entry, dict):
+                    continue
+                pids = {_norm_id(s.get("paper_id", "")) for s in entry.get("sources") or []
+                        if isinstance(s, dict)}
+                sent = any((spid, pid) in exported_pairs for pid in pids)
+                if entry.get("negative_export") and not sent:
+                    problems.add(
+                        "literature.export-flag",
+                        "literature gate: %s marks a %s entry `negative_export: true` but "
+                        "%s carries no matching export -- the map and the exports file "
+                        "record one fact and may not disagree" % (map_file, spid, exports_file))
+                elif sent and not entry.get("negative_export"):
+                    problems.add(
+                        "literature.export-flag",
+                        "literature gate: %s exports a negative for %s but its entry in %s "
+                        "is not flagged `negative_export: true` -- what crossed the membrane "
+                        "must be recorded on both sides" % (exports_file, spid, map_file))
+
+    # (2c) dossiers stay advisory evidence, never verified records -- but an
+    #      unparsable dossier is a defect in the record the adversary sampled.
+    dossier_schema = load_schema("dossier.schema.json")
+    for dossier in sorted((root / "interim" / "lit").glob("*/dossier.json")):
+        rel = dossier.relative_to(root)
+        try:
+            data = json.loads(dossier.read_text())
+        except json.JSONDecodeError as e:
+            problems.add("literature.dossier-invalid",
+                         "literature gate: %s is not valid JSON: %s" % (rel, e))
+            continue
+        if dossier_schema is None:
+            problems.add("schema.missing",
+                         "shipped schema dossier.schema.json not found next to the validator")
+            break
+        for e in validate_json_schema(data, dossier_schema):
+            problems.add("literature.dossier-schema",
+                         "%s does not match dossier.schema.json: %s" % (rel, e))
+
+    def refuse_unverified_bib(bib_path, label):
+        for key, body in bib_entries_of(bib_path).items():
+            ids = _bib_entry_ids(body)
+            titles = _bib_titles(body)
+            if not (ids & verified) and _norm_id(key) not in verified \
+                    and not (titles & verified):
+                problems.add(
+                    "literature.citation-unverified",
+                    "literature gate: bibliography entry %r (in %s) has no "
+                    "verified-current literature record with a settled/impossible/"
+                    "superseded category -- every citation must trace to a fetched, "
+                    "adversarially verified source (DOI, arXiv id, or normalized "
+                    "title), and a still-open question is not a result to cite"
+                    % (key, label))
+
+    # (3) the verified refs.bib seed (§8): a concluded lane that verified any
+    #     non-open result must leave a seed; if present, every entry must trace.
+    seed_file = lit.get("refs_seed_file") or REFS_SEED_DEFAULT
+    seed_path = root / seed_file
+    if phase == "concluded" and verified:
+        if not seed_path.exists():
+            problems.add(
+                "literature.refs-seed-missing",
+                "literature gate: %s missing -- a concluded literature lane with "
+                "verified records must leave a refs-seed.bib whose entries trace "
+                "to those records" % seed_file)
+    if seed_path.exists():
+        refuse_unverified_bib(seed_path, seed_file)
+
+    # (4) fabricated-citation gate (PASS only): every \cite traces to a verified
+    #     source. The paper may not cite what the lane never verified.
+    if claiming_pass(study):
+        tex_files = [root / rel for rel in
+                     ("artifacts/paper/main.tex", "artifacts/slides/main.tex")]
+        for tex in tex_files:
+            if not tex.exists():
+                continue
+            for bp in bib_files_of(tex):
+                refuse_unverified_bib(bp, bp.name)
+
+
 # --------------------------------------------------------------------- main
 
 
@@ -1042,6 +1440,7 @@ def run(study_root: str):
             problems.add("registry.invalid", "registry.json invalid JSON: %s" % e)
 
     check_against_schemas(study, registry, problems)
+    check_literature_gate(study, root, problems)
     check_coverage(study, problems)
     check_registry_consistency(study, registry or {}, root, problems)
     check_record_present(study, root, problems)

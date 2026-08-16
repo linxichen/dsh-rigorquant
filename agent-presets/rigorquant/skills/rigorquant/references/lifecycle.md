@@ -18,7 +18,7 @@ a study (registry.json, journal.md, audits) are study-root-relative.
   "broad_criterion": "the ORIGINAL broad claim a PASS must deliver, verbatim — never re-scoped to the simplified cases",
   "success_criterion": "summary of the broad criterion plus the stage evidence required",
   "subproblems": [
-    { "id": "SPn", "name": "...", "status": "known|novel",
+    { "id": "SPn", "name": "...", "status": "known|novel|impossible",
       "stage": "reference-case|generalization|domain-scale",
       "success_criterion": "...", "evidence_level": "..." }
   ],
@@ -48,6 +48,16 @@ a study (registry.json, journal.md, audits) are study-root-relative.
     "stochastic": { "se_units": 3, "confidence": 0.95, "lln_grid": [1000, 10000, 100000] }
   },
   "budget": { "max_orchestrator_rounds": 5, "max_cost_usd": null, "max_wall_minutes": null },
+  "literature": {
+    "phase": "not-run | running | concluded | skipped",
+    "skip_reason": "the verbatim user assertion — required when phase is skipped",
+    "consulted_at": "YYYY-MM-DD",
+    "map_file": "literature/known-results.json",
+    "negative_exports_file": "literature/negative-exports.json",
+    "completeness_file": "literature/completeness.json",
+    "refs_seed_file": "literature/refs-seed.bib",
+    "budget": { "max_lines": 8, "max_depth": 4, "max_papers_per_line": 80, "max_rounds": 8 }
+  },
   "status": "per-sub-problem status + current round; a PASS is claimed ONLY when this string begins with the token PASS"
 }
 ```
@@ -223,6 +233,29 @@ synthesize cycle (Step 3 of SKILL.md). Increment `rounds` on synthesis.
 BLOCKED counting is per sub-problem: consecutive rounds where the same
 `blockedReason` appears for that `SPn`; any materially new mechanism resets its
 `blockedRounds`.
+
+## Literature lane accounting
+
+The lane is entered at intake (Step 2b of SKILL.md) — mandatorily, unless the
+user explicitly asserts known/novel there, which is recorded as
+`phase: "skipped"` plus a verbatim `skip_reason` — and is **re-enterable per
+round** on a recorded trigger — "is X still open after the adversary's
+counterexample?" is a legitimate reason to re-open it mid-study. Its own budget
+(`literature.budget`) is a **resume-able safety ceiling, never a finish
+target**: hitting `max_lines` / `max_depth` / `max_papers_per_line` /
+`max_rounds` checkpoints and resumes, and a run concludes only on the
+completeness checklist plus the lit-adversary's certification.
+`max_wall_minutes` may stay null so a 10+ hour traversal is legal.
+
+**Consult-human is a hard stop.** When the orchestrator cannot decide between
+(a) more rounds, (b) conclude, and (c) unclear, it checkpoints the map, the
+frontiers, and the checklist, then halts; one human turn re-arms it, exactly as
+the session boundary does. Under a thoroughness mandate this is the only honest
+alternative to guessing silently.
+
+Set `literature.phase` to what the record actually supports: `concluded` only
+once known-results.json holds verified state, and never while the checklist is
+incomplete — `rq_check.py` refuses the disagreement.
 
 ## Provenance and reports
 

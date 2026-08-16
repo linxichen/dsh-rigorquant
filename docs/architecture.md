@@ -110,6 +110,47 @@ they bind every future change to the checker:
    the two silently diverged into different programs. `tests/` enforces this,
    and the schemas are what the validator actually loads.
 
+## Decision 14 — literature lane
+
+A new literature-research lane answers "what is settled / impossible / open /
+current" before compute is spent, and a membrane exports ONLY verified negatives
+(proven impossibilities) to the novel lane so it stays un-anchored. The lane is
+a grad-student-style citation-graph traversal (backward references + forward
+citations + related work + surveys), walled per line, with an independent
+literature adversary that re-retrieves each load-bearing claim and certifies
+validity + freshness (version/venue/retraction/supersession). Tooling is two
+vendored skills (arxiv, MIT; academic-paper-search, user-pinned SKILL.md — MIT,
+author-confirmed, see docs/literature-lane.md §14) plus a tiered
+retriever (author page → open repos/Unpaywall → preprint → OpenAlex/CORE →
+user-supplied mirrors, disabled by default). Thoroughness outranks speed (10+ hr
+runs welcome); the completeness gate — not the budget ceiling — is the finish
+line. Full spec, schemas, role matrix, and acceptance criteria:
+[docs/literature-lane.md](literature-lane.md).
+
+What is **enforced**, and where: the blind deny lists live in the composition
+(`tests/test_blind_deny_list.py`); the known-mark, routed-away-impossible +
+math-lane escalation, negative-export subset, completeness-checklist,
+refs-seed and fabricated-citation gates live in `rq_check.py`
+(`tests/test_literature_gate.py`, `tests/test_integration.py`). What stays
+**procedural and audited**: `bash`-level network calls from a blind role and
+cross-lane filesystem reads — no per-role network or fs scope exists in the
+spawn provider, so those are named holes (literature-lane.md §13), not a wall.
+The lane's own boundary to the outside world (arXiv, Semantic Scholar,
+Crossref) is a live network dependency; `tests/test_retrieval_boundary.py`
+marks it unverified rather than reporting "not run" as "passed".
+
+## Decision 15 — the retrieval skills install globally
+
+`arxiv` (MIT, vendored verbatim from NousResearch/hermes-agent) and
+`academic-paper-search` (user-authored SKILL.md, MIT, author-confirmed
+2026-08-16) are useful to any preset, not just this one, and
+the literature roles load them by name. `install.sh` therefore copies both to
+`$DSH_HOME/skills/` in both install modes and removes them on `--uninstall`,
+while the preset keeps its own copies under
+`agent-presets/rigorquant/skills/` so a checkout is self-contained. The blind
+roles deny `skill` outright, so a global install never widens what the novel
+lane can reach.
+
 ## Repo map
 
 ```
@@ -118,6 +159,7 @@ agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        this record
+docs/literature-lane.md     literature-lane spec (Decisions 14-15)
 tests/                      the validator's suite; a forged study must FAIL
 install.sh                  installs the preset (or --skill-only) into $DSH_HOME
 ```

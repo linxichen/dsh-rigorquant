@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/linxichen/dsh-rigorquant/agent-presets/rigorquant/skills/rigorquant/schemas/dossier.schema.json",
+  "title": "RigorQuant literature line dossier",
+  "description": "The bounded, per-line dossier a lit line-agent writes into interim/lit/<line-slug>/dossier.json. Scratch/advisory evidence: rq_check.py never counts it as a verified record. Raw PDFs/HTML live in interim/lit/<line-slug>/fetched/, not here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["line", "papers"],
+  "properties": {
+    "line": { "type": "string" },
+    "frontier": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "unvisited papers still on the frontier, with the reason to stop or none"
+    },
+    "sweeps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "the completeness-checklist sweeps actually performed (forward citations, related work, surveys, adjacent fields, retractions, newer versions, author pages)"
+    },
+    "papers": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/paper" }
+    }
+  },
+  "definitions": {
+    "paper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paper_id", "version", "title", "claim"],
+      "properties": {
+        "paper_id": { "type": "string" },
+        "version": { "type": "string" },
+        "title": { "type": "string" },
+        "authors": { "type": "array", "items": { "type": "string" } },
+        "venue": { "type": "string" },
+        "year": { "type": "string" },
+        "claim": { "type": "string" },
+        "evidence_quote": { "type": "string" },
+        "references": { "type": "array", "items": { "type": "string" } },
+        "cited_by": { "type": "array", "items": { "type": "string" } },
+        "freshness": { "type": "object" },
+        "access": { "type": "object" }
+      }
+    }
+  }
+}

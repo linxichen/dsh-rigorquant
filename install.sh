@@ -58,6 +58,8 @@ install_dir() {
 if [ "$mode" = uninstall ]; then
   rm -rf "$DSH_HOME/.agent-presets/rigorquant"
   rm -rf "$DSH_HOME/skills/rigorquant"
+  rm -rf "$DSH_HOME/skills/arxiv"
+  rm -rf "$DSH_HOME/skills/academic-paper-search"
   rm -rf "$DSH_HOME/share/rigorquant"
   echo "Removed the RigorQuant preset, skill, and shared lane."
   exit 0
@@ -65,7 +67,9 @@ fi
 
 if [ "$mode" = skill ]; then
   install_dir "$HERE/agent-presets/rigorquant/skills/rigorquant" "$DSH_HOME/skills/rigorquant"
-  echo "Installed skill to $DSH_HOME/skills/rigorquant (directory watcher loads it immediately)."
+  install_dir "$HERE/agent-presets/rigorquant/skills/arxiv" "$DSH_HOME/skills/arxiv"
+  install_dir "$HERE/agent-presets/rigorquant/skills/academic-paper-search" "$DSH_HOME/skills/academic-paper-search"
+  echo "Installed skills to $DSH_HOME/skills/ (rigorquant, arxiv, academic-paper-search; the directory watcher loads them immediately)."
 else
   install_dir "$HERE/agent-presets/rigorquant" "$DSH_HOME/.agent-presets/rigorquant"
   # Stable anchor for the compute lane + escalation docs. SKILL.md Step 2
@@ -73,6 +77,9 @@ else
   install_dir "$HERE/env" "$DSH_HOME/share/rigorquant/env"
   install_dir "$HERE/mcp" "$DSH_HOME/share/rigorquant/mcp"
   install_dir "$HERE/docs" "$DSH_HOME/share/rigorquant/docs"
+  install_dir "$HERE/agent-presets/rigorquant/skills/arxiv" "$DSH_HOME/skills/arxiv"
+  install_dir "$HERE/agent-presets/rigorquant/skills/academic-paper-search" "$DSH_HOME/skills/academic-paper-search"
+  echo "Installed global skills arxiv + academic-paper-search to $DSH_HOME/skills/"
   echo "Installed preset to $DSH_HOME/.agent-presets/rigorquant"
   echo "Installed compute lane to $DSH_HOME/share/rigorquant"
   echo "Start a new session and pick the 'RigorQuant' preset in the session picker."

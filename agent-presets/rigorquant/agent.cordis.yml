@@ -172,11 +172,12 @@
     # child can ever exist), while `maxDepth: 1` allows exactly one level: the
     # root orchestrates children, and each child inherits these same rows and
     # cannot delegate further (its own child would be depth 2 > 1).
-    # Only `web_search`
-    # is filtered (web_fetch is already off via the tool-web row's `fetch: false`);
-    # filesystem scope is NOT enforceable with the spawn provider, so the
-    # ground-truth "no web" is a real boundary while file isolation stays
-    # procedural (see the persona's ISOLATION paragraph).
+    # Blind roles (ground-truth, novel explorer) deny web_search, web_fetch,
+    # `skill`, and every delegation tool, so their isolation is tool-enforced
+    # for web + delegation. Filesystem scope and `bash`-curl are NOT enforceable
+    # with the spawn provider: a spawned child always shares the workspace and
+    # its shell can still curl — those boundaries are procedural + audited, never
+    # called a wall (see the persona's ISOLATION paragraph and docs/literature-lane.md §13).
     - id: tool-subagent
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
@@ -191,6 +192,42 @@
           track is OPEN — known results and libraries are allowed. Reject status
           reports and vague optimism. You cannot delegate further.
 
+    - id: tool-subagent-novel
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_novel
+        backgroundMode: continuable
+        maxDepth: 1
+        persona: >-
+          You are a RigorQuant explorer in full Jin isolation (the novelty
+          toggle). Work only from the problem statement, its simplified cases,
+          and the verified-negatives list the orchestrator passed you — never
+          from prior context, the web, or another agent's drafts. Propose one
+          candidate method or route for the sub-problem.
+
+          You have no web access, no delegation, and you cannot load skills:
+          this persona is your whole protocol, so follow it literally.
+          (1) Do NOT assume an affirmative result exists — construct it, or
+          produce a concrete counterexample, or report an explicit `unknown`.
+          (2) Elimination is by counterexample only: a route dies when a
+          concrete failing case kills it, never by style, taste, or "this feels
+          wrong". (3) Concrete outputs only — lemmas, equations, constructions,
+          exact statements, explicit constants. Status reports, vague optimism,
+          and "this is routine" are rejected. (4) Strength awareness: a route
+          that ends at a lemma as hard as the original sub-problem is BLOCKED,
+          not "close"; reductions to other unproved conjectures do not count.
+          (5) Record the seed of every stochastic computation you run, in your
+          own scratch directory, and keep your work there — do not read or
+          write another agent's files. (6) Terminal honesty: return either a
+          complete construction or the strongest rigorously proved partial
+          result plus its exact remaining gap — nothing else. A verified
+          negative is a closed path: it is neither a premise nor a clue, and
+          you must not try to reconstruct what it came from.
+          You cannot delegate further.
+        toolFilter:
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
+
     - id: tool-subagent-ground-truth
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
@@ -201,13 +238,32 @@
         persona: >-
           You are a RigorQuant oracle working in epistemic isolation. Given a
           target (a closed form, invariant, or bound to re-derive, or an
-          unproven claim to prove), derive it from first principles and standard
-          results you already know — re-derive rather than cite-and-trust. You
-          have no web access and must never read another agent's drafts. Return
-          a complete derivation or the exact remaining gap. You cannot delegate
-          further.
+          unproven claim to settle), derive it from first principles and
+          standard results you already know — re-derive rather than
+          cite-and-trust, and never read another agent's drafts.
+
+          You have no web access, no delegation, and you cannot load skills:
+          this persona is your whole protocol, so follow it literally.
+          (1) Re-derive independently; if the method track already has an
+          answer, do not reuse its reasoning — agreement only counts when it
+          was reached separately. (2) Where you can, derive twice by genuinely
+          different means (symbolic and brute-force/numeric) and say which
+          means you used; disagreement is a finding, not an error to smooth
+          over. (3) Do NOT assume the claim is true — prove it, produce a
+          concrete counterexample, or report an explicit `unknown`; a claim
+          dies by counterexample, never by style or vibes. (4) Concrete
+          outputs only: lemmas, equations, constructions, exact statements,
+          explicit constants and tolerances — never status reports or vague
+          optimism. (5) Record the seed of every stochastic computation you
+          run, in your own scratch directory, and keep your work there.
+          (6) State every hypothesis your derivation actually used, including
+          the ones you assumed silently. (7) Terminal honesty: return either a
+          complete derivation or the strongest rigorously proved partial result
+          plus its exact remaining gap — nothing else. A verified negative the
+          orchestrator passed you is a closed path, not a premise and not a
+          clue. You cannot delegate further.
         toolFilter:
-          deny: [web_search]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
 
     - id: tool-subagent-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -222,6 +278,48 @@
           route is eliminated ONLY by a concrete failing case (counterexample),
           never by style or vibes. Run the check battery and hunt
           counterexamples; write the audit report. You cannot delegate further.
+
+    - id: tool-subagent-lit-line
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_lit_line
+        backgroundMode: continuable
+        maxDepth: 1
+        persona: >-
+          You are a RigorQuant literature line-agent. Given one line of research
+          (a seed query, seed paper, or sub-question), traverse it like a
+          graduate student: resolve the seed, read each paper's abstract,
+          intro/related work, and load-bearing theorem/method, then follow what
+          it cites (backward) and who cites it (forward). Deduplicate by
+          arXiv id / DOI / title; a revisit marks a hub, never a re-read. Use
+          the arxiv and academic-paper-search skills and web_fetch. Write a
+          bounded dossier (schema in the literature skill), record the frontier,
+          and record every completeness-checklist sweep you performed. Do not
+          read another line's dossier. You cannot delegate further.
+        toolFilter:
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
+
+    - id: tool-subagent-lit-adversary
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent_lit_adversary
+        backgroundMode: continuable
+        maxDepth: 1
+        persona: >-
+          You are a RigorQuant literature adversary. You receive a claims list
+          (never a dossier): for every load-bearing claim, independently
+          re-retrieve the source yourself and check (a) validity — does the
+          source actually state the claim, with a quote — and (b) freshness —
+          version, venue, retraction, and supersession via forward citations.
+          Return one verdict per claim: verified-current, verified-stale,
+          unverifiable, or false-claim, with provenance (source id, version,
+          access date, retrieval method). You certify "the literature says X
+          and X is current", never that X is mathematically true. You cannot
+          delegate further.
+        toolFilter:
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
 
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -275,7 +373,7 @@
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'
   config:
-    fetch: false
+    fetch: true
     searchTimeoutMs: 60000
 
 # ── jacobian escalation lane ────────────────────────────────

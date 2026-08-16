@@ -13,10 +13,16 @@ Primary sources:
    affirmative result exists — prove it or find a counterexample, and record an
    explicit `unknown` if neither lands. (For `known` sub-problems the method
    track stays open — building on existing analytical results is an explicit
-   goal.) Isolation is **procedural**, not a capability boundary: context
-   isolation between the root and its subagents is harness-enforced, but web
-   access, filesystem scope, and recursion are enforced only by the per-role
-   delegation tools (see SKILL.md) — never describe them as a "wall".
+   goal.) Isolation is **routed, not requested**: the blind roles are
+   `subagent_novel` (the novelty toggle) and `subagent_ground_truth` (the
+   oracle), and both deny `web_search`, `web_fetch`, `skill` and every
+   delegation tool in the composition itself. Never ask an open role to
+   *pretend* it has no web — call the walled role instead. What that buys is
+   partial and must be stated so: context isolation and the web/delegation deny
+   lists are enforced, while filesystem scope and `bash`-level network calls
+   stay procedural and audited (docs/literature-lane.md §13) — never describe
+   them as a "wall". Because `skill` is denied, a blind role cannot load this
+   file: its persona carries the derivation protocol itself.
 2. **Diverse portfolio, no premature convergence.** Begin with genuinely
    different formulations. Do not tell most agents the favored approach.
    Group by mathematical idea in `registry.json`, not by wording. Redirect

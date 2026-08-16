@@ -135,3 +135,74 @@ def test_missing_schema_file_fails_loudly(study, tmp_path, monkeypatch, tex_avai
         capture_output=True, text=True)
     assert cp.returncode == 1
     assert "schema" in (cp.stdout + cp.stderr)
+
+
+# ---------------------------------------------------- the assembled literature path
+
+
+def test_a_full_literature_run_passes_end_to_end(study, tex_available):
+    """docs/literature-lane.md A7: one real assembled path, not leaf unit tests.
+
+    An intake that ran the lane leaves a known-results map, a completeness
+    checklist, provenance-stripped negative exports, a verified refs-seed.bib and
+    an advisory dossier -- and the study still PASSes with its paper's citations
+    tracing to fetched, adversarially verified sources.
+    """
+    from test_literature_gate import (_completeness, _verified_source, GOOD_BIB)
+
+    lit = study / "literature"
+    lit.mkdir()
+    s = read_study(study)
+    s["literature"] = {
+        "phase": "concluded",
+        "consulted_at": "2026-08-16",
+        "map_file": "literature/known-results.json",
+        "negative_exports_file": "literature/negative-exports.json",
+        "completeness_file": "literature/completeness.json",
+        "refs_seed_file": "literature/refs-seed.bib",
+        "budget": {"max_lines": 8, "max_depth": 4, "max_papers_per_line": 80,
+                   "max_rounds": 8, "max_cost_usd": None, "max_wall_minutes": None},
+    }
+    write_study(study, s)
+
+    settled = {"category": "settled",
+               "claim": "the closed form for minimum-variance weights is standard",
+               "negative_export": False, "sources": [_verified_source()]}
+    impossible = {
+        "category": "impossible",
+        "claim": "no estimator attains the oracle variance without the true covariance",
+        "negative_export": True,
+        "escalation": "audits/math-lane-impossibility.md",
+        "sources": [_verified_source(paper_id="arXiv:1706.03762")],
+    }
+    (lit / "known-results.json").write_text(json.dumps(
+        {"SP1": [dict(settled)], "SP2": [dict(settled)], "SP3": [impossible]}, indent=2))
+    (lit / "completeness.json").write_text(json.dumps(
+        _completeness(("SP1", "SP2", "SP3")), indent=2))
+    (lit / "negative-exports.json").write_text(json.dumps({"exports": [{
+        "subproblem_id": "SP3",
+        "constraint": "It is settled that no estimator attains the oracle variance "
+                      "without the true covariance. Treat this as a closed path, not "
+                      "a premise and not a clue.",
+        "source_paper_id": "arXiv:1706.03762",
+    }]}, indent=2))
+    (lit / "refs-seed.bib").write_text(GOOD_BIB)
+    (study / "audits" / "math-lane-impossibility.md").write_text(
+        "# Math-lane escalation -- the exported negative\n\n"
+        "The impossibility was re-derived independently by the ground-truth track "
+        "before the study relied on it. VERDICT: accepted.\n")
+
+    line_dir = study / "interim" / "lit" / "oracle-bounds"
+    line_dir.mkdir(parents=True)
+    (line_dir / "dossier.json").write_text(json.dumps({
+        "line": "oracle-bounds",
+        "frontier": ["arXiv:2401.09999 (out of scope: discrete-time only)"],
+        "sweeps": ["forward citations", "surveys", "author pages"],
+        "papers": [{"paper_id": "arXiv:1706.03762", "version": "v5",
+                    "title": "A load-bearing bound", "claim": "no such estimator exists",
+                    "evidence_quote": "Theorem 3 rules out any such estimator.",
+                    "references": ["DOI:10.2307/2975974"], "cited_by": []}],
+    }, indent=2))
+
+    code, out = run_check(study)
+    assert code == 0, out

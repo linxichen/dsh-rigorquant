@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/linxichen/dsh-rigorquant/agent-presets/rigorquant/skills/rigorquant/schemas/negative-exports.schema.json",
+  "title": "RigorQuant literature negative-exports.json",
+  "description": "The provenance-stripped constraints sent to the novel lane. Every export must trace to a known-results entry with category 'impossible' and a verified-current source; rq_check.py enforces that subset rule (a negative cannot appear from nowhere).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["exports"],
+  "properties": {
+    "exports": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/export" }
+    }
+  },
+  "definitions": {
+    "export": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subproblem_id", "constraint", "source_paper_id"],
+      "properties": {
+        "subproblem_id": { "type": "string" },
+        "constraint": {
+          "type": "string",
+          "description": "the provenance-stripped constraint text shown to the novel lane (no author, title, or source id)"
+        },
+        "source_paper_id": {
+          "type": "string",
+          "description": "the orchestrator-side source id this constraint came from; must match a verified impossible entry"
+        }
+      }
+    }
+  }
+}
