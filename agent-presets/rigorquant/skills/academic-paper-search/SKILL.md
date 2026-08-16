@@ -62,7 +62,7 @@ results in the candidate shape and inject via a `--from-json` hook. Details in
   --remote-debugging-port is reachable.
 - External reference kept as-is: ~/gits/zotero-smart-ingest is the author's own
   public repo, not part of this distribution.
-- Spec tiered retrieval (docs/literature-lane.md §9) applies on top of this
+- The tiered retrieval order (scripts/resolve_tiers.py) applies on top of this
   skill's workflow: author personal/institutional page first; open
   repositories/Unpaywall; arXiv/preprint; OpenAlex/CORE; then the user-supplied
   mirror list DSH_LIT_MIRRORS (empty unless set, never hardcoded in-repo).

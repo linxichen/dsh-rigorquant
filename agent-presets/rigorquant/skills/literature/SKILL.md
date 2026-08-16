@@ -10,8 +10,10 @@ description: >
 
 # Literature lane — operating procedure
 
-Companion spec: docs/literature-lane.md (Decision 14). This skill is the field
-procedure; the spec owns the invariants, schemas, and acceptance criteria.
+Owning decision: docs/architecture.md Decision 14, which holds the locked
+constraints (C1-C7), the membrane's crossing edges, and the named residual
+holes. This skill is the field procedure; the schemas and rq_check.py are the
+enforcement.
 
 ## The membrane (non-negotiable)
 
@@ -95,9 +97,8 @@ checkpoint and ask the human.
 
 ## Retrieval order (executable)
 
-Resolve the best *retrievable* version through the tiers of
-docs/literature-lane.md §9, in order, and record which tier won as the source's
-`retrieval_method`:
+Resolve the best *retrievable* version through the tiers below, in order, and
+record which tier won as the source's `retrieval_method`:
 
 ```
 python3 <academic-paper-search skill dir>/scripts/resolve_tiers.py \

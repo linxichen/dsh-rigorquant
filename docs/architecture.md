@@ -119,25 +119,80 @@ a grad-student-style citation-graph traversal (backward references + forward
 citations + related work + surveys), walled per line, with an independent
 literature adversary that re-retrieves each load-bearing claim and certifies
 validity + freshness (version/venue/retraction/supersession). Tooling is two
-vendored skills (arxiv, MIT; academic-paper-search, user-pinned SKILL.md — MIT,
-author-confirmed, see docs/literature-lane.md §14) plus a tiered
-retriever (author page → open repos/Unpaywall → preprint → OpenAlex/CORE →
-user-supplied mirrors, disabled by default). Thoroughness outranks speed (10+ hr
-runs welcome); the completeness gate — not the budget ceiling — is the finish
-line. Full spec, schemas, role matrix, and acceptance criteria:
-[docs/literature-lane.md](literature-lane.md).
+vendored skills (arxiv and academic-paper-search — both MIT; each skill's own
+vendoring record carries its provenance) plus a tiered retriever (author page →
+open repos/Unpaywall → preprint → OpenAlex/CORE → user-supplied mirrors,
+disabled by default). Thoroughness outranks speed (10+ hr runs welcome); the
+completeness gate — not the budget ceiling — is the finish line. The field
+procedure lives in the `literature` skill; this record owns the decisions.
+
+**Locked constraints.** These are the user decisions the implementation is
+bound by, and they outlive any particular gate:
+
+| # | Constraint |
+|---|---|
+| C1 | The blind lane keeps `bash`. Blindness is **tool-enforced** for web_search/web_fetch and delegation, **procedural + audited** for no-curl and no-cross-lane-read. Never described as a "wall"; the residual holes are named below. |
+| C2 | The blind lane gets **delegation denied outright**, not merely capped by depth. Blind = the ground-truth oracle (always) + the explorer after the novelty toggle. A per-role network sandbox in DSH core is the future upgrade path. |
+| C3 | A **verified negative** is a *mathematically proven* impossibility, falsehood, or known-intractability. Expert opinion, "big names think it unlikely", and the absence of a known result are NOT negatives. |
+| C4 | The literature lane briefs the orchestrator; the orchestrator passes the novel lane **negatives only — never hints, never semi-positives**. |
+| C5 | A fully-settled sub-problem gets no novel lane (the answer is a citation). A fully-impossible one gets no novel lane either (the answer is the impossibility, recorded as `status: "impossible"` with its math-lane escalation). |
+| C6 | Paywall bypass is permitted and author-hosted copies are first-class. Retrieval is tiered; mirrors are **user-supplied and disabled by default**, with the legal basis recorded by the user. |
+| C7 | Thoroughness beats speed; 10+ hours per run is acceptable. The budget is a resume-able safety ceiling, never a finish target. |
+
+**The membrane, as edges.** This is the complete set of crossings; anything not
+listed does not cross:
+
+```
+orchestrator ──line hypotheses──▶ lit line-agent (walled)
+lit line-agent ──dossier──▶ orchestrator (interim/, never read by the novel lane)
+orchestrator ──claims list──▶ lit adversary (NOT the dossier prose)
+lit adversary ──verdict──▶ orchestrator
+orchestrator ──verified negatives (provenance-stripped)──▶ novel lane
+```
+
+Open status never crosses (transmitting "this is open" is a hint), settled
+results for other sub-problems never cross, and no source, survey, or
+related-work framing crosses. The lane certifies "the literature says X, and X
+is current" — never "X is true"; that stays with the math lane, and a negative
+the study's *conclusion* rests on escalates there before the study may rely on
+it.
 
 What is **enforced**, and where: the blind deny lists live in the composition
 (`tests/test_blind_deny_list.py`); the known-mark, routed-away-impossible +
 math-lane escalation, negative-export subset, completeness-checklist,
 refs-seed and fabricated-citation gates live in `rq_check.py`
-(`tests/test_literature_gate.py`, `tests/test_integration.py`). What stays
-**procedural and audited**: `bash`-level network calls from a blind role and
-cross-lane filesystem reads — no per-role network or fs scope exists in the
-spawn provider, so those are named holes (literature-lane.md §13), not a wall.
-The lane's own boundary to the outside world (arXiv, Semantic Scholar,
-Crossref) is a live network dependency; `tests/test_retrieval_boundary.py`
-marks it unverified rather than reporting "not run" as "passed".
+(`tests/test_literature_gate.py`, `tests/test_integration.py`). The lane's
+boundary to the outside world (arXiv, Semantic Scholar, Crossref) is a live
+network dependency; `tests/test_retrieval_boundary.py` marks it unverified
+rather than reporting "not run" as "passed".
+
+**Residual holes, named.** What stays procedural and audited, because no
+per-role network or filesystem scope exists in the spawn provider:
+
+- **Bash-curl.** The blind lane keeps `bash`; nothing prevents it from curling
+  `export.arxiv.org`. The math adversary audits for it — a blind output that
+  cites or recalls an external result it could not have derived is flagged.
+- **Cross-lane filesystem read.** A blind child could read `literature/` or a
+  sibling's `interim/lit/`. Same class as the ground-truth hole the repository
+  review named; per-line directories and a root-only merge are conventions,
+  not enforcement.
+- **Paywalled full text.** Where no tier yields full text, the lit adversary
+  records `unverifiable` (abstract-only): a lower confidence tier, never
+  `verified-current`, never load-bearing.
+- **Mirror rot.** Mirrors rotate domains and break unattended runs; the
+  user-supplied, empty-by-default tier keeps those URLs out of this repository
+  and makes the legal basis a user-owned fact.
+- **Hallucinated dossiers.** The lit adversary's independent re-retrieval plus
+  the provenance gate is the defense; a dossier may never vouch for itself.
+- **Rate limits and resume drift.** Semantic Scholar and Crossref throttle;
+  retrieval must back off and record partial sweeps honestly rather than
+  fabricate coverage, and a resumed walk re-anchors on the checkpointed
+  frontier, with the completeness checklist carrying what was already swept.
+- **Cost.** Thoroughness-first runs burn tokens; `max_cost_usd` /
+  `max_wall_minutes` remain available as ceilings.
+
+Deferred on purpose: OCR of PDFs (revisit only if abstract-only verification
+proves insufficient in practice), and any mirror URL hardcoded in-repo.
 
 ## Decision 15 — the retrieval skills install globally
 
@@ -159,7 +214,6 @@ agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        this record
-docs/literature-lane.md     literature-lane spec (Decisions 14-15)
 tests/                      the validator's suite; a forged study must FAIL
 install.sh                  installs the preset (or --skill-only) into $DSH_HOME
 ```

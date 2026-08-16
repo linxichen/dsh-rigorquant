@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/linxichen/dsh-rigorquant/agent-presets/rigorquant/skills/rigorquant/schemas/completeness.schema.json",
   "title": "RigorQuant literature completeness.json",
-  "description": "The per-line completeness checklist (docs/literature-lane.md §6). It is the anti-premature-termination artifact: a line may not conclude until every mandatory sweep is recorded, so 'the model finished early' is a FAILING condition rather than the default. rq_check.py refuses an absent checklist, a missing sweep, and an empty sweep.",
+  "description": "The per-line completeness checklist (procedure: the literature skill). It is the anti-premature-termination artifact: a line may not conclude until every mandatory sweep is recorded, so 'the model finished early' is a FAILING condition rather than the default. rq_check.py refuses an absent checklist, a missing sweep, and an empty sweep.",
   "type": "object",
   "additionalProperties": false,
   "required": ["lines"],
@@ -50,7 +50,7 @@
     "sweeps": {
       "type": "object",
       "additionalProperties": false,
-      "description": "every mandatory sweep of docs/literature-lane.md §6. Each value states what was actually swept; an empty value is a refused claim of coverage, not a pass.",
+      "description": "every mandatory sweep the literature skill requires of a line. Each value states what was actually swept; an empty value is a refused claim of coverage, not a pass.",
       "required": [
         "forward_citations",
         "related_work",

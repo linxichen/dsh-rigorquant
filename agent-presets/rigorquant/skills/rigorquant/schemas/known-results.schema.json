@@ -26,7 +26,7 @@
         "escalation": {
           "type": "string",
           "minLength": 1,
-          "description": "study-root-relative path to the math-lane record that accepted this impossibility (docs/literature-lane.md §4). Required before a sub-problem may be routed away as impossible: the literature lane certifies that the literature says X, never that X is true."
+          "description": "study-root-relative path to the math-lane record that accepted this impossibility (architecture.md Decision 14: a negative the conclusion RESTS on is load-bearing). Required before a sub-problem may be routed away as impossible: the literature lane certifies that the literature says X, never that X is true."
         },
         "sources": {
           "type": "array",

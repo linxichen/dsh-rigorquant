@@ -141,7 +141,7 @@ def test_missing_schema_file_fails_loudly(study, tmp_path, monkeypatch, tex_avai
 
 
 def test_a_full_literature_run_passes_end_to_end(study, tex_available):
-    """docs/literature-lane.md A7: one real assembled path, not leaf unit tests.
+    """One real assembled path for the literature lane, not leaf unit tests.
 
     An intake that ran the lane leaves a known-results map, a completeness
     checklist, provenance-stripped negative exports, a verified refs-seed.bib and

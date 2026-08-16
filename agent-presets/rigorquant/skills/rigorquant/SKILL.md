@@ -163,7 +163,7 @@ lane, provenance-stripped — never hints, never semi-positives, never 'open' or
 'settled'. Verified state lives in literature/known-results.json; the validator
 refuses a known mark, a negative export, or a citation without a verified
 record. Procedure and schemas: [references/literature.md](references/literature.md);
-spec: docs/literature-lane.md (Decision 14).
+owning decision: docs/architecture.md Decision 14.
 
 ## Step 3 — The round loop (orchestrator)
 

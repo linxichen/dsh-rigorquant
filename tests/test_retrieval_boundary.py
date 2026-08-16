@@ -1,7 +1,7 @@
 """The literature lane's external boundary, marked rather than assumed.
 
-docs/literature-lane.md A8: arXiv / Semantic Scholar / Crossref access is a real
-network boundary. Where the sandbox or CI cannot reach it, these tests SKIP with
+docs/architecture.md Decision 14: arXiv / Semantic Scholar / Crossref access is
+a real network boundary. Where the sandbox or CI cannot reach it, these tests SKIP with
 an explicit "unverified boundary" message -- they never translate "not run" into
 "passed", which is the failure mode the whole repository exists to prevent.
 """

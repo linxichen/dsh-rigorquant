@@ -1048,7 +1048,7 @@ def _verified_source_ids(map_data):
 
     Sources of `open` entries are excluded: the lane may have fetched the paper,
     but the question it was fetched for is still open, so nothing may be cited
-    as a result on its authority (docs/literature-lane.md §11).
+    as a result on its authority.
     """
     ids = set()
     for entries in (map_data or {}).values():

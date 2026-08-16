@@ -172,7 +172,7 @@ def test_npm_ignore_excludes_python_bytecode():
 
 
 def test_no_document_calls_an_isolation_boundary_a_wall():
-    """docs/literature-lane.md A6: shipped text may not over-claim enforcement.
+    """Decision 14: shipped text may not over-claim enforcement.
 
     Only web + delegation are tool-enforced; bash-curl and cross-lane filesystem
     reads are procedural. Every mention of the word must therefore be a denial.
@@ -196,6 +196,30 @@ def test_no_document_calls_an_isolation_boundary_a_wall():
                 offenders.append("%s: %s" % (doc.relative_to(REPO),
                                              " ".join(block.split())[:120]))
     assert not offenders, "isolation over-claims:\n" + "\n".join(offenders)
+
+
+def test_no_reference_to_a_docs_file_dangles():
+    """A retired document must take its inbound references with it.
+
+    Prose references (a docs path followed by a section number) outnumber
+    markdown links here and are
+    shipped inside skills and the composition, where a dangling path sends a
+    model looking for a file that is not installed.
+    """
+    referenced = {}
+    for rel in tracked_files():
+        if rel.endswith((".png", ".pdf", ".lock")):
+            continue
+        try:
+            text = (REPO / rel).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for hit in re.findall(r"docs/[\w./-]*\.md", text):
+            referenced.setdefault(hit, []).append(rel)
+    missing = {t: sorted(set(src)) for t, src in referenced.items()
+               if not (REPO / t).exists()}
+    assert not missing, "references to documents that do not exist:\n" + "\n".join(
+        "  %s <- %s" % (t, ", ".join(src)) for t, src in sorted(missing.items()))
 
 
 def _decision_numbers():

@@ -57,7 +57,7 @@
           "name": { "type": "string" },
           "status": {
             "enum": ["known", "novel", "impossible"],
-            "description": "`known`/`novel` are intake hints about whether an analytical result likely exists. `impossible` is an OUTCOME, not a hint: the literature lane routed the sub-problem away because the result is proven impossible (docs/literature-lane.md C5). It requires a verified-current 'impossible' record plus that record's math-lane escalation (§4)."
+            "description": "`known`/`novel` are intake hints about whether an analytical result likely exists. `impossible` is an OUTCOME, not a hint: the literature lane routed the sub-problem away because the result is proven impossible (architecture.md Decision 14, constraint C5). It requires a verified-current 'impossible' record plus that record's math-lane escalation."
           },
           "stage": {
             "enum": ["reference-case", "generalization", "domain-scale"],
@@ -203,7 +203,7 @@
       "properties": {
         "phase": {
           "enum": ["not-run", "running", "concluded", "skipped"],
-          "description": "`skipped` is the one honest escape from the mandatory intake sweep (docs/literature-lane.md §10) and requires `skip_reason`: the explicit user assertion that made the sweep unnecessary."
+          "description": "`skipped` is the one honest escape from the mandatory intake sweep (references/lifecycle.md, 'Literature lane accounting') and requires `skip_reason`: the explicit user assertion that made the sweep unnecessary."
         },
         "skip_reason": {
           "type": "string",

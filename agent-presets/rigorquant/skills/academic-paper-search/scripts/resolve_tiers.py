@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Emit the tiered retrieval plan for one paper, in the order §9 fixes.
 
-docs/literature-lane.md §9 states the resolution order as prose; this script is
-that order as something executable, so a line-agent resolves "the best
-*retrievable* version" the same way every time and labels its provenance with a
-`retrieval_method` the known-results schema will actually accept.
+Decision 14 (docs/architecture.md, constraint C6) fixes the resolution order as
+prose; this script is that order as something executable, so a line-agent
+resolves "the best *retrievable* version" the same way every time and labels its
+provenance with a `retrieval_method` the known-results schema will accept.
 
     resolve_tiers.py --doi 10.2307/2975974 [--author-page URL]
     resolve_tiers.py --arxiv 1706.03762

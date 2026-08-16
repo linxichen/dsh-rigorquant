@@ -20,7 +20,8 @@ Primary sources:
    *pretend* it has no web — call the walled role instead. What that buys is
    partial and must be stated so: context isolation and the web/delegation deny
    lists are enforced, while filesystem scope and `bash`-level network calls
-   stay procedural and audited (docs/literature-lane.md §13) — never describe
+   stay procedural and audited (the residual holes named under Decision 14 in
+   docs/architecture.md) — never describe
    them as a "wall". Because `skill` is denied, a blind role cannot load this
    file: its persona carries the derivation protocol itself.
 2. **Diverse portfolio, no premature convergence.** Begin with genuinely

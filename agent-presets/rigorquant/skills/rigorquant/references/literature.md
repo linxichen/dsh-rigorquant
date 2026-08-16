@@ -2,9 +2,9 @@
 
 The literature lane answers "what is settled / impossible / open / current"
 before compute is spent, and exports ONLY verified negatives (proven
-impossibilities) to the novel lane. Full spec: docs/literature-lane.md
-(Decision 14). Field procedure: load the literature skill
-(skills/literature/SKILL.md).
+impossibilities) to the novel lane. Locked constraints, membrane edges, and
+named residual holes: docs/architecture.md Decision 14. Field procedure: load
+the literature skill (skills/literature/SKILL.md).
 
 Key facts (summary only):
 

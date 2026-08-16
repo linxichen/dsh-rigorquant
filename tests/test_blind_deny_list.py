@@ -1,10 +1,10 @@
 """The blind novel lane is tool-denied, not just prompt-asked.
 
-Decision 14 / docs/literature-lane.md §5: the ground-truth oracle and the novel
+docs/architecture.md Decision 14 (C1, C2): the ground-truth oracle and the novel
 explorer must deny web_search, web_fetch, skill, and every delegation tool in
 the composition itself. This is the one piece of the lane's isolation that IS
 enforceable; the residual bash-curl and filesystem holes are documented as
-procedural (docs/literature-lane.md §13).
+procedural, and named as such under Decision 14.
 """
 
 import re
@@ -67,7 +67,7 @@ def test_blind_personas_carry_the_protocol_they_cannot_load():
 
     A five-line persona plus a denied `skill` tool is strictly less capable than
     what these roles had before the deny list existed; the derivation protocol
-    has to travel in the persona itself (docs/literature-lane.md §5).
+    has to travel in the persona itself.
     """
     text = CORDIS.read_text()
     for row_id, body in _rows(text):

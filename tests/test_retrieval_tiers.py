@@ -1,9 +1,9 @@
 """The tiered retrieval order is executable, not just prose.
 
-docs/literature-lane.md §9 fixes the resolution order (author page → open
-repos/Unpaywall → preprint → OpenAlex/CORE → user-supplied mirrors) and makes
-the mirror tier user-supplied and empty by default. A prose contract cannot be
-checked; the resolver script can.
+docs/architecture.md Decision 14 (C6) fixes the resolution order (author page →
+open repos/Unpaywall → preprint → OpenAlex/CORE → user-supplied mirrors) and
+makes the mirror tier user-supplied and empty by default. A prose contract
+cannot be checked; the resolver script can.
 """
 
 import json

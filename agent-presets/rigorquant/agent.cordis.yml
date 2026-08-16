@@ -177,7 +177,8 @@
     # for web + delegation. Filesystem scope and `bash`-curl are NOT enforceable
     # with the spawn provider: a spawned child always shares the workspace and
     # its shell can still curl — those boundaries are procedural + audited, never
-    # called a wall (see the persona's ISOLATION paragraph and docs/literature-lane.md §13).
+    # called a wall (see the persona's ISOLATION paragraph and the named residual
+    # holes under Decision 14 in docs/architecture.md).
     - id: tool-subagent
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
