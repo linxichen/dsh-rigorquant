@@ -1,47 +1,74 @@
 #!/usr/bin/env python3
-"""rq_check.py -- RigorQuant meta-validator.
+"""rq_check.py -- the RigorQuant meta-validator (single canonical copy).
 
-Validates study.json / registry.json, enforces the COVERAGE gate (the union of
-sub-problems must cover the ORIGINAL statement: every general question needs a
+Validates a study's state files against the shipped JSON Schemas (siblings of
+this script, in ../schemas/), enforces the COVERAGE gate (the union of
+sub-problems must cover the ORIGINAL statement: a general question needs a
 `generalization` sub-problem carrying the broad claim and a `domain-scale`
-sub-problem certifying a genuinely non-special instance), and refuses a
-declared PASS without the mandatory stage evidence (stage-3 general validity
-claim with hypotheses + evidence level, stage-5 domain-scale stress test,
-seeded N-grid hardening, audit-referenced passed routes, and falsifiable check
-declarations).
+sub-problem certifying a genuinely non-special instance), and refuses a declared
+PASS unless the mandatory evidence actually exists on disk.
 
-Usage:
-    python3 scripts/rq_check.py --study <study-root>
+Standard library only, so it runs inside or outside the pinned compute lane:
+
+    python3 <skill-dir>/scripts/rq_check.py --study <study-root>
+    python3 <skill-dir>/scripts/rq_check.py --study <study-root> --out report.json
 
 Exit codes:
     0  state valid (and PASS evidence complete, when a PASS is claimed)
     1  FAIL -- state invalid or PASS evidence incomplete (gaps printed)
     2  ERROR -- cannot read/parse the study state
+
+Design rule, learned the hard way: **a study may not vouch for itself.** Every
+evidence check reads the audit/derivation/artifact record, never `study.json`.
+A declaration in `study.json` says what was promised; only the record says what
+was done.
 """
 
 import argparse
-import glob
 import hashlib
 import json
 import os
+import platform
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+import time
+import uuid
 from html.parser import HTMLParser
 from pathlib import Path
 
-REQUIRED_STUDY_FIELDS = [
-    "slug", "title", "mode", "repo_root", "env_lane", "task_id", "created",
-    "statement", "broad_criterion", "success_criterion", "subproblems",
-    "simplified_cases", "seeds", "tolerances", "budget", "status",
-]
+SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schemas"
 
-SUB_STAGES = {"reference-case", "generalization", "domain-scale"}
-EVIDENCE_LEVELS = {
-    "falsification-surviving", "independently re-derived",
-    "certificate-checked", "formally verified",
-}
-REFERENCE_BODIES = ("box", "ball", "simplex", "ellipsoid")
+EVIDENCE_LEVELS = (
+    "falsification-surviving",
+    "independently re-derived",
+    "certificate-checked",
+    "formally verified",
+)
+SPECIAL_BODIES = ("box", "ball", "simplex", "ellipsoid", "diagonal")
+NON_SPECIAL_MARKERS = ("p-norm", "p norm", "quadratic", "intersection",
+                       "sublevel", "lens", "polytope", "convex-quadratic")
+# The validator's own JSON report is output, never evidence: it must not be able
+# to satisfy the audit-derived checks (a study may not vouch for itself, and
+# neither may the checker's own report vouch for the study).
+SELF_REPORT_NAME = "rq-check.json"
+PAPER_SECTIONS = ("statement", "method", "validity", "certification",
+                  "limitations", "reproduction")
+
+# A study claims PASS only when `status` *begins* with the PASS token. Anything
+# else -- "round 2: SP3 active, no PASS yet" -- is not a claim, and must not trip
+# the PASS gates. Documented in references/lifecycle.md.
+PASS_CLAIM_RE = re.compile(r"^\s*PASS\b", re.IGNORECASE)
+
+
+class Problems(list):
+    def add(self, check_id, message):
+        self.append({"id": check_id, "message": message})
+
+
+# ---------------------------------------------------------------- utilities
 
 
 def sha256_hex(p: Path) -> str:
@@ -52,209 +79,537 @@ def sha256_hex(p: Path) -> str:
     return h.hexdigest()
 
 
-def check_schema(study, problems):
-    missing = [f for f in REQUIRED_STUDY_FIELDS if f not in study]
-    if missing:
-        problems.append(f"study.json missing required fields: {missing}")
-        return None
-    subs = study.get("subproblems")
-    if not isinstance(subs, list) or not subs:
-        problems.append("study.json has no subproblems (expected a non-empty list)")
-        return None
-    return subs
+def env_manifest():
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "architecture": platform.machine(),
+    }
 
 
-def check_coverage(study, subs, problems):
+def claiming_pass(study) -> bool:
+    status = str(study.get("status", ""))
+    # A status that begins with PASS but is marked reopened is no longer claiming
+    # that PASS (it re-entered active work), so the PASS gates must not fire.
+    # Documented in references/lifecycle.md and the schema "status" description.
+    if "reopen" in status.lower():
+        return False
+    return bool(PASS_CLAIM_RE.match(status))
+
+
+def strip_tex_comments(text: str) -> str:
+    """Drop LaTeX comments so a required sentence cannot be satisfied by one."""
+    return re.sub(r"(?<!\\)%.*", " ", text)
+
+
+def norm(s: str) -> str:
+    return " ".join(str(s).split()).lower()
+
+
+def _names_special_body(text: str) -> bool:
+    """True if the text names a special/reference body as a bare, non-negated term.
+
+    'diagonal covariance' is special; 'non-diagonal covariance' is not.
+    """
+    tokens = re.split(r"[^a-z0-9]+", text)
+    for b in SPECIAL_BODIES:
+        for i, tok in enumerate(tokens):
+            if tok == b and (i == 0 or tokens[i - 1] != "non"):
+                return True
+    return False
+
+
+def _validate_output_paths(outputs, root):
+    """Split declared output paths into (missing, invalid).
+
+    A path is invalid if it is absolute, escapes the study root (".."), or names
+    the validator's own report. Outputs are study-root-relative by contract
+    (lifecycle.md); the validator's report is output, not evidence.
+    """
+    missing, invalid = [], []
+    for o in outputs:
+        if not isinstance(o, str) or not o.strip():
+            invalid.append(repr(o))
+            continue
+        p = Path(o)
+        if p.is_absolute() or ".." in p.parts:
+            invalid.append(o)
+            continue
+        if p.name == SELF_REPORT_NAME:
+            invalid.append(o)
+            continue
+        if not (root / o).exists():
+            missing.append(o)
+    return missing, invalid
+
+
+def evidence_corpus(root: Path):
+    """The record the study produced: audits, derivations, artifact results.
+
+    Deliberately EXCLUDES study.json -- a declaration is not evidence.
+    Returns (joined_lowercase_text, list_of_paths).
+    """
+    paths = []
+    for sub in ("audits", "derivations", "artifacts"):
+        d = root / sub
+        if not d.is_dir():
+            continue
+        for p in sorted(d.rglob("*")):
+            if p.name == SELF_REPORT_NAME:
+                continue  # the validator's own report is output, not evidence
+            if p.is_file() and p.suffix.lower() in (".md", ".txt", ".json", ".csv"):
+                paths.append(p)
+    parts = []
+    for p in paths:
+        try:
+            parts.append(p.read_text(errors="replace"))
+        except OSError:
+            continue
+    return "\n".join(parts).lower(), paths
+
+
+# ------------------------------------------------- minimal JSON Schema check
+#
+# Supports exactly the draft-07 subset the shipped schemas use: type, required,
+# properties, additionalProperties (bool), items, enum, pattern, minItems,
+# minimum, exclusiveMinimum/Maximum, $ref to #/definitions/*. Anything outside
+# that subset is a schema authoring error and raises, so the schemas can never
+# quietly drift past what this validator understands.
+
+_TYPES = {
+    "object": dict, "array": list, "string": str, "boolean": bool,
+    "number": (int, float), "integer": int, "null": type(None),
+}
+_SUPPORTED = {
+    "$schema", "$id", "title", "description", "type", "required", "properties",
+    "additionalProperties", "items", "enum", "pattern", "minItems", "minimum",
+    "exclusiveMinimum", "exclusiveMaximum", "definitions", "$ref",
+}
+
+
+def _resolve(schema, root):
+    if "$ref" in schema:
+        ref = schema["$ref"]
+        if not ref.startswith("#/definitions/"):
+            raise ValueError("unsupported $ref: " + ref)
+        return root["definitions"][ref.split("/")[-1]]
+    return schema
+
+
+def validate_json_schema(instance, schema, root=None, path="", errs=None):
+    errs = [] if errs is None else errs
+    root = schema if root is None else root
+    schema = _resolve(schema, root)
+    unsupported = set(schema) - _SUPPORTED
+    if unsupported:
+        raise ValueError("unsupported schema keywords at %s: %s" % (path or "/", sorted(unsupported)))
+    where = path or "(root)"
+
+    t = schema.get("type")
+    if t is not None:
+        types = t if isinstance(t, list) else [t]
+        py = tuple(x for name in types for x in
+                   (_TYPES[name] if isinstance(_TYPES[name], tuple) else (_TYPES[name],)))
+        ok = isinstance(instance, py)
+        if ok and bool not in py and isinstance(instance, bool):
+            ok = False  # JSON booleans are not numbers
+        if not ok:
+            errs.append("%s: expected type %s" % (where, t))
+            return errs
+    if "enum" in schema and instance not in schema["enum"]:
+        errs.append("%s: %r is not one of %s" % (where, instance, schema["enum"]))
+    if "pattern" in schema and isinstance(instance, str):
+        if not re.search(schema["pattern"], instance):
+            errs.append("%s: %r does not match %s" % (where, instance, schema["pattern"]))
+    if isinstance(instance, (int, float)) and not isinstance(instance, bool):
+        if "minimum" in schema and instance < schema["minimum"]:
+            errs.append("%s: %r < minimum %r" % (where, instance, schema["minimum"]))
+        if "exclusiveMinimum" in schema and instance <= schema["exclusiveMinimum"]:
+            errs.append("%s: %r <= exclusiveMinimum %r" % (where, instance, schema["exclusiveMinimum"]))
+        if "exclusiveMaximum" in schema and instance >= schema["exclusiveMaximum"]:
+            errs.append("%s: %r >= exclusiveMaximum %r" % (where, instance, schema["exclusiveMaximum"]))
+    if isinstance(instance, list):
+        if "minItems" in schema and len(instance) < schema["minItems"]:
+            errs.append("%s: needs at least %d item(s)" % (where, schema["minItems"]))
+        if "items" in schema:
+            for i, item in enumerate(instance):
+                validate_json_schema(item, schema["items"], root, "%s[%d]" % (where, i), errs)
+    if isinstance(instance, dict):
+        for key in schema.get("required", []):
+            if key not in instance:
+                errs.append("%s: missing required field %r" % (where, key))
+        props = schema.get("properties", {})
+        for key, value in instance.items():
+            if key in props:
+                validate_json_schema(value, props[key], root, "%s.%s" % (where, key), errs)
+            else:
+                extra = schema.get("additionalProperties", True)
+                if extra is False:
+                    errs.append("%s: unexpected field %r" % (where, key))
+                elif isinstance(extra, dict):
+                    validate_json_schema(value, extra, root, "%s.%s" % (where, key), errs)
+    return errs
+
+
+def load_schema(name):
+    p = SCHEMA_DIR / name
+    if not p.is_file():
+        return None
+    return json.loads(p.read_text())
+
+
+def check_against_schemas(study, registry, problems):
+    for name, instance, label in (("study.schema.json", study, "study.json"),
+                                  ("registry.schema.json", registry, "registry.json")):
+        schema = load_schema(name)
+        if schema is None:
+            problems.add("schema.missing", "shipped schema %s not found next to the validator" % name)
+            continue
+        if instance is None:
+            continue
+        for e in validate_json_schema(instance, schema):
+            problems.add("schema", "%s does not match %s: %s" % (label, name, e))
+
+
+# ------------------------------------------------------------ state validity
+
+
+def check_coverage(study, problems):
+    subs = study.get("subproblems") or []
     if not study.get("broad_criterion"):
-        problems.append(
+        problems.add(
+            "coverage.broad",
             "coverage gate: study.json has no `broad_criterion` -- the ORIGINAL "
             "broad claim a PASS must deliver (verbatim restatement of the user's "
             "general question). Record it at intake, never re-scope it to the "
             "simplified cases.")
-    stages = [sp.get("stage", "") for sp in subs]
+    stages = [sp.get("stage", "") for sp in subs if isinstance(sp, dict)]
     if "generalization" not in stages:
-        problems.append(
+        problems.add(
+            "coverage.generalization",
             "coverage gate FAILED: no subproblem has stage=generalization. "
             "The broad claim is not carried by any sub-problem -- a study that "
-            "only exercises its simplified cases can never answer a general "
-            "question.")
+            "only exercises its simplified cases can never answer a general question.")
     if "domain-scale" not in stages:
-        problems.append(
+        problems.add(
+            "coverage.domain-scale",
             "coverage gate FAILED: no subproblem has stage=domain-scale. "
             "There is no certification on a genuinely non-special instance.")
-    for sp in subs:
-        st = sp.get("stage", "")
-        if st and st not in SUB_STAGES:
-            problems.append(f"subproblem {sp.get('id', '?')} has unknown stage {st!r}")
+
+
+def check_registry_consistency(study, registry, root: Path, problems):
+    """The registry is parsed, never grepped: a PASS needs a route whose status
+    is `passed` and whose outputs exist on disk (lifecycle.md: `passed` requires
+    an audit reference)."""
+    if not isinstance(registry, dict):
+        return
+    reg_subs = registry.get("subproblems")
+    if not isinstance(reg_subs, dict):
+        return
+    study_ids = {sp["id"] for sp in study.get("subproblems", [])
+                 if isinstance(sp, dict) and "id" in sp}
+    if study_ids and set(reg_subs) != study_ids:
+        only_reg = sorted(set(reg_subs) - study_ids)
+        only_study = sorted(study_ids - set(reg_subs))
+        problems.add(
+            "registry.keys",
+            "registry.json subproblem keys do not match study.json subproblem ids "
+            "(only in registry: %s; only in study: %s)" % (only_reg, only_study))
+
+    def routes_of(sp):
+        for fam in sp.get("families") or []:
+            for route in (fam.get("routes") or []) if isinstance(fam, dict) else []:
+                if isinstance(route, dict):
+                    yield route
+
+    for key, sp in reg_subs.items():
+        if not isinstance(sp, dict):
+            continue
+        passed_routes = [r for r in routes_of(sp) if r.get("status") == "passed"]
+        if sp.get("status") == "passed" and not passed_routes:
+            problems.add(
+                "registry.passed-route",
+                "registry.json %s is marked passed but carries no passed route "
+                "(a sub-problem passes through a route, never by assertion)" % key)
+        for route in passed_routes:
+            outputs = route.get("outputs") or []
+            if not outputs:
+                problems.add(
+                    "registry.passed-outputs",
+                    "registry.json %s route %r is passed with empty outputs; "
+                    "`passed` requires an audit reference (lifecycle.md)"
+                    % (key, route.get("routeId", "?")))
+                continue
+            missing, invalid = _validate_output_paths(outputs, root)
+            if invalid:
+                problems.add(
+                    "registry.passed-outputs",
+                    "registry.json %s route %r references invalid output paths "
+                    "(must be study-root-relative, not the validator's own report): %s"
+                    % (key, route.get("routeId", "?"), invalid))
+            if missing:
+                problems.add(
+                    "registry.passed-outputs",
+                    "registry.json %s route %r references outputs that do not exist: %s"
+                    % (key, route.get("routeId", "?"), missing))
+
+    if claiming_pass(study):
+        any_passed = any(
+            r.get("status") == "passed"
+            for sp in reg_subs.values() if isinstance(sp, dict)
+            for r in routes_of(sp))
+        if not any_passed:
+            problems.add(
+                "registry.no-pass",
+                "PASS refused: registry.json has no audit-referenced passed route")
+
+
+def check_record_present(study, root: Path, problems):
+    """The tracks must have left a record behind.
+
+    Only a study that CLAIMS a PASS owes one: the validator also runs at intake,
+    where `derivations/` and `audits/` are legitimately still empty.
+    """
+    if not claiming_pass(study):
+        return
+    for name, why in (
+            ("derivations", "the ground-truth track re-derives the check targets "
+                            "twice and stores both derivations here"),
+            ("audits", "the adversary writes its report and the battery results here")):
+        d = root / name
+        if not d.is_dir():
+            problems.add("record." + name, "missing directory: %s/ -- %s" % (name, why))
+            continue
+        entries = [e for e in d.iterdir() if not e.name.startswith(".")]
+        if not entries:
+            problems.add("record." + name, "empty directory: %s/ -- %s" % (name, why))
 
 
 def check_pass_evidence(study, root: Path, problems):
-    status = str(study.get("status", ""))
-    if "PASS" not in status.upper() or "reopen" in status.lower():
-        return  # only a declared PASS is gated here
+    if not claiming_pass(study):
+        return
     vs = study.get("validity_stages") or {}
     s3 = vs.get("stage3_general_claim")
     s5 = vs.get("stage5_domain_scale")
+
+    def check_outputs(stage, label):
+        outputs = stage.get("outputs")
+        if not outputs:
+            problems.add(
+                "stage.outputs",
+                "PASS refused: %s records no `outputs` -- the stage is a claim with "
+                "nothing behind it. List the derivations/audits that establish it."
+                % label)
+            return
+        missing, invalid = _validate_output_paths(outputs, root)
+        if invalid:
+            problems.add("stage.outputs",
+                         "PASS refused: %s outputs are not study-root-relative "
+                         "evidence (or name the validator's own report): %s"
+                         % (label, invalid))
+        if missing:
+            problems.add("stage.outputs",
+                         "PASS refused: %s outputs missing: %s" % (label, missing))
+
     if not s3:
-        problems.append(
+        problems.add(
+            "stage3.absent",
             "PASS refused: validity_stages.stage3_general_claim absent. "
             "A PASS needs the general validity claim with ALL hypotheses and an "
-            "evidence level (falsification-surviving / independently re-derived / "
-            "certificate-checked / formally verified).")
+            "evidence level (%s)." % " / ".join(EVIDENCE_LEVELS))
     else:
         if s3.get("evidence_level") not in EVIDENCE_LEVELS:
-            problems.append(
-                f"PASS refused: stage3 evidence_level {s3.get('evidence_level')!r} "
-                f"is not one of {sorted(EVIDENCE_LEVELS)}")
+            problems.add("stage3.evidence-level",
+                         "PASS refused: stage3 evidence_level %r is not one of %s"
+                         % (s3.get("evidence_level"), list(EVIDENCE_LEVELS)))
         if not s3.get("claim"):
-            problems.append("PASS refused: stage3_general_claim has no `claim` text")
-        missing = [p for p in (s3.get("outputs") or []) if not (root / p).exists()]
-        if missing:
-            problems.append(f"PASS refused: stage3 outputs missing: {missing}")
+            problems.add("stage3.claim", "PASS refused: stage3_general_claim has no `claim` text")
+        check_outputs(s3, "stage3_general_claim")
+
     if not s5:
-        problems.append(
+        problems.add(
+            "stage5.absent",
             "PASS refused: validity_stages.stage5_domain_scale absent. "
             "A PASS needs the full battery on a genuinely non-special instance.")
     else:
         inst = str(s5.get("instance", "")).lower()
         if not inst:
-            problems.append("PASS refused: stage5_domain_scale does not name its instance")
+            problems.add("stage5.instance",
+                         "PASS refused: stage5_domain_scale does not name its instance")
         else:
-            non_special_markers = ("p-norm", "p norm", "quadratic", "intersection",
-                                   "sublevel", "lens", "polytope", "convex-quadratic")
-            if not any(m in inst for m in non_special_markers) and \
-               any(re.search(rf"\b{b}\b", inst) for b in REFERENCE_BODIES):
-                problems.append(
-                    f"PASS refused: stage5 instance {s5.get('instance')!r} names only a "
-                    f"reference-case body {REFERENCE_BODIES}; the domain-scale instance "
-                    f"must be non-special (e.g. a p-norm ball with p not in {{1,2,inf}}, "
-                    f"a convex-quadratic set, an intersection of bodies).")
-        missing = [p for p in (s5.get("outputs") or []) if not (root / p).exists()]
-        if missing:
-            problems.append(f"PASS refused: stage5 outputs missing: {missing}")
-    # seeded N-grid evidence must be discoverable in study/artifacts/audits text
-    parts = []
-    sp = root / "study.json"
-    try:
-        parts.append(sp.read_text(errors="replace"))
-    except OSError:
-        pass
-    for p in sorted((root / "artifacts").glob("*.md")) + sorted((root / "audits").glob("*.md")):
+            inst_norm = norm(inst)
+            simplified = [norm(c) for c in (study.get("simplified_cases") or [])
+                          if isinstance(c, str) and c.strip()]
+            restates = any(fam and (fam in inst_norm or inst_norm in fam)
+                           for fam in simplified)
+            if (not any(m in inst for m in NON_SPECIAL_MARKERS)
+                    and (_names_special_body(inst) or restates)):
+                problems.add(
+                    "stage5.instance",
+                    "PASS refused: stage5 instance %r names only a reference/special "
+                    "body or restates a simplified case; the domain-scale instance "
+                    "must be genuinely non-special (a diagonal or box/ball/simplex/"
+                    "ellipsoid body does not qualify; negated forms like non-diagonal "
+                    "are allowed)." % s5.get("instance"))
+        check_outputs(s5, "stage5_domain_scale")
+
+    # Seeded/falsifiable evidence, read from the RECORD only (never study.json).
+    text, _ = evidence_corpus(root)
+    if "seed" not in text:
+        problems.add(
+            "evidence.seed",
+            "PASS refused: no seed recorded anywhere in audits/ derivations/ "
+            "artifacts/ (a declaration in study.json is not evidence)")
+    if not re.search(r"n\s*(?:in|=)\s*\{[^}\n]*?1e\d", text):
+        problems.add(
+            "evidence.n-grid",
+            "PASS refused: no seeded N-grid (e.g. N in {1e3,1e4,1e5}) reported in "
+            "audits/ derivations/ artifacts/")
+    for marker, why in (
+            ("failure condition",
+             "a check that cannot name the predicate that would make it fail is a tautology"),
+            ("mutation",
+             "a check that detects no deliberately incorrect implementation is a tautology")):
+        if marker not in text:
+            problems.add(
+                "evidence.falsifiability",
+                "PASS refused: no audit declares a %r for its checks -- %s "
+                "(check-battery.md 'Every check must be declared')" % (marker, why))
+
+
+TOLERANCE_KEYS = {
+    "se_units": ("stochastic", "se_units"),
+    "confidence": ("stochastic", "confidence"),
+    "abs": ("deterministic", "abs"),
+    "rel": ("deterministic", "rel"),
+}
+TOLERANCE_RE = re.compile(
+    r"\b(se_units|confidence|abs|rel)\b\s*[:=]?\s*"
+    r"([0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)")
+
+
+def check_tolerance_reconciliation(study, root: Path, problems):
+    """check-battery.md: a tolerance restated in an audit must match study.json."""
+    declared = study.get("tolerances") or {}
+    text, paths = evidence_corpus(root)
+    for p in paths:
+        if p.suffix.lower() not in (".md", ".txt"):
+            continue
         try:
-            parts.append(p.read_text(errors="replace"))
+            body = p.read_text(errors="replace")
         except OSError:
-            pass
-    text = "\n".join(parts)
-    low = text.lower()
-    if "seed" not in low:
-        problems.append("PASS refused: no seed recorded in study.json / artifacts / audits")
-    if not re.search(r"n\s*(?:in|=)\s*\{[^}\n]*?1e3", low):
-        problems.append("PASS refused: no seeded N-grid (e.g. N in {1e3,1e4,1e5}) "
-                        "found in study.json / artifacts / audits")
-    for marker in ("failure condition", "mutation"):
-        if marker not in low:
-            problems.append(
-                f"PASS refused: no audit text declares a {marker!r} for its checks "
-                f"(a check without a failure condition or a detected mutation is a "
-                f"tautology, not evidence)")
+            continue
+        for key, value in TOLERANCE_RE.findall(body):
+            block, field = TOLERANCE_KEYS[key]
+            expected = (declared.get(block) or {}).get(field)
+            if expected is None:
+                continue
+            try:
+                if abs(float(value) - float(expected)) <= 1e-12 * max(1.0, abs(float(expected))):
+                    continue
+            except (TypeError, ValueError):
+                continue
+            problems.add(
+                "tolerance.mismatch",
+                "%s states %s = %s but study.json tolerances.%s.%s = %r; a loosened "
+                "tolerance must be reconciled with the study record "
+                "(check-battery.md gate A)"
+                % (p.name, key, value, block, field, expected))
 
 
-PAPER_SECTIONS = ("statement", "method", "validity", "certification",
-                  "limitations", "reproduction")
+# ---------------------------------------------------------- document gates
 
 
-def claiming_pass(study) -> bool:
-    status = str(study.get("status", ""))
-    return "PASS" in status.upper() and "reopen" not in status.lower()
+def notation_block(text: str, is_beamer: bool = False) -> str:
+    if is_beamer:
+        m = re.search(
+            r"\\begin\{frame\}[^\n{]*\{[^}]*?(?:notation|definitions)[^}]*\}"
+            r"(.*?)\\end\{frame\}",
+            text, re.IGNORECASE | re.DOTALL)
+        return m.group(1) if m else ""
+    m = re.search(r"\\(?:section|subsection)\*?\{[^}]*?(?:notation|definitions)",
+                  text, re.IGNORECASE)
+    if not m:
+        return ""
+    rest = text[m.end():]
+    nxt = re.search(r"\\section\*?\{", rest)
+    return rest[:nxt.start()] if nxt else rest
 
 
-TEX_ENGINE_CANDIDATES = ("tectonic", "pdflatex", "latexmk", "xelatex", "lualatex")
+# Cross-domain notation that is routinely used without definition. Deliberately
+# small and domain-neutral: study-specific notation belongs in the audience
+# spec's `symbols` map (see references/deliverables.md), not in this file.
+DEFAULT_SYMBOLS = {
+    "O^*": (r"O\^\*|\\tilde\{O\}", ["polylog", "hides", "soft-o", "up to"]),
+    "poly(": (r"\bpoly\s*\(", ["polynomial"]),
+    "TV": (r"\\mathrm\{TV\}|\btotal[- ]variation\b", ["total-variation", "total variation"]),
+    "w.h.p.": (r"\bw\.h\.p\.", ["high probability"]),
+    "lesssim": (r"\\lesssim", ["up to a constant", "absolute constant"]),
+}
 
 
-def find_tex_engine():
-    """Return the first usable TeX engine, searching PATH and standard installs."""
-    bases = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
-    bases += ["/Library/TeX/texbin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
-    bases += sorted(glob.glob("/usr/local/texlive/*/bin/*"))
-    for name in TEX_ENGINE_CANDIDATES:
-        for base in bases:
-            exe = Path(base) / name
-            if exe.is_file() and os.access(exe, os.X_OK):
-                return str(exe)
-    return None
+def symbol_registry(spec):
+    """Default cross-domain registry, extended by the audience spec's `symbols`."""
+    registry = dict(DEFAULT_SYMBOLS)
+    for key, entry in ((spec or {}).get("symbols") or {}).items():
+        if isinstance(entry, dict):
+            pattern = entry.get("pattern") or re.escape(key)
+            witnesses = entry.get("witnesses") or [key.lower()]
+        else:  # a bare list of witnesses
+            pattern, witnesses = re.escape(key), list(entry)
+        registry[key] = (pattern, [str(w).lower() for w in witnesses])
+    return registry
 
 
-def tex_compile_command(engine: str, target: Path):
-    """Engine-correct compile command. Runs in the target's directory."""
-    name = Path(engine).name
-    if name == "tectonic":
-        return [engine, str(target)]
-    if name == "latexmk":
-        return [engine, "-pdf", "-interaction=nonstopmode", "-halt-on-error", str(target)]
-    return [engine, "-interaction=nonstopmode", "-halt-on-error", str(target)]
+def check_document_spec(text: str, spec, label: str, problems, is_beamer: bool = False):
+    """Enforce the audience spec, plus the conditional symbol audit: every
+    registered symbol that APPEARS in the document must have a defining witness
+    in the Notation/Definitions block (references/deliverables.md)."""
+    source = strip_tex_comments(text)
+    block = notation_block(source, is_beamer)
+    if not block:
+        problems.add(
+            "document.notation",
+            "PASS refused: %s has no Notation/Definitions block; every symbol the "
+            "document uses must be defined there and conventions never assumed" % label)
+        return
+    low_block = block.lower()
+    body = source.replace(block, " ")
+    doc_norm = norm(source)
 
+    sentence = (spec or {}).get("sentence", "")
+    if not sentence:
+        problems.add(
+            "document.audience-sentence",
+            "PASS refused: the audience spec for %s has no `sentence` -- a document "
+            "that cannot say who it is for fails the gate "
+            "(references/deliverables.md)" % label)
+    elif norm(sentence) not in doc_norm:
+        problems.add(
+            "document.audience-sentence",
+            "PASS refused: %s does not state its confirmed audience sentence (%r); "
+            "the audience spec is authoritative (LaTeX comments do not count)"
+            % (label, sentence))
 
-UNDEFINED_CITE_RE = re.compile(
-    r"Citation [^\n]* undefined|There were undefined references", re.IGNORECASE)
-
-
-def find_bibtex(engine: str):
-    exe = Path(engine).parent / "bibtex"
-    if exe.is_file() and os.access(exe, os.X_OK):
-        return str(exe)
-    for base in ("/Library/TeX/texbin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"):
-        exe = Path(base) / "bibtex"
-        if exe.is_file() and os.access(exe, os.X_OK):
-            return str(exe)
-    return None
-
-
-def bib_files_of(tex: Path):
-    """Resolved .bib files referenced by \\bibliography{...} in the TeX source."""
-    out = []
-    text = tex.read_text(errors="replace")
-    for m in re.finditer(r"\\bibliography\s*\{([^}]*)\}", text):
-        for name in m.group(1).split(","):
-            name = name.strip()
-            if name:
-                out.append((tex.parent / (name + ".bib")).resolve())
-    return out
-
-
-def compile_tex_artifact(engine: str, tex: Path, label: str, problems):
-    """Full pipeline (engine + BibTeX + reruns) for a TeX artifact; a failed
-    render or unresolved citations refuse the PASS."""
-    name = Path(engine).name
-    base = [engine, "-interaction=nonstopmode", "-halt-on-error", str(tex)]
-    if name == "tectonic":
-        steps = [[engine, str(tex)]]
-    elif name == "latexmk":
-        steps = [[engine, "-pdf", "-interaction=nonstopmode", "-halt-on-error", str(tex)]]
-    else:
-        steps = [base]
-        bibtex = find_bibtex(engine)
-        if bibtex is not None:
-            steps.append([bibtex, tex.stem])
-        steps += [base, base]
-    logs = []
-    for step in steps:
-        try:
-            cp = subprocess.run(step, cwd=str(tex.parent), capture_output=True, timeout=300)
-        except (subprocess.TimeoutExpired, OSError) as e:
-            problems.append(f"PASS refused: {label} compile check failed: {e}")
-            return
-        logs.append((cp.stdout + cp.stderr).decode(errors="replace"))
-        if cp.returncode != 0:
-            problems.append(
-                f"PASS refused: {label} fails compilation ({step[0]} exit "
-                f"{cp.returncode}); log tail: {logs[-1][-600:]}")
-            return
-    # Only the FINAL engine pass is authoritative: the first pass legitimately
-    # warns "Citation ... undefined" before bibtex has produced the .bbl.
-    if UNDEFINED_CITE_RE.search(logs[-1]):
-        problems.append(
-            f"PASS refused: {label} has unresolved citations (undefined-citation "
-            f"warnings in the FINAL build pass); fix the \\cite keys or the .bib entries")
+    registry = symbol_registry(spec)
+    for key, (pattern, witnesses) in sorted(registry.items()):
+        used = re.search(pattern, body, re.IGNORECASE)
+        required = key in ((spec or {}).get("must_define") or [])
+        if not (used or required):
+            continue
+        if not any(w in low_block for w in witnesses):
+            problems.add(
+                "document.symbol",
+                "PASS refused: %s uses %r but its Notation/Definitions block does "
+                "not define it (expected a witness among %s)" % (label, key, witnesses))
+    for key in (spec or {}).get("avoid", []):
+        entry = registry.get(key)
+        pattern = entry[0] if entry else re.escape(key)
+        if re.search(pattern, body, re.IGNORECASE):
+            problems.add(
+                "document.avoid",
+                "PASS refused: %s uses the avoided convention %r outside its "
+                "definition; the audience spec forbids it" % (label, key))
 
 
 class _HTMLBalanceParser(HTMLParser):
@@ -287,7 +642,6 @@ class _HTMLBalanceParser(HTMLParser):
         if self.stack[-1] == tag:
             self.stack.pop()
             return
-        # HTML5 auto-closes omissible start tags (e.g. </div> closes a pending <p>)
         while (self.stack and self.stack[-1] != tag
                and self.stack[-1] in self.OMISSIBLE_CLOSE):
             self.stack.pop()
@@ -297,287 +651,318 @@ class _HTMLBalanceParser(HTMLParser):
         self.errors.append(f"mis-nested </{tag}> (open: <{self.stack[-1]}>)")
 
 
-def notation_block(text: str, is_beamer: bool = False) -> str:
-    """Extract the Notation/Definitions block from a LaTeX document."""
-    if is_beamer:
-        m = re.search(
-            r"\\begin\{frame\}[^\n{]*\{[^}]*?(?:notation|definitions)[^}]*\}"
-            r"(.*?)\\end\{frame\}",
-            text, re.IGNORECASE | re.DOTALL)
-        return m.group(1) if m else ""
-    m = re.search(r"\\(?:section|subsection)\*?\{[^}]*?(?:notation|definitions)",
-                  text, re.IGNORECASE)
-    if not m:
-        return ""
-    rest = text[m.end():]
-    nxt = re.search(r"\\section\*?\{", rest)
-    return rest[:nxt.start()] if nxt else rest
+# ------------------------------------------------------------- TeX compiling
+
+TEX_ENGINE_CANDIDATES = ("tectonic", "latexmk", "pdflatex", "xelatex", "lualatex")
 
 
-# Keyed symbol registry: key -> (usage regex, defining witnesses). The audience
-# spec's `must_define` and `avoid` lists name these keys.
-SYMBOL_KEYS = [
-    ("B(", r"B\(", ["ball"]),
-    ("Unif", r"\\operatorname\{Unif\}", ["uniform"]),
-    ("S^{d-1}", r"S\^\{d-1\}", ["sphere"]),
-    ("poly", r"poly", ["polynomial"]),
-    ("O*", r"O\^\*", ["polylog", "o^*", "hides"]),
-    ("TV", r"\\mathrm\{TV\}|total-variation", ["total-variation", "tv"]),
-    ("R/r", r"R/r", ["condition number", "aspect ratio"]),
-    ("delta", r"\\delta", ["step"]),
-    ("tau", r"\\tau", ["autocorrelation", "iat"]),
-    ("subgradient", r"subgradient", ["subgradient"]),
-]
+def find_tex_engine():
+    bases = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    bases += ["/Library/TeX/texbin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+    import glob as _glob
+    bases += sorted(_glob.glob("/usr/local/texlive/*/bin/*"))
+    for name in TEX_ENGINE_CANDIDATES:
+        for base in bases:
+            exe = Path(base) / name
+            if exe.is_file() and os.access(exe, os.X_OK):
+                return str(exe)
+    return None
 
 
-def check_document_spec(text: str, spec, label: str, problems, is_beamer: bool = False):
-    """Enforce a stored per-deliverable audience spec against a document.
+def find_bibtex(engine: str):
+    for base in [str(Path(engine).parent), "/Library/TeX/texbin", "/opt/homebrew/bin",
+                 "/usr/local/bin", "/usr/bin"]:
+        exe = Path(base) / "bibtex"
+        if exe.is_file() and os.access(exe, os.X_OK):
+            return str(exe)
+    return None
 
-    spec: dict with `sentence` (must appear verbatim), `must_define` (symbol
-    keys that must have a defining witness in the Notation block), `avoid`
-    (symbol keys that must NOT be used outside the Notation block).
-    """
-    block = notation_block(text, is_beamer)
-    if not block:
-        problems.append(
-            f"PASS refused: {label} has no Notation/Definitions block; all "
-            f"symbols must be defined and conventions never assumed "
-            f"(e.g. B( ) as the Euclidean ball, poly(...), O^*, R/r, tau)")
-        return
-    low_block = block.lower()
 
-    def _norm(s):
-        return " ".join(str(s).split())
+UNDEFINED_CITE_RE = re.compile(
+    r"Citation [^\n]* undefined|There were undefined references", re.IGNORECASE)
 
-    doc_norm = _norm(text).lower()
-    sentence = (spec or {}).get("sentence", "")
-    if sentence and _norm(sentence).lower() not in doc_norm:
-        problems.append(
-            f"PASS refused: {label} does not state its confirmed audience "
-            f"sentence ({sentence!r}); the audience spec is authoritative")
-    body = text.replace(block, " ")
-    for key in (spec or {}).get("must_define", []):
-        row = next((r for r in SYMBOL_KEYS if r[0] == key), None)
-        witnesses = row[2] if row else [str(key).lower()]
-        if not any(w in low_block for w in witnesses):
-            problems.append(
-                f"PASS refused: {label} must define {key!r} in its "
-                f"Notation/Definitions block (expected a witness among "
-                f"{witnesses})")
-    for key in (spec or {}).get("avoid", []):
-        row = next((r for r in SYMBOL_KEYS if r[0] == key), None)
-        if row and re.search(row[1], body, re.IGNORECASE):
-            problems.append(
-                f"PASS refused: {label} uses the avoided convention {key!r} "
-                f"outside its definition; the audience spec forbids it")
+
+def bib_files_of(tex: Path):
+    out = []
+    text = strip_tex_comments(tex.read_text(errors="replace"))
+    for m in re.finditer(r"\\bibliography\s*\{([^}]*)\}", text):
+        for name in m.group(1).split(","):
+            name = name.strip()
+            if name:
+                out.append((tex.parent / (name + ".bib")).resolve())
+    return out
+
+
+def compile_tex_artifact(engine: str, tex: Path, label: str, problems):
+    """Full pipeline (engine + BibTeX + reruns). Runs on a COPY so the study's
+    committed artifacts/ tree never collects .aux/.log/.pdf build products."""
+    name = Path(engine).name
+    if name == "tectonic":
+        steps = [[engine, tex.name]]
+    elif name == "latexmk":
+        steps = [[engine, "-pdf", "-interaction=nonstopmode", "-halt-on-error", tex.name]]
+    else:
+        base = [engine, "-interaction=nonstopmode", "-halt-on-error", tex.name]
+        steps = [base]
+        bibtex = find_bibtex(engine)
+        if bibtex is not None:
+            steps.append([bibtex, tex.stem])
+        steps += [base, base]
+    # A discovered engine may live outside PATH (e.g. /Library/TeX/texbin); its
+    # own toolchain (pdflatex for latexmk, bibtex) is resolved by name, so put the
+    # engine's directory on PATH for the subprocesses it launches.
+    env = os.environ.copy()
+    engine_dir = str(Path(engine).parent)
+    env["PATH"] = engine_dir + os.pathsep + env.get("PATH", "")
+    logs = []
+    for step in steps:
+        try:
+            cp = subprocess.run(step, cwd=str(tex.parent), capture_output=True,
+                                timeout=300, env=env)
+        except (subprocess.TimeoutExpired, OSError) as e:
+            problems.add("document.compile",
+                         "PASS refused: %s compile check failed: %s" % (label, e))
+            return
+        logs.append((cp.stdout + cp.stderr).decode(errors="replace"))
+        if cp.returncode != 0:
+            problems.add(
+                "document.compile",
+                "PASS refused: %s fails compilation (%s exit %d); log tail: %s"
+                % (label, Path(step[0]).name, cp.returncode, logs[-1][-600:]))
+            return
+    # Only the FINAL pass is authoritative: earlier passes legitimately warn
+    # "Citation ... undefined" before bibtex has produced the .bbl. The .log
+    # holds exactly the last pass; accumulated stdout (latexmk, tectonic) does
+    # not, so prefer the file whenever the engine wrote one.
+    log_file = tex.with_suffix(".log")
+    final_log = log_file.read_text(errors="replace") if log_file.is_file() else logs[-1]
+    if UNDEFINED_CITE_RE.search(final_log):
+        problems.add(
+            "document.citations",
+            "PASS refused: %s has unresolved citations (undefined-citation warnings "
+            "in the FINAL build pass); fix the \\cite keys or the .bib entries" % label)
+
+
+# ------------------------------------------------------------- deliverables
+
+
+def check_overclaim(text: str, study, root: Path, problems):
+    """No evidence level may be asserted in prose unless some claim in the study
+    record carries it. Applies to ALL four levels, not just formal verification."""
+    low = strip_tex_comments(text).lower()
+    try:
+        record = json.dumps(study) + (root / "registry.json").read_text(errors="replace")
+    except OSError:
+        record = json.dumps(study)
+    record = record.lower()
+    for level in EVIDENCE_LEVELS:
+        # Strip disclaimers ("nothing here is formally verified") before looking
+        # for an assertion of the level. The negation must be adjacent to the
+        # phrase: an unrelated "no" earlier in the same sentence must not launder
+        # an assertion that follows it.
+        esc = re.escape(level)
+        disclaimers = (
+            r"\b(?:not|no|never)\s+(?:\w+\s+){0,3}" + esc,
+            r"\b(?:nothing|none)\b[^.]{0,60}?\bis\s+" + esc,
+        )
+        assertion = low
+        for pattern in disclaimers:
+            assertion = re.sub(pattern, " ", assertion)
+        if level in assertion and level not in record:
+            problems.add(
+                "document.overclaim",
+                "PASS refused: the paper asserts %r but no claim in study.json / "
+                "registry.json carries that evidence level (no-overclaim rule)" % level)
 
 
 def check_deliverables(study, root: Path, problems):
-    """Stage-4 deliverable gates: declaration at intake; existence + structure +
-    no-overclaim at PASS (references/deliverables.md)."""
     d = study.get("deliverables") or {}
     if not isinstance(d, dict) or "paper" not in d:
-        problems.append(
+        problems.add(
+            "deliverables.declaration",
             "deliverables gate: study.json has no `deliverables` declaration "
             "(paper/slides/web). Record it at intake (see references/deliverables.md).")
         return
     slides_req = str(d.get("slides", "")).lower()
     web_req = str(d.get("web", "")).lower()
     if not slides_req.startswith("required") and not slides_req.startswith("not-required"):
-        problems.append(
-            f"deliverables gate: `slides` must be 'required' or 'not-required:<reason>', "
-            f"got {d.get('slides')!r}")
+        problems.add("deliverables.declaration",
+                     "deliverables gate: `slides` must be 'required' or "
+                     "'not-required:<reason>', got %r" % d.get("slides"))
     if web_req not in ("optional", "required"):
-        problems.append(
-            f"deliverables gate: `web` must be 'optional' or 'required', got {d.get('web')!r}")
+        problems.add("deliverables.declaration",
+                     "deliverables gate: `web` must be 'optional' or 'required', got %r"
+                     % d.get("web"))
     if not claiming_pass(study):
         return
+
     if d.get("consultation_pending"):
-        problems.append(
-            "PASS refused: deliverables.consultation_pending is true — the "
-            "one-time audience consultation has not been completed; answer the "
-            "checkpointed questionnaire before claiming PASS")
+        problems.add(
+            "deliverables.consultation",
+            "PASS refused: deliverables.consultation_pending is true -- the one-time "
+            "audience consultation has not been completed; answer the checkpointed "
+            "questionnaire before claiming PASS")
     aud = d.get("audience") or {}
-    paper_spec = aud.get("paper")
-    slides_spec = aud.get("slides")
-    web_spec = aud.get("web")
+    paper_spec, slides_spec, web_spec = aud.get("paper"), aud.get("slides"), aud.get("web")
     if not isinstance(paper_spec, dict):
-        problems.append(
-            "PASS refused: deliverables.audience.paper is missing — the paper's "
-            "audience spec must be set by the post-research consultation")
+        problems.add("deliverables.audience",
+                     "PASS refused: deliverables.audience.paper is missing -- the "
+                     "paper's audience spec must be set by the post-research consultation")
     if slides_req.startswith("required") and not isinstance(slides_spec, dict):
-        problems.append(
-            "PASS refused: deliverables.audience.slides is missing — the slides' "
-            "audience spec must be set by the post-research consultation")
+        problems.add("deliverables.audience",
+                     "PASS refused: deliverables.audience.slides is missing -- the "
+                     "slides' audience spec must be set by the post-research consultation")
+
     engine = find_tex_engine()
     if engine is None:
-        problems.append(
-            "PASS refused: no TeX engine found (searched PATH plus "
-            "/Library/TeX/texbin, /opt/homebrew/bin, /usr/local/texlive/*/bin/*). "
-            "Stage-4 artifacts must COMPILE before success is claimed; install "
-            "tectonic or a TeX distribution, then re-run this validator.")
-    paper = root / "artifacts" / "paper" / "main.tex"
-    if not paper.exists() or paper.stat().st_size < 50:
-        problems.append("PASS refused: artifacts/paper/main.tex missing or empty "
-                        "(the stage-4 white paper is mandatory)")
-    else:
-        text = paper.read_text(errors="replace")
-        if "\\documentclass" not in text:
-            problems.append("PASS refused: artifacts/paper/main.tex has no \\documentclass")
-        low = text.lower()
-        missing = [s for s in PAPER_SECTIONS if s not in low]
-        if missing:
-            problems.append(f"PASS refused: paper missing required sections: {missing}")
-        for ref in (study.get("slug", ""), study.get("task_id", "")):
-            if ref and ref in text:
-                break
+        problems.add(
+            "deliverables.engine",
+            "PASS refused: no TeX engine found (searched PATH plus /Library/TeX/texbin, "
+            "/opt/homebrew/bin, /usr/local/texlive/*/bin/*). Stage-4 artifacts must "
+            "COMPILE before success is claimed; install tectonic or a TeX "
+            "distribution, then re-run this validator.")
+
+    # Compile on a throwaway copy of artifacts/ so build products never land in
+    # the study's committed tree.
+    with tempfile.TemporaryDirectory(prefix="rq-compile-") as tmp:
+        sandbox = Path(tmp) / "artifacts"
+        if (root / "artifacts").is_dir():
+            shutil.copytree(root / "artifacts", sandbox)
         else:
-            problems.append("PASS refused: paper does not reference the study slug/task_id")
-        # no-overclaim: ASSERTIONS of formal verification (not disclaimers) must be
-        # backed by a claim carrying that evidence level in the study record.
-        assertion = re.sub(r"\bnot formally verified\b|nothing[^.]{0,80}formally verified|"
-                           r"no lean formalization|not\s+[a-z ]{0,15}formally verified",
-                           " ", low)
-        if "formally verified" in assertion:
-            try:
-                blob = json.dumps(study) + (root / "registry.json").read_text(errors="replace")
-            except OSError:
-                blob = json.dumps(study)
-            if "formally verified" not in blob.lower():
-                problems.append(
-                    "PASS refused: paper asserts 'formally verified' but no claim in "
-                    "study.json / registry.json carries that evidence level "
-                    "(no-overclaim rule)")
-        bibs = bib_files_of(paper)
-        if not bibs:
-            problems.append(
-                "PASS refused: paper has no \\bibliography{...} command "
-                "(proper BibTeX references are mandatory)")
+            sandbox.mkdir(parents=True)
+
+        paper = root / "artifacts" / "paper" / "main.tex"
+        if not paper.exists() or paper.stat().st_size < 50:
+            problems.add("deliverables.paper",
+                         "PASS refused: artifacts/paper/main.tex missing or empty "
+                         "(the stage-4 white paper is mandatory)")
         else:
-            missing_bib = [str(b) for b in bibs if not b.exists()]
-            if missing_bib:
-                problems.append(
-                    "PASS refused: paper bibliography file(s) missing: "
-                    f"{missing_bib}")
-        check_document_spec(text, paper_spec, "artifacts/paper/main.tex", problems,
-                            is_beamer=False)
-        if engine is not None:
-            compile_tex_artifact(engine, paper, "artifacts/paper/main.tex", problems)
-    if slides_req.startswith("required"):
-        slides = root / "artifacts" / "slides" / "main.tex"
-        if not slides.exists() or slides.stat().st_size < 50:
-            problems.append("PASS refused: artifacts/slides/main.tex missing "
-                            "(slides declared required)")
-        else:
-            t = slides.read_text(errors="replace")
-            if "\\documentclass" not in t or "beamer" not in t.lower():
-                problems.append("PASS refused: slides/main.tex is not a Beamer document")
-            bibs = bib_files_of(slides)
+            text = paper.read_text(errors="replace")
+            source = strip_tex_comments(text)
+            if "\\documentclass" not in source:
+                problems.add("deliverables.paper",
+                             "PASS refused: artifacts/paper/main.tex has no \\documentclass")
+            missing = [s for s in PAPER_SECTIONS
+                       if not re.search(r"\\(?:sub)?section\*?\{[^}]*\b%s" % s, source,
+                                        re.IGNORECASE)]
+            if missing:
+                problems.add(
+                    "deliverables.sections",
+                    "PASS refused: paper is missing required sections as \\section "
+                    "headings: %s" % missing)
+            for ref in (study.get("slug", ""), study.get("task_id", "")):
+                if ref and ref in source:
+                    break
+            else:
+                problems.add("deliverables.paper",
+                             "PASS refused: paper does not reference the study slug/task_id")
+            check_overclaim(text, study, root, problems)
+            bibs = bib_files_of(paper)
             if not bibs:
-                problems.append(
-                    "PASS refused: slides have no \\bibliography{...} command "
-                    "(proper BibTeX references are mandatory; may share the paper's refs.bib)")
+                problems.add("deliverables.bibliography",
+                             "PASS refused: paper has no \\bibliography{...} command "
+                             "(proper BibTeX references are mandatory)")
             else:
                 missing_bib = [str(b) for b in bibs if not b.exists()]
                 if missing_bib:
-                    problems.append(
-                        "PASS refused: slides bibliography file(s) missing: "
-                        f"{missing_bib}")
-            check_document_spec(t, slides_spec, "artifacts/slides/main.tex", problems,
-                                is_beamer=True)
+                    problems.add("deliverables.bibliography",
+                                 "PASS refused: paper bibliography file(s) missing: %s"
+                                 % missing_bib)
+            check_document_spec(text, paper_spec, "artifacts/paper/main.tex", problems)
             if engine is not None:
-                compile_tex_artifact(engine, slides, "artifacts/slides/main.tex", problems)
+                compile_tex_artifact(engine, sandbox / "paper" / "main.tex",
+                                     "artifacts/paper/main.tex", problems)
+
+        if slides_req.startswith("required"):
+            slides = root / "artifacts" / "slides" / "main.tex"
+            if not slides.exists() or slides.stat().st_size < 50:
+                problems.add("deliverables.slides",
+                             "PASS refused: artifacts/slides/main.tex missing "
+                             "(slides declared required)")
+            else:
+                t = slides.read_text(errors="replace")
+                st = strip_tex_comments(t)
+                if "\\documentclass" not in st or "beamer" not in st.lower():
+                    problems.add("deliverables.slides",
+                                 "PASS refused: slides/main.tex is not a Beamer document")
+                bibs = bib_files_of(slides)
+                if not bibs:
+                    problems.add("deliverables.bibliography",
+                                 "PASS refused: slides have no \\bibliography{...} command "
+                                 "(mandatory; may share the paper's refs.bib)")
+                else:
+                    missing_bib = [str(b) for b in bibs if not b.exists()]
+                    if missing_bib:
+                        problems.add("deliverables.bibliography",
+                                     "PASS refused: slides bibliography file(s) missing: %s"
+                                     % missing_bib)
+                check_document_spec(t, slides_spec, "artifacts/slides/main.tex",
+                                    problems, is_beamer=True)
+                if engine is not None:
+                    compile_tex_artifact(engine, sandbox / "slides" / "main.tex",
+                                         "artifacts/slides/main.tex", problems)
+
     if web_req == "required":
         if not isinstance(web_spec, dict):
-            problems.append(
-                "PASS refused: deliverables.audience.web is missing — the web "
-                "artifact's audience spec must be set by the post-research consultation")
+            problems.add("deliverables.audience",
+                         "PASS refused: deliverables.audience.web is missing -- the web "
+                         "artifact's audience spec must be set by the consultation")
         web = root / "artifacts" / "web" / "index.html"
         if not web.exists() or web.stat().st_size < 50:
-            problems.append("PASS refused: artifacts/web/index.html missing "
-                            "(web declared required)")
-        elif "<html" not in web.read_text(errors="replace").lower():
-            problems.append("PASS refused: artifacts/web/index.html is not an HTML document")
+            problems.add("deliverables.web",
+                         "PASS refused: artifacts/web/index.html missing (web declared required)")
         else:
-            parser = _HTMLBalanceParser()
-            try:
-                parser.feed(web.read_text(errors="replace"))
-                parser.close()
-            except Exception as e:
-                problems.append(f"PASS refused: artifacts/web/index.html does not parse: {e}")
-            if parser.errors:
-                problems.append(
-                    "PASS refused: artifacts/web/index.html has malformed markup: "
-                    + "; ".join(parser.errors[:5]))
-            if not parser.stack or parser.stack[-1] != "html":
-                problems.append(
-                    "PASS refused: artifacts/web/index.html does not close its <html> tag")
             raw = web.read_text(errors="replace")
-            if (web_spec or {}).get("sentence") and \
-                    web_spec["sentence"].lower() not in raw.lower():
-                problems.append(
-                    "PASS refused: artifacts/web/index.html does not state its "
-                    "confirmed audience sentence; the audience spec is authoritative")
-            if not (re.search(r'id\s*=\s*["\']references["\']', raw, re.IGNORECASE)
-                    or re.search(r"<h[1-6][^>]*>\s*references", raw, re.IGNORECASE)):
-                problems.append(
-                    "PASS refused: artifacts/web/index.html has no references "
-                    "section (id=\"references\" or a References heading)")
-            for m in re.finditer(
-                    r'<a\b[^>]*href\s*=\s*"https?://[^"]*"[^>]*>(.*?)</a>',
-                    raw, re.IGNORECASE | re.DOTALL):
-                txt = re.sub(r"<[^>]+>", "", m.group(1)).strip()
-                if not txt or re.match(r"https?://", txt):
-                    problems.append(
-                        "PASS refused: artifacts/web/index.html has an external "
-                        "link without proper anchor text (bare URLs are not "
-                        "references); label each link with author, title, year")
-                    break
-
-
-def check_registry(study, root: Path, problems):
-    reg = root / "registry.json"
-    if not reg.exists():
-        problems.append("registry.json missing")
-        return
-    try:
-        json.loads(reg.read_text())
-    except json.JSONDecodeError as e:
-        problems.append(f"registry.json invalid JSON: {e}")
-        return
-    status = str(study.get("status", ""))
-    if "PASS" in status.upper() and "reopen" not in status.lower():
-        raw = reg.read_text(errors="replace")
-        if '"passed"' not in raw:
-            problems.append(
-                "PASS refused: registry.json has no route with status passed "
-                "(a PASS requires an audit-referenced passed route)")
-
-
-def check_declared_hashes(root: Path, problems):
-    for p in sorted((root / "artifacts").glob("*.md")) + sorted((root / "audits").glob("*.md")):
-        try:
-            text = p.read_text(errors="replace")
-        except OSError:
-            continue
-        for m in re.finditer(r"(?:sha-?256)\s*[:=]\s*([0-9a-fA-F]{64})", text):
-            declared = m.group(1).lower()
-            line = text[:m.start()].rsplit("\n", 1)[-1]
-            candidates = re.findall(r"[\w./-]+\.(?:py|json|md|csv)", line)
-            for c in candidates:
-                fp = root / c
-                if fp.exists() and sha256_hex(fp) == declared:
-                    break
+            if "<html" not in raw.lower():
+                problems.add("deliverables.web",
+                             "PASS refused: artifacts/web/index.html is not an HTML document")
             else:
-                if candidates:
-                    problems.append(
-                        f"{p.name}: declared sha256 {declared[:12]}... matches none "
-                        f"of the referenced artifacts on its line")
+                parser = _HTMLBalanceParser()
+                try:
+                    parser.feed(raw)
+                    parser.close()
+                except Exception as e:
+                    problems.add("deliverables.web",
+                                 "PASS refused: artifacts/web/index.html does not parse: %s" % e)
+                if parser.errors:
+                    problems.add("deliverables.web",
+                                 "PASS refused: artifacts/web/index.html has malformed markup: "
+                                 + "; ".join(parser.errors[:5]))
+                # A well-formed page closes everything it opened, leaving the
+                # stack empty. Anything still open never got its end tag.
+                if parser.stack:
+                    problems.add("deliverables.web",
+                                 "PASS refused: artifacts/web/index.html leaves tag(s) "
+                                 "unclosed: %s" % ["<%s>" % t for t in parser.stack])
+                sentence = (web_spec or {}).get("sentence") if isinstance(web_spec, dict) else None
+                if not sentence:
+                    problems.add(
+                        "document.audience-sentence",
+                        "PASS refused: the audience spec for artifacts/web/index.html has "
+                        "no `sentence` -- a document that cannot say who it is for fails "
+                        "the gate")
+                elif norm(sentence) not in norm(raw):
+                    problems.add("document.audience-sentence",
+                                 "PASS refused: artifacts/web/index.html does not state its "
+                                 "confirmed audience sentence")
+                if not (re.search(r'id\s*=\s*["\']references["\']', raw, re.IGNORECASE)
+                        or re.search(r"<h[1-6][^>]*>\s*references", raw, re.IGNORECASE)):
+                    problems.add("deliverables.web",
+                                 "PASS refused: artifacts/web/index.html has no references "
+                                 'section (id="references" or a References heading)')
+                for m in re.finditer(
+                        r'<a\b[^>]*href\s*=\s*"https?://[^"]*"[^>]*>(.*?)</a>',
+                        raw, re.IGNORECASE | re.DOTALL):
+                    txt = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+                    if not txt or re.match(r"https?://", txt):
+                        problems.add("deliverables.web",
+                                     "PASS refused: artifacts/web/index.html has an external "
+                                     "link without proper anchor text (bare URLs are not "
+                                     "references); label each link with author, title, year")
+                        break
 
 
 def check_document_adversary_reports(study, root: Path, problems):
-    """Soft tier of the document-adversary gate: an independent subagent report
-    must exist per declared deliverable and end in VERDICT: PASS."""
     if not claiming_pass(study):
         return
     d = study.get("deliverables") or {}
@@ -589,57 +974,127 @@ def check_document_adversary_reports(study, root: Path, problems):
     for name in names:
         report = root / "audits" / f"document-adversary-{name}.md"
         if not report.exists():
-            problems.append(
-                f"PASS refused: audits/document-adversary-{name}.md missing — the "
-                f"document-adversary (soft tier) has not audited the {name} "
-                f"deliverable against its audience spec")
+            problems.add(
+                "document-adversary.missing",
+                "PASS refused: audits/document-adversary-%s.md missing -- the "
+                "document-adversary (soft tier) has not audited the %s deliverable "
+                "against its audience spec" % (name, name))
             continue
         text = report.read_text(errors="replace")
         verdicts = re.findall(r"VERDICT:\s*(PASS|NEEDS-EDITS)", text, re.IGNORECASE)
         if not verdicts:
-            problems.append(
-                f"PASS refused: audits/document-adversary-{name}.md has no "
-                f"'VERDICT: PASS'/'VERDICT: NEEDS-EDITS' line")
+            problems.add("document-adversary.verdict",
+                         "PASS refused: audits/document-adversary-%s.md has no "
+                         "'VERDICT: PASS'/'VERDICT: NEEDS-EDITS' line" % name)
         elif verdicts[-1].upper() == "NEEDS-EDITS":
-            problems.append(
-                f"PASS refused: audits/document-adversary-{name}.md verdict is "
-                f"NEEDS-EDITS — the {name} deliverable must be revised and re-audited")
+            problems.add("document-adversary.verdict",
+                         "PASS refused: audits/document-adversary-%s.md verdict is "
+                         "NEEDS-EDITS -- the %s deliverable must be revised and "
+                         "re-audited" % (name, name))
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--study", required=True, help="path to the study root")
-    args = ap.parse_args()
-    root = Path(args.study).resolve()
+def check_declared_hashes(root: Path, problems):
+    _, paths = evidence_corpus(root)
+    for p in paths:
+        if p.suffix.lower() not in (".md", ".txt"):
+            continue
+        try:
+            text = p.read_text(errors="replace")
+        except OSError:
+            continue
+        for m in re.finditer(r"(?:sha-?256)\s*[:=]\s*([0-9a-fA-F]{64})", text):
+            declared = m.group(1).lower()
+            line = text[:m.start()].rsplit("\n", 1)[-1]
+            candidates = re.findall(r"[\w./-]+\.(?:py|json|md|csv|tex)", line)
+            for c in candidates:
+                fp = root / c
+                if fp.exists() and sha256_hex(fp) == declared:
+                    break
+            else:
+                if candidates:
+                    problems.add(
+                        "hash.mismatch",
+                        "%s: declared sha256 %s... matches none of the referenced "
+                        "artifacts on its line" % (p.name, declared[:12]))
+
+
+# --------------------------------------------------------------------- main
+
+
+def run(study_root: str):
+    root = Path(study_root).resolve()
     sp = root / "study.json"
     if not sp.exists():
-        print(f"ERROR: no study.json under {root}")
-        return 2
+        return None, "ERROR: no study.json under %s" % root, 2
     try:
         study = json.loads(sp.read_text())
     except json.JSONDecodeError as e:
-        print(f"ERROR: study.json invalid JSON: {e}")
-        return 2
-    problems = []
-    subs = check_schema(study, problems)
-    if subs is not None:
-        check_coverage(study, subs, problems)
-        check_deliverables(study, root, problems)
-        check_document_adversary_reports(study, root, problems)
-        check_pass_evidence(study, root, problems)
-        check_registry(study, root, problems)
-        check_declared_hashes(root, problems)
-    if problems:
-        print(f"FAIL -- {len(problems)} problem(s):")
-        for p in problems:
-            print(f"  - {p}")
-        return 1
-    status = study.get("status", "")
-    if "PASS" in str(status).upper():
-        print(f"PASS -- state valid; declared status {status!r} has complete evidence.")
+        return None, "ERROR: study.json invalid JSON: %s" % e, 2
+    registry = None
+    rp = root / "registry.json"
+    problems = Problems()
+    if not rp.exists():
+        problems.add("registry.missing", "registry.json missing")
     else:
-        print(f"OK -- state valid; status {status!r} (no PASS claimed).")
-    return 0
+        try:
+            registry = json.loads(rp.read_text())
+        except json.JSONDecodeError as e:
+            problems.add("registry.invalid", "registry.json invalid JSON: %s" % e)
+
+    check_against_schemas(study, registry, problems)
+    check_coverage(study, problems)
+    check_registry_consistency(study, registry or {}, root, problems)
+    check_record_present(study, root, problems)
+    check_deliverables(study, root, problems)
+    check_document_adversary_reports(study, root, problems)
+    check_pass_evidence(study, root, problems)
+    check_tolerance_reconciliation(study, root, problems)
+    check_declared_hashes(root, problems)
+
+    hashes = {}
+    for name in ("study.json", "registry.json"):
+        p = root / name
+        if p.is_file():
+            hashes[name] = sha256_hex(p)
+
+    status = study.get("status", "")
+    result = "fail" if problems else "pass"
+    if problems:
+        summary = "FAIL -- %d problem(s):\n" % len(problems) + "\n".join(
+            "  - " + p["message"] for p in problems)
+    elif claiming_pass(study):
+        summary = "PASS -- state valid; declared status %r has complete evidence." % status
+    else:
+        summary = "OK -- state valid; status %r (no PASS claimed)." % status
+
+    report = {
+        "schema": "rq-check-report",
+        "version": 2,
+        "study_root": str(root),
+        "run": {
+            "id": time.strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:8],
+            "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        },
+        "result": result,
+        "claiming_pass": claiming_pass(study),
+        "problems": list(problems),
+        "hashes": hashes,
+        "environment": env_manifest(),
+    }
+    return report, summary, (1 if problems else 0)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="RigorQuant meta-validator")
+    ap.add_argument("--study", required=True, help="path to the study root (contains study.json)")
+    ap.add_argument("--out", help="also write the JSON report to this file")
+    args = ap.parse_args(argv)
+    report, summary, code = run(args.study)
+    print(summary)
+    if args.out and report is not None:
+        Path(args.out).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        print("wrote report to", args.out)
+    return code
 
 
 if __name__ == "__main__":

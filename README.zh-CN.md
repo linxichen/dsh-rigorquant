@@ -15,6 +15,9 @@ RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一
 - **对抗者**只凭反例淘汰路线。
 - **四重校验电池**（闭式解相等、精确不变量、解析界、统计强化）在数值实现
   **之前**运行。
+- **元校验器**（`rq_check.py`）会拒绝证据缺失的 PASS：阶段产物为空、
+  `derivations/` 为空、registry 中没有带审计引用的 passed 路线、交付物无法
+  编译等。其证据检查只读审计记录，不读 `study.json`——研究不能为自己作证。
 - 随机工作采用**固定种子 + 大数定律**约定。
 - **jacobian MCP 升级通道**（opt-in；Lean 作为手动外部通道）在实现前解决证明
   关键性断言。
@@ -60,7 +63,7 @@ cd dsh-rigorquant
 `install.sh` 会把固定的 uv 计算通道安装到 `$DSH_HOME/share/rigorquant/env`
 （见 [env/README.md](env/README.md)）。jacobian 升级通道默认**关闭**且已
 **固定版本**（`jacobian@0.12.0`）：先启用 `mcp-jacobian` 行，框架在一次性
-配置前会**请求批准**（`npx -y jacobian@0.12.0 upgrade`，或通过
+配置前会**请求批准**（`npx -y jacobian@0.12.0 upgrade`，或通过技能内的
 `scripts/provision-lean.sh` 安装 Lean 工具链）。详见
 [mcp/jacobian.md](mcp/jacobian.md)。
 
@@ -70,12 +73,34 @@ cd dsh-rigorquant
 package.json                dsh.bundle manifest（支持 dsh plugin add）
 cordis.patch.yml            bundle patch：注册 rigorquant 技能
 agent-presets/rigorquant/   preset 组合 + persona + 内置技能
+  skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
+  .../scripts/rq_check.py   元校验器（唯一正式副本）
+  .../schemas/              study.json 与 registry.json 的 JSON Schema；
+                            校验器直接加载它们，因此二者不会漂移
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
-studies/                    每个任务一个研究文件夹（Mode B；本仓库的活跃研究，
-                            不随 npm bundle 发布）
+tests/                      校验器测试套件（见下方"测试"）
+studies/                    每个任务一个研究文件夹（Mode B；各 checkout 自己的
+                            活跃研究，不随 bundle 发布）
 ```
+
+## 测试
+
+校验器自带测试套件，核心是一个**伪造的 study**：空的 derivations、空的阶段
+产物、一行字的对抗者报告，以及正文写着"This paper says nothing."的论文。
+它必须 FAIL。诚实性闸门若自身没有测试，就会为递给它的任何东西背书。
+
+```sh
+uv sync --frozen --project env
+uv run --frozen --project env python -m pytest tests/ -q
+```
+
+`tests/test_repo_consistency.py` 负责另一半：唯一的校验器、唯一的 schema、
+文档中可解析的命令、与文件系统一致的目录说明。
+
+**校验器通过意味着什么：**声明的证据齐备、交付物可编译；它**不**意味着数学
+是对的——那仍然由校验电池、独立真值轨道与对抗者负责。
 
 ## 研究（Study）
 

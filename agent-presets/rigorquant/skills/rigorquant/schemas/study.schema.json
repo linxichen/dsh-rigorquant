@@ -1,0 +1,226 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/linxichen/dsh-rigorquant/agent-presets/rigorquant/skills/rigorquant/schemas/study.schema.json",
+  "title": "RigorQuant study.json",
+  "description": "The study identity file created at intake (SKILL.md Step 1). This schema is the single source of truth for study.json: rq_check.py validates against this exact file, so the schema and the validator cannot drift. Internal references recorded elsewhere in a study are study-root-relative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "slug",
+    "title",
+    "mode",
+    "repo_root",
+    "statement",
+    "broad_criterion",
+    "success_criterion",
+    "subproblems",
+    "simplified_cases",
+    "seeds",
+    "tolerances",
+    "budget",
+    "status"
+  ],
+  "properties": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "kebab-case study id"
+    },
+    "title": { "type": "string" },
+    "mode": {
+      "enum": ["repo-root", "multi-study"],
+      "description": "repo-root = one study per repo; multi-study = studies/<slug>/"
+    },
+    "repo_root": { "type": "string", "description": "absolute path resolved at intake" },
+    "env_lane": {
+      "type": "string",
+      "description": "absolute path to the pinned uv lane, added by Step 2 (not present at intake)"
+    },
+    "task_id": { "type": "string" },
+    "created": { "type": "string" },
+    "notes": { "type": "string", "description": "free-form; never counted as evidence" },
+    "statement": { "type": "string" },
+    "broad_criterion": {
+      "type": "string",
+      "description": "the ORIGINAL broad claim a PASS must deliver, verbatim; never re-scoped to the simplified cases"
+    },
+    "success_criterion": { "type": "string" },
+    "subproblems": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "status", "stage", "success_criterion"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^SP[0-9]+$" },
+          "name": { "type": "string" },
+          "status": {
+            "enum": ["known", "novel"],
+            "description": "intake hint about whether an analytical result likely exists"
+          },
+          "stage": {
+            "enum": ["reference-case", "generalization", "domain-scale"],
+            "description": "coverage gate: a general question needs at least one generalization and one domain-scale sub-problem"
+          },
+          "success_criterion": { "type": "string" },
+          "evidence_level": {
+            "enum": [
+              "falsification-surviving",
+              "independently re-derived",
+              "certificate-checked",
+              "formally verified"
+            ]
+          }
+        }
+      }
+    },
+    "validity_stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Mandatory for a broad PASS (lifecycle.md 'Validity stages').",
+      "properties": {
+        "stage3_general_claim": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["claim", "evidence_level", "outputs"],
+          "properties": {
+            "claim": { "type": "string" },
+            "evidence_level": {
+              "enum": [
+                "falsification-surviving",
+                "independently re-derived",
+                "certificate-checked",
+                "formally verified"
+              ]
+            },
+            "outputs": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string" },
+              "description": "study-root-relative paths that establish the claim; must exist on disk"
+            }
+          }
+        },
+        "stage5_domain_scale": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["instance", "outputs"],
+          "properties": {
+            "instance": { "type": "string" },
+            "outputs": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "deliverables": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paper", "slides", "web"],
+      "properties": {
+        "paper": { "enum": ["required"] },
+        "slides": {
+          "type": "string",
+          "pattern": "^(required|not-required:.+)$",
+          "description": "'required', or 'not-required:<reason recorded at intake>'"
+        },
+        "web": { "enum": ["optional", "required"] },
+        "consultation_pending": { "type": "boolean" },
+        "consultation_record": { "type": "object" },
+        "last_accepted": { "type": "object" },
+        "audience": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "paper": { "$ref": "#/definitions/audienceSpec" },
+            "slides": { "$ref": "#/definitions/audienceSpec" },
+            "web": { "$ref": "#/definitions/audienceSpec" }
+          }
+        }
+      }
+    },
+    "simplified_cases": { "type": "array", "items": { "type": "string" } },
+    "seeds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_seed"],
+      "properties": {
+        "task_seed": { "type": "integer" },
+        "convention": { "type": "string" }
+      }
+    },
+    "tolerances": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deterministic", "stochastic"],
+      "properties": {
+        "deterministic": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "abs": { "type": ["number", "string"] },
+            "rel": { "type": ["number", "string"] }
+          }
+        },
+        "stochastic": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lln_grid"],
+          "properties": {
+            "se_units": { "type": "number" },
+            "confidence": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "lln_grid": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "integer", "minimum": 1 },
+              "description": "the N-grid gate D reports against; required because seeded replay is mandatory, not optional"
+            }
+          }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_orchestrator_rounds": { "type": "integer", "minimum": 1 },
+        "max_cost_usd": { "type": ["number", "null"] },
+        "max_wall_minutes": { "type": ["number", "null"] }
+      }
+    },
+    "status": {
+      "type": "string",
+      "description": "free text, EXCEPT that a PASS is claimed only when the string begins with the token PASS (rq_check.py PASS_CLAIM_RE). 'round 2: SP3 active, no PASS yet' is not a claim, and a status that begins with PASS but is also marked reopened (contains 'reopen') is not a claim either."
+    }
+  },
+  "definitions": {
+    "audienceSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sentence"],
+      "description": "Set by the post-research audience consultation; `sentence` must appear verbatim in the deliverable.",
+      "properties": {
+        "role": { "type": "string" },
+        "level": { "type": "string" },
+        "sentence": { "type": "string" },
+        "assume_known": { "type": "array", "items": { "type": "string" } },
+        "must_define": { "type": "array", "items": { "type": "string" } },
+        "avoid": { "type": "array", "items": { "type": "string" } },
+        "depth": { "type": "string" },
+        "format": { "type": "string" },
+        "symbols": {
+          "type": "object",
+          "description": "study-specific notation registry: key -> {pattern, witnesses} or a bare list of witnesses. Extends rq_check.py's small cross-domain default registry."
+        }
+      }
+    }
+  }
+}

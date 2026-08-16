@@ -25,22 +25,23 @@ structure, and the no-overclaim rule.
 ## White paper — `artifacts/paper/main.tex`
 
 LaTeX article (`\documentclass{article}` with amsmath/amsthm/hyperref). Required
-sections (the validator checks these markers case-insensitively):
+sections — the validator requires each as an actual `\section` heading, not the
+word somewhere in the prose:
 
-1. **Statement** — the original problem and access models, verbatim from
-   `study.json`.
-2. **Method** — the validated pipeline with numbered claims (Claim G style),
-   ALL hypotheses, per-step costs.
-3. **Validity** — the reversibility/stationarity arguments and the mixing
-   bound with hypotheses; the evidence level of every load-bearing claim
+1. **Statement** — the original problem and its access/data models, verbatim
+   from `study.json`.
+2. **Method** — the validated pipeline with numbered claims, ALL hypotheses,
+   per-step costs.
+3. **Validity** — the correctness arguments for the study's own method, with
+   hypotheses; the evidence level of every load-bearing claim
    (falsification-surviving / independently re-derived / certificate-checked /
    formally verified), quoted from `validity_stages` — **never upgraded in
    prose**.
-4. **Certification** — the check battery: gates, bodies, dimensions, seeds,
-   cell counts, adjudication summary (e.g. "511/511 adjudicated cells,
-   3/3 mutations detected"), references to the results files.
+4. **Certification** — the check battery: gates, instances, dimensions, seeds,
+   cell counts, adjudication summary (e.g. "N/N adjudicated cells, k/k
+   mutations detected"), references to the results files.
 5. **Honest limitations** — every recorded gap: evidence-level caps, scope
-   notes (e.g. correctness-but-slow regimes), delegation caveats, d-range.
+   notes, delegation caveats, the range of parameters actually certified.
 6. **Reproduction** — seeds table, the compute-lane command, the validator
    command.
 7. **Bibliography (mandatory at PASS).** Load-bearing external claims are
@@ -53,8 +54,12 @@ sections (the validator checks these markers case-insensitively):
 
 No-overclaim rules (validator-enforced):
 
-- The text may contain `formally verified` ONLY if some claim in
-  `validity_stages` / `registry.json` carries that evidence level.
+- The text may assert ANY of the four evidence levels
+  (falsification-surviving / independently re-derived / certificate-checked /
+  formally verified) ONLY if some claim in `validity_stages` / `registry.json`
+  carries that level. Disclaiming a level ("nothing here is formally verified")
+  is always allowed; the validator strips negations adjacent to the phrase
+  before looking for an assertion.
 - The paper must reference the study's `statement` or `broad_criterion` key
   terms (it is about THIS study, not a generic write-up).
 - **Compile gate (mandatory at PASS).** The validator locates a TeX engine
@@ -64,17 +69,17 @@ No-overclaim rules (validator-enforced):
   fails: stage-4 artifacts must compile/render before success is claimed, and
   "the engine was missing" is a blocking gap, never a waiver. Structural
   markers (`\documentclass`, the six sections) are additional checks, not a
-  substitute for a successful render.
+  substitute for a successful render. Compilation runs on a throwaway copy of
+  `artifacts/`, so no `.aux`/`.log`/`.pdf` build products land in the study's
+  committed tree.
 
 ## Slides — `artifacts/slides/main.tex`
 
-**Positioning: lecture notes, not a talk deck.** The slides are written as
-self-contained lecture notes for an **Econ Ph.D. student in their second
-graduate course** (completed first-year metrics/micro sequence: measure-based
-probability, linear algebra, convex optimization at the level of a first
-optimization course, and basic Monte Carlo — but **no** background in
-convex-body geometry, geometric MCMC, or complexity of oracles). The deck must
-teach the material, not merely summarize the paper for colleagues.
+**Positioning: lecture notes, not a talk deck.** The slides teach the material
+to the audience the consultation confirmed; they do not merely summarize the
+paper for colleagues. The audience, its prerequisites, and what may be assumed
+known come from `deliverables.audience.slides` — **this file does not name an
+audience**, because the right one depends on the study.
 
 Beamer (`\documentclass{beamer}`). Claims stay a **strict SUBSET of the
 paper's content** — same claims, same evidence levels, never upgraded, no new
@@ -85,30 +90,23 @@ pitfall/teaching-moment discussions are allowed and required.
 Required structure (on top of the paper-subset rules):
 
 1. **Title + roadmap** — one slide stating the lecture's question and what the
-   student should be able to do afterwards (learning objectives).
-2. **Statement** — the problem and access models, with concrete economic
-   motivations (volume/moment computation, constrained simulation, truncation).
-3. **Background frames** (the second-course gap):
-   - convex body, interior, closed vs. strict sublevel, the certified sandwich
-     `B(x0,r) ⊆ K ⊆ B(x0,R)`, Slater point, with a worked example (p-ball,
-     translated quadratic);
-   - total-variation distance, Markov kernels, detailed balance/reversibility,
-     stationary vs. ergodic (with a concrete non-ergodic warning example);
-   - warm start and conductance as intuition;
-   - oracle access models M1/M2/M3 with exact per-step costs.
-4. **Method** — the walks and the pipeline, each algorithmic step accompanied
-   by an intuition slide and an exact-cost slide.
-5. **Validity** — reversibility arguments as proof sketches, the pinned
-   theorem statements with hypotheses, and evidence levels exactly as in the
-   paper.
+   audience should be able to do afterwards (learning objectives).
+2. **Statement** — the problem and its access/data models, with concrete
+   motivations drawn from the study's own domain.
+3. **Background frames** — one frame per prerequisite the audience spec does
+   *not* list in `assume_known`, each with a worked example. This is the gap
+   between what the reader knows and what the method needs; derive it from the
+   spec, never from a fixed list.
+4. **Method** — the pipeline, each algorithmic step accompanied by an intuition
+   slide and an exact-cost slide.
+5. **Validity** — the arguments as proof sketches, the pinned theorem
+   statements with hypotheses, and evidence levels exactly as in the paper.
 6. **Certification** — the four-gate battery with a worked gate example (one
-   closed form derived on-slide), the seeded-replay and LLN/IAT conventions,
-   and the final results table.
-7. **Teaching moments** — at least two: each of the study's concrete
-   counterexamples (e.g. the fixed-radius sphere lattice with TV = 1, the
-   inadmissible inferred-radius cap cut, the leaking finite-bisection chord)
-   retold as "why the easy version fails."
-8. **Honest limitations** — as in the paper, phrased for students (what is
+   closed form derived on-slide), the seeded-replay and LLN conventions, and
+   the final results table.
+7. **Teaching moments** — at least two: the study's own concrete
+   counterexamples, each retold as "why the easy version fails."
+8. **Honest limitations** — as in the paper, phrased for the audience (what is
    conditional, what is only empirical, what is not formally verified).
 9. **Self-test questions** — 3–5 check-your-understanding questions whose
    answers follow from the slides.
@@ -118,6 +116,15 @@ Required structure (on top of the paper-subset rules):
     path (e.g. `\bibliography{../paper/refs}`). `\cite{...}` commands mark
     every load-bearing external theorem. Unresolved citations fail the
     validator.
+
+> **Worked example of a filled-in spec** (from a convex-sampling study — an
+> illustration of the shape, never a requirement for your study):
+> `role: "Econ Ph.D. student, second graduate course"`;
+> `assume_known: ["measure-based probability", "linear algebra", "basic Monte Carlo"]`;
+> `must_define: ["B(", "TV", "O*", "R/r"]`;
+> `symbols: {"B(": {"pattern": "B\\(", "witnesses": ["ball"]}, "R/r": {"witnesses": ["condition number", "aspect ratio"]}}`.
+> Its background frames were convex bodies, TV distance and Markov kernels, and
+> oracle models — because *that* spec did not assume them known.
 
 The validator's structural gate (`\documentclass{beamer}`, existence) plus the
 mandatory compile gate above are the machine checks; the pedagogical
@@ -144,7 +151,7 @@ URL as the `href`); bare URLs with no anchor text fail the check.
    scratch reports as sources of new claims.
 2. Writer emits the .tex files; no numerical value enters the paper unless it
    appears in one of those records.
-3. `python3 scripts/rq_check.py --study <study-root>` gates the result.
+3. `python3 <skill-dir>/scripts/rq_check.py --study <study-root>` gates the result.
 
 ## Audience consultation (post-research, one-time, per deliverable)
 
@@ -186,13 +193,15 @@ evidence stale. Artifacts lose validity only when new research changes a
 load-bearing claim (claim-driven invalidation via the existing
 "superseded" mechanism); they are then re-crafted and re-verified.
 
-**Enforcement at PASS (three tiers).**
+**Enforcement at PASS (two tiers).**
 
-- *Hard (validator):* the artifact states its confirmed audience `sentence`;
-  a Notation/Definitions block exists; every `must_define` key has a defining
-  witness in the block; every `avoid` key is absent from the text outside the
-  block; the artifact compiles/renders. `consultation_pending: true` or a
-  missing audience spec refuses the PASS.
+- *Hard (validator):* the artifact states its confirmed audience `sentence`
+  (in the rendered text — a LaTeX comment does not count, and a spec with no
+  `sentence` is itself refused); a Notation/Definitions block exists; every
+  symbol that APPEARS is defined there (see the conditional symbol audit below);
+  every `avoid` key is absent from the text outside the block; the artifact
+  compiles/renders. `consultation_pending: true` or a missing audience spec
+  refuses the PASS.
 - *Soft (document adversary):* a subagent reads the artifact and its spec and
   returns PASS or needs-edits with concrete reasons (proof depth,
   motivation, worked examples, appropriateness for the level). needs-edits is
@@ -209,17 +218,31 @@ symbol conventions are never assumed:
 
 - **Notation/Definitions section (paper) and frame (slides) are mandatory.**
   Every symbol the document uses must appear there with its convention made
-  explicit — `B(x,r)` as the Euclidean ball, `poly(...)` as polynomial
-  dependence, `O^*`, `R/r` as the condition number, `\delta`, `\tau`/IAT,
-  `TV`, subgradients, `S^{d-1}`, `Unif`, etc. "Everyone knows this" is not a
-  definition.
-- **Conditional symbol audit.** The validator scans the document for a known
-  registry of load-bearing symbols; for each one that appears, the
+  explicit. "Everyone knows this" is not a definition.
+- **The symbol registry has two halves.** `rq_check.py` ships a small
+  *cross-domain* default registry — conventions that are load-bearing in any
+  quantitative field and routinely left undefined: `O^*`, `poly(...)`, `TV` /
+  total-variation, `w.h.p.`, `\lesssim`. **Study-specific notation is declared
+  in the audience spec**, not in the validator:
+
+  ```json
+  "symbols": {
+    "B(":  { "pattern": "B\\(", "witnesses": ["ball"] },
+    "R/r": { "witnesses": ["condition number", "aspect ratio"] }
+  }
+  ```
+
+  A bare list of witnesses is also accepted (`"tau": ["autocorrelation"]`), in
+  which case the key itself is the search pattern. This is why a portfolio study
+  and a convex-geometry study can share one validator.
+- **Conditional symbol audit.** The validator scans the document for every
+  symbol in the merged registry; for each one that appears, the
   Notation/Definitions block must contain its defining witness (e.g. `B(` must
   be witnessed by ``ball''). A used-but-undefined symbol refuses the PASS.
-- **Audience statement.** The slides must name their audience and
-  prerequisites (e.g. ``Econ Ph.D. students, second graduate course; no
-  convex-body geometry assumed''). A document that cannot say who it is for
-  fails the gate.
+- **Audience statement.** Every deliverable must state, in its rendered text,
+  the `sentence` its audience spec carries (e.g. ``Econ Ph.D. students, second
+  graduate course; no convex-body geometry assumed''). A spec with no
+  `sentence`, or a document that states it only inside a comment, fails the
+  gate: a document that cannot say who it is for is not finished.
 - The gate checks documentation hygiene; it does not certify the mathematics
   (that remains the job of the check battery and the adversary).

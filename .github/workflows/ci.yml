@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  validator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # The compile gate is not optional: a validator that cannot build the
+      # stage-4 artifacts would skip its own strongest check in CI.
+      - name: Install a TeX engine
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
+
+      - name: Sync the pinned compute lane
+        run: uv sync --frozen --project env
+
+      - name: Run the test suite
+        run: uv run --frozen --project env python -m pytest tests/ -q
+
+      # Ship-what-you-test: the installed layout must be the tested layout.
+      - name: Smoke-test install.sh
+        run: |
+          DSH_HOME="$RUNNER_TEMP/dsh" ./install.sh
+          test -f "$RUNNER_TEMP/dsh/.agent-presets/rigorquant/skills/rigorquant/scripts/rq_check.py"
+          test -f "$RUNNER_TEMP/dsh/.agent-presets/rigorquant/skills/rigorquant/schemas/study.schema.json"
+          test -f "$RUNNER_TEMP/dsh/share/rigorquant/env/pyproject.toml"
+          DSH_HOME="$RUNNER_TEMP/dsh" ./install.sh --uninstall
+          test ! -d "$RUNNER_TEMP/dsh/.agent-presets/rigorquant"

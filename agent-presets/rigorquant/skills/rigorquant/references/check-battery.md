@@ -126,8 +126,13 @@ non-special instance — not another box/ball/simplex/ellipsoid. Requirements:
   rounding promise (how r, R are obtained) stated.
 - Seeded N-grid hardening (D) and the multiplicity rules apply unchanged.
 
-A broad PASS cites the stage-5 audit; `rq_check.py` refuses a broad PASS
-without it.
+A broad PASS cites the stage-5 audit. `rq_check.py` refuses a broad PASS
+without a `stage5_domain_scale` record whose `outputs` are non-empty AND resolve
+to files that exist; an instance named only by a reference/special body
+(box/ball/simplex/ellipsoid/diagonal, or a restatement of a simplified case) is
+refused as well (negated forms like non-diagonal are allowed). What it cannot
+check is whether
+the instance is *genuinely* hard — that judgement stays with the adversary.
 
 ## Pass standard
 
@@ -138,5 +143,12 @@ the study records its `validity_stages` evidence. The
 audit file records, for each check: its declaration (above), the statement
 checked, tolerance, seed, exact numbers, PASS/FAIL, the two independent
 ground-truth derivations that supplied the targets, and the hashes of the
-generating script, inputs, code, and environment manifest. A summary that does
-not match its referenced artifacts is rejected.
+generating script, inputs, code, and environment manifest.
+
+Two of those are machine-checked and the rest are the adversary's job. The
+checker verifies that (a) every `sha256:` a report declares on a line naming a
+file actually matches that file, and (b) seeds, an N-grid, a failure condition
+and a detected mutation appear **in the audit record** — not in `study.json`,
+which may not vouch for itself. Whether the recorded numbers are the ones the
+script really produced is not machine-checkable here; that is what
+producer ≠ checker is for.

@@ -41,12 +41,17 @@ Requires Node 18+ and CPython 3.12/3.13 (or `uv`).
 
 ## Lean lane (lean.check) — approval-gated provisioning
 
+`<skill-dir>` below is the directory containing the rigorquant `SKILL.md` —
+under a preset install that is
+`$DSH_HOME/.agent-presets/rigorquant/skills/rigorquant`. A repo-relative path
+does not resolve once the preset is installed.
+
 The Lean lane is provisioned on demand, but **never unattended**: the framework
 asks the user before running the bundled script, then runs it with the approval
 gate set:
 
 ```sh
-RQ_ALLOW_PROVISION=1 bash agent-presets/rigorquant/skills/rigorquant/scripts/provision-lean.sh
+RQ_ALLOW_PROVISION=1 bash <skill-dir>/scripts/provision-lean.sh
 ```
 
 It installs elan + the pinned toolchain (`leanprover/lean4:v4.31.0`), and

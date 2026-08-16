@@ -16,7 +16,7 @@ description: >
 
 # RigorQuant operating procedure
 
-You are running an **empirical and computational** mathematics research
+You are running an **empirical and computational** technical research
 framework: economics, finance, portfolio construction/optimization, simulation,
 computational econ/finance. The goal is a method whose **mathematical validity
 is established on simplified/special cases before numerical implementation** —
@@ -179,16 +179,24 @@ Each orchestrator round = fan-out → ground truth → adversary → synthesize.
 1. **Reference-case gate** — the check battery on the simplified cases.
    Passing it certifies the *implementation*, never the general claim.
 2. **Generalization** — lift the validated method to the general case in the
-   statement: state the general validity claim with ALL hypotheses (mixing
-   bound, warm start, rounding promise), tag it with an evidence level, and
-   analyze EVERY access model in the statement concretely (for a sublevel set
-   {x : f(x) < a}: membership = one evaluation of f, separation = one
-   subgradient, exact per-step cost, and how r, R of the well-rounded promise
-   are obtained for general f).
+   statement: state the general validity claim with ALL of its hypotheses, tag
+   it with an evidence level, and analyze EVERY access/data model the statement
+   assumes, concretely — what one query costs, what the method is allowed to
+   assume about its inputs, and how each assumed quantity is actually obtained
+   in the general case rather than read off the simplified one.
+   *(Worked example, from a convex-sampling study: for a sublevel set
+   {x : f(x) < a}, membership = one evaluation of f, separation = one
+   subgradient, plus the exact per-step cost and how the well-rounded promise's
+   r and R are obtained for general f. Your study's access models will differ —
+   a portfolio study's are its data panel, rebalancing frequency, and cost
+   model.)*
 3. **Domain-scale certification** — run the full battery on at least one
    genuinely non-special instance whose ground truth was derived independently
-   for this purpose. A study whose simplified cases are box/ball/simplex/
-   ellipsoid must not PASS on box/ball/simplex/ellipsoid evidence alone.
+   for this purpose. The instance must not be another member of the family the
+   simplified cases already came from — a study whose reference cases are
+   box/ball/simplex/ellipsoid must not PASS on box/ball/simplex/ellipsoid
+   evidence alone, and one whose reference cases are diagonal covariances must
+   not PASS on diagonal-covariance evidence alone.
 4. **Audience consultation (research-complete gate)** — when stages 1–3 are
    done, the study enters the explicit `research-complete` state (visible in
    `study.json.status`). Research never down-shifts for an audience. A
@@ -196,7 +204,7 @@ Each orchestrator round = fan-out → ground truth → adversary → synthesize.
    declared deliverable (paper / slides / web), an **audience spec**; the user
    accepts or edits it once. Fail closed on no answer (the checkpointed
    questionnaire waits, `deliverables.consultation_pending: true`). Full
-   mechanics, dial-back (claim-driven invalidation only), and the three-tier
+   mechanics, dial-back (claim-driven invalidation only), and the two-tier
    enforcement: [references/deliverables.md](references/deliverables.md).
 5. **Deliverables** — produce the declared artifacts (white paper
    `artifacts/paper/main.tex`, Beamer slides `artifacts/slides/main.tex`, and
@@ -228,12 +236,32 @@ Run on the simplified cases before ANY numerical implementation. Details and
 tolerances: [references/check-battery.md](references/check-battery.md). The
 battery is a **reference-case sanity gate** — passing it does not establish
 general validity; the staged validity case in check-battery.md does. Before
-declaring PASS, run the meta-validator
-(`python3 scripts/rq_check.py --study <study-root>`): it validates the state
-files, enforces the coverage gate (a `generalization` sub-problem + a
-`domain-scale` sub-problem), and refuses a PASS without the stage-3 general
-claim and stage-5 domain-scale evidence (lifecycle.md "Validity stages"). A
-battery-only PASS on special cases is refused.
+declaring PASS, run the meta-validator:
+
+```sh
+python3 <skill-dir>/scripts/rq_check.py --study <study-root> --out <study-root>/audits/rq-check.json
+```
+
+**`<skill-dir>` is the directory holding this SKILL.md** — resolve it once and
+record it; it is NOT relative to the study, and `scripts/rq_check.py` on its own
+resolves nowhere. The validator loads the JSON Schemas from `<skill-dir>/schemas/`,
+so the schema and the checker cannot disagree.
+
+It validates `study.json` / `registry.json` against those schemas, enforces the
+coverage gate (a `generalization` sub-problem + a `domain-scale` sub-problem),
+and refuses a PASS without the stage-3 general claim and stage-5 domain-scale
+evidence (lifecycle.md "Validity stages"). A battery-only PASS on special cases
+is refused.
+
+**What it can and cannot do.** It checks that the evidence *exists, is
+referenced, and is internally consistent* — non-empty stage outputs that resolve
+on disk, a parsed passed route with an audit reference, a non-empty
+`derivations/`, seeds and an N-grid and declared failure conditions **in the
+audit record rather than in `study.json`**, tolerances in the audits that match
+the study's, and deliverables that actually compile. It cannot judge whether the
+mathematics is right; that remains the job of the battery, the ground-truth
+track, and the adversary. Treat a green validator as "nothing is missing", never
+as "the result is correct".
 
 | Gate | Question | Instrument |
 |---|---|---|

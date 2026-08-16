@@ -49,7 +49,9 @@
    harness-enforced.
 8. **Multi-agent mechanism** — DSH-native: per-role delegation tools
    (`subagent` explorer, `subagent_ground_truth` oracle with `web_search`
-   denied, `subagent_adversary`; each `maxDepth: 0`) + `workflow` fan-out with
+   denied, `subagent_adversary`; each `maxDepth: 1`, which permits exactly one
+   level of delegation — a child is always at depth ≥ 1, so `maxDepth: 0` would
+   block delegation entirely) + `workflow` fan-out with
    JSON schemas + goal-round driver; registry/journal files are the cross-round
    memory. `subagent_fork` is not used for track work.
 9. **Model routing** — one model everywhere (user's choice); reasoning-effort
@@ -89,17 +91,37 @@ recorded accepted verdicts that amend decisions 1 (unattended scope), 3/6
 (sanity gate + statistical criteria), 4/7/8 (isolation language + per-role
 tools), 5 (opt-in, pinned jacobian), 10 (one goal, auto-implement safety), and
 11/12 (bundle contents + workspace). Those verdicts are the source of truth for
-the wording above; the checker CLI and JSON Schemas they require live under
-`schemas/` and `scripts/` (see the skill's lifecycle.md).
+the wording above; the checker CLI and JSON Schemas they require ship inside the
+skill, at `skills/rigorquant/scripts/` and `skills/rigorquant/schemas/`.
+
+## Decision 13 — the checker is the honesty boundary
+
+A later review demonstrated that a study with an empty `derivations/`, empty
+stage `outputs`, a one-line adversary report and a paper reading "This paper
+says nothing" was certified `PASS -- complete evidence`. Three rules follow, and
+they bind every future change to the checker:
+
+1. **A study may not vouch for itself.** Every evidence check reads
+   `audits/`, `derivations/`, `artifacts/` — never `study.json`. A declaration
+   states what was promised; only the record states what was done.
+2. **Parse, never grep.** Registry state is read as JSON and traversed;
+   `"passed"` appearing somewhere in the file is not a passed route.
+3. **One validator, one schema, both tested.** A second copy of either is how
+   the two silently diverged into different programs. `tests/` enforces this,
+   and the schemas are what the validator actually loads.
 
 ## Repo map
 
 ```
 agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
+  skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        this record
-studies/                    one study folder per task (Mode B layout; interim/
-                            inside each is gitignored, everything else commits)
+tests/                      the validator's suite; a forged study must FAIL
 install.sh                  installs the preset (or --skill-only) into $DSH_HOME
 ```
+
+A study folder (`studies/<slug>/` in Mode B, the repo root in Mode A) lives in
+the *research* repo, not here: `interim/` inside each is gitignored, everything
+else commits.

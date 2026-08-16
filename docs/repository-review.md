@@ -1107,3 +1107,86 @@ writes the seed where no Gate-D reproducibility audit will look for it.
 > defect this repository actually produces is not subtle mathematics, it is
 > unenforced consistency between documents and between a document and a
 > filesystem. Those are cheap to test and, as demonstrated, expensive to review.
+
+---
+
+## Pass 5 — the honesty gate did not hold (2026-08-15)
+
+The prior passes closed on a prediction: *"the class of defect this repository
+actually produces is not subtle mathematics, it is unenforced consistency
+between documents and between a document and a filesystem."* This pass ran the
+gates instead of reading them, and the prediction held — including for the
+checker that was built to prevent it.
+
+### The finding that mattered
+
+A study with an empty `derivations/`, `outputs: []` on both validity stages, a
+one-line adversary report, and a paper whose body read *"This paper says
+nothing."* was accepted:
+
+```
+PASS -- state valid; declared status 'PASS' has complete evidence.   (exit 0)
+```
+
+Every gate that let it through was a keyword search over a corpus that
+**included `study.json` itself**, so the study vouched for its own evidence; or
+a substring test (`'"passed"'` in the registry text) where a parse was needed;
+or a check whose "outputs missing" loop was vacuous on an empty list. The
+no-overclaim rule only ever looked for `formally verified`, so a paper asserting
+*"certificate-checked and independently re-derived"* with nothing behind it
+passed as well.
+
+### Structural findings
+
+1. **Two validators.** `scripts/rq_check.py` (320 lines) and the skill's copy
+   (646 lines) had become different programs returning opposite verdicts on the
+   same study; neither was a superset. Six documents invoked
+   `scripts/rq_check.py`, a path that does not exist after `install.sh`.
+2. **The schemas contradicted the skill.** `schemas/study.schema.json` had
+   `additionalProperties: false` and defined neither `broad_criterion`,
+   `deliverables`, `validity_stages`, nor the sub-problem `stage` on which the
+   whole coverage gate rests. Every `study.json` the skill mandated was invalid
+   against the repository's own schema, and `install.sh` never shipped it.
+3. **One study hard-coded into a general framework.** `deliverables.md` required
+   *every* study's slides to carry convex-body, TV-distance and oracle-model
+   background frames and named counterexamples from `rq-convex-sampling-01`;
+   `rq_check.py`'s symbol registry was that study's notation. For the
+   portfolio-optimization use case on the README's first line, the document gate
+   was inert.
+4. **Documented enforcement that did not exist**: tolerance reconciliation
+   ("the checker rejects a mismatch"), summary-vs-artifact matching, the
+   conditional symbol audit (the code only checked keys a spec listed), the
+   audience statement (skipped entirely when the spec had no `sentence`), the
+   report `lifecycle.md` said to ship, and a "three tiers" block that had listed
+   two since it was written.
+5. **`docs/architecture.md` decision 8** recorded `maxDepth: 0` for the
+   delegation tools; the preset uses `1`, and `0` blocks all delegation.
+6. Compilation ran in-place, leaving `.aux/.log/.pdf` in the committed
+   `artifacts/` tree; `claiming_pass` matched `"PASS" in status`, so
+   `"no PASS yet"` tripped every PASS gate. A pre-existing inverted check in the
+   HTML balance parser required `<html>` to be left *unclosed*.
+
+### Verdicts — all applied
+
+One validator, in the skill, loading the schemas that sit beside it. Evidence
+read from `audits/`/`derivations/`/`artifacts/` and never from `study.json`.
+The registry parsed, not grepped. Stage outputs required non-empty and resolved
+on disk. All four evidence levels covered by the no-overclaim rule. Sections
+required as real headings. The symbol registry split into a small cross-domain
+default plus a per-study `symbols` map in the audience spec. Compilation on a
+throwaway copy. `--out` restoring the report. The three architectural rules are
+recorded as decision 13 in `docs/architecture.md`.
+
+### The change that makes this pass different
+
+`tests/` — 57 tests, of which 23 fail against the pre-fix validator. The
+centrepiece is the forged study above, which must FAIL, and
+`tests/test_repo_consistency.py` asserts the things four human passes had to
+catch by reading: one validator, one schema, invocations that resolve, layout
+blocks that match the filesystem, `lifecycle.md`'s hand-written schema mirror
+agreeing with the schema that actually runs, and no study-specific notation in
+the validator. CI runs them, installs the preset, and checks the installed
+layout is the tested layout.
+
+This closes the recommendation the previous pass opened with. The next finding
+against this repository should come from a red test, not a reader.

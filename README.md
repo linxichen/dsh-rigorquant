@@ -17,6 +17,11 @@ context-isolated multi-agent research lab:
 - An **adversary** eliminates routes by counterexample only.
 - A **four-part check battery** (closed-form equality, exact invariants,
   analytic bounds, statistical hardening) runs BEFORE numerical implementation.
+- **A meta-validator** (`rq_check.py`) refuses a PASS whose evidence is missing:
+  empty stage outputs, an empty `derivations/`, a registry with no
+  audit-referenced passed route, or deliverables that do not compile. Its
+  evidence checks read the audit record, not `study.json` — a study may not
+  vouch for itself.
 - **Fixed-seed + LLN** conventions for stochastic work.
 - A **jacobian MCP escalation lane** (opt-in; Lean as a manual external lane)
   settles proof-critical claims before implementation.
@@ -66,7 +71,7 @@ The pinned uv compute lane is installed at `$DSH_HOME/share/rigorquant/env` by
 `install.sh` (see [env/README.md](env/README.md)). The jacobian escalation lane
 ships **disabled** and **pinned** (`jacobian@0.12.0`): enable the `mcp-jacobian`
 row, and the framework asks for approval before any one-time provisioning
-(`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain via
+(`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain via the skill's
 `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian.md).
 
 ## Repository layout
@@ -75,12 +80,37 @@ row, and the framework asks for approval before any one-time provisioning
 package.json                dsh.bundle manifest (dsh plugin add support)
 cordis.patch.yml            bundle patch: registers the rigorquant skill
 agent-presets/rigorquant/   preset composition + persona + bundled skill
+  skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
+  .../scripts/rq_check.py   the meta-validator (single canonical copy)
+  .../schemas/              study.json + registry.json JSON Schemas, which the
+                            validator loads — so schema and checker cannot drift
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources
-studies/                    one study folder per task (Mode B; this checkout's
+tests/                      the validator's test suite (see Testing below)
+studies/                    one study folder per task (Mode B; a checkout's own
                             live studies — not shipped in the npm bundle)
 ```
+
+## Testing
+
+The validator has a test suite, and its centrepiece is a *forged* study — empty
+derivations, empty stage outputs, a one-line adversary report, and a paper whose
+body reads "This paper says nothing." It must FAIL. A framework whose honesty
+gate is not itself tested is a framework that certifies whatever it is handed.
+
+```sh
+uv sync --frozen --project env
+uv run --frozen --project env python -m pytest tests/ -q
+```
+
+`tests/test_repo_consistency.py` covers the other half: one validator, one
+schema, documented commands that resolve, and layout blocks that match the
+filesystem. That is the defect class this repository actually produces.
+
+**What a green validator means:** nothing declared is missing, and the
+deliverables build. It does not mean the mathematics is right — that stays with
+the check battery, the independent ground-truth track, and the adversary.
 
 ## Studies
 

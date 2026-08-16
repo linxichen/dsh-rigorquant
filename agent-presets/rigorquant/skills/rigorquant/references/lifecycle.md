@@ -48,12 +48,22 @@ a study (registry.json, journal.md, audits) are study-root-relative.
     "stochastic": { "se_units": 3, "confidence": 0.95, "lln_grid": [1000, 10000, 100000] }
   },
   "budget": { "max_orchestrator_rounds": 5, "max_cost_usd": null, "max_wall_minutes": null },
-  "status": "per-sub-problem status + current round"
+  "status": "per-sub-problem status + current round; a PASS is claimed ONLY when this string begins with the token PASS"
 }
 ```
 
+The machine-readable version of this schema is
+`<skill-dir>/schemas/study.schema.json`, and it is the file `rq_check.py`
+actually loads — the JSON above is its human-facing mirror. If the two ever
+disagree, the schema file wins and `tests/` fails.
+
 Notes on the schema:
 
+- **PASS claim detection.** `status` is free text with one rule: it claims a
+  PASS only if it *begins* with `PASS`. `"round 2: SP3 active, no PASS yet"` is
+  not a claim and does not trip the PASS gates. A status that begins with PASS
+  but is also marked reopened (e.g. "PASS reopened") is likewise not a claim:
+  the study re-entered active work, so the PASS gates do not fire.
 - `mode` is the clean enum `"repo-root" | "multi-study"` (never a literal path
   or a `<...>` placeholder).
 - `env_lane` is an **absolute** path or the documented anchor
@@ -74,11 +84,15 @@ Notes on the schema:
   statement. Every general question requires at least one `generalization`
   sub-problem (the broad claim is its criterion) and at least one
   `domain-scale` sub-problem (certification on a genuinely non-special
-  instance). A study whose simplified cases are box/ball/simplex/ellipsoid
-  must not PASS on box/ball/simplex/ellipsoid evidence alone.
-  `scripts/rq_check.py --study <study-root>` enforces this at intake and at
-  PASS, and refuses a PASS without `validity_stages` stage-3 and stage-5
-  evidence.
+  instance). A study whose simplified cases are box/ball/simplex/ellipsoid (or
+  a portfolio study's diagonal covariance) must not PASS on evidence from those
+  same special bodies alone; rq_check.py refuses an instance that names only
+  such a body (box/ball/simplex/ellipsoid/diagonal) or restates a simplified
+  case.
+  `<skill-dir>/scripts/rq_check.py --study <study-root>` enforces this at intake
+  and at PASS, and refuses a PASS unless `validity_stages` stage-3 and stage-5
+  each record non-empty `outputs` that resolve to files that exist and stay inside the study root (absolute or
+  ".."-escaping paths, and the validator's own report, are refused).
 
 ## registry.json schema (subproblems map)
 
@@ -155,7 +169,7 @@ stage 3 = the general validity claim with all hypotheses and an evidence
 level; stage 5 = the full battery on a genuinely non-special instance. Record
 them in `study.json` `validity_stages`. A PASS recorded without stage-3 and
 stage-5 evidence is invalid, and the meta-validator
-(`python3 scripts/rq_check.py --study <study-root>`) refuses it.
+(`python3 <skill-dir>/scripts/rq_check.py --study <study-root>`) refuses it.
 
 ## Terminal states
 
@@ -180,7 +194,7 @@ stage-5 evidence is invalid, and the meta-validator
   per references/deliverables.md), the **audience consultation completed**
   (`consultation_pending` false; `deliverables.audience.<name>` present for
   every declared deliverable), AND the meta-validator to accept it (run
-  `python3 scripts/rq_check.py --study <study-root>` before declaring). A
+  `python3 <skill-dir>/scripts/rq_check.py --study <study-root>` before declaring). A
   battery-only PASS on special cases is not a study PASS.
   Auto-implementation is allowed only under a safety protocol: create a branch
   or worktree, declare a **frozen write scope** (only the target artifact
@@ -222,10 +236,21 @@ Every report, script, and summary must be hashable and auditable:
 - Generate the journal summary mechanically from the audit records; reject a
   summary that does not match its referenced artifacts.
 
-Run `python3 scripts/rq_check.py --study <study-root>` before declaring any
-PASS. It validates `study.json` / `registry.json`, checks evidence completeness
-and falsifiability, rejects a missing N-grid, hashes the inputs, and refuses a
-PASS without mandatory evidence. Ship the report alongside the audit.
+Run the meta-validator before declaring any PASS, writing its report into the
+audit trail:
+
+```sh
+python3 <skill-dir>/scripts/rq_check.py --study <study-root> --out <study-root>/audits/rq-check.json
+```
+
+`<skill-dir>` is the directory containing SKILL.md (see SKILL.md "the check
+battery"). It validates `study.json` / `registry.json` against the schemas in
+`<skill-dir>/schemas/`, checks evidence completeness and falsifiability against
+the **audit record** (never against `study.json` itself), rejects a missing
+N-grid, verifies every declared SHA-256, and refuses a PASS without mandatory
+evidence. With `--out` it writes a report carrying the result, every problem
+found, the state-file hashes, and an environment manifest; ship that report
+alongside the audit.
 
 ## Goal wiring
 

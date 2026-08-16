@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/linxichen/dsh-rigorquant/schemas/registry.schema.json",
+  "$id": "https://github.com/linxichen/dsh-rigorquant/agent-presets/rigorquant/skills/rigorquant/schemas/registry.schema.json",
   "title": "RigorQuant registry.json",
   "description": "The approach-family registry, keyed by sub-problem id (SPn) so each sub-problem keeps its own blockedReason/blockedRounds state.",
   "type": "object",
