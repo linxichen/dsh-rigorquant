@@ -575,6 +575,37 @@ def check_declared_hashes(root: Path, problems):
                         f"of the referenced artifacts on its line")
 
 
+def check_document_adversary_reports(study, root: Path, problems):
+    """Soft tier of the document-adversary gate: an independent subagent report
+    must exist per declared deliverable and end in VERDICT: PASS."""
+    if not claiming_pass(study):
+        return
+    d = study.get("deliverables") or {}
+    names = ["paper"]
+    if str(d.get("slides", "")).lower().startswith("required"):
+        names.append("slides")
+    if str(d.get("web", "")).lower() == "required":
+        names.append("web")
+    for name in names:
+        report = root / "audits" / f"document-adversary-{name}.md"
+        if not report.exists():
+            problems.append(
+                f"PASS refused: audits/document-adversary-{name}.md missing — the "
+                f"document-adversary (soft tier) has not audited the {name} "
+                f"deliverable against its audience spec")
+            continue
+        text = report.read_text(errors="replace")
+        verdicts = re.findall(r"VERDICT:\s*(PASS|NEEDS-EDITS)", text, re.IGNORECASE)
+        if not verdicts:
+            problems.append(
+                f"PASS refused: audits/document-adversary-{name}.md has no "
+                f"'VERDICT: PASS'/'VERDICT: NEEDS-EDITS' line")
+        elif verdicts[-1].upper() == "NEEDS-EDITS":
+            problems.append(
+                f"PASS refused: audits/document-adversary-{name}.md verdict is "
+                f"NEEDS-EDITS — the {name} deliverable must be revised and re-audited")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--study", required=True, help="path to the study root")
@@ -594,6 +625,7 @@ def main():
     if subs is not None:
         check_coverage(study, subs, problems)
         check_deliverables(study, root, problems)
+        check_document_adversary_reports(study, root, problems)
         check_pass_evidence(study, root, problems)
         check_registry(study, root, problems)
         check_declared_hashes(root, problems)

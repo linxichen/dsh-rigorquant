@@ -196,7 +196,11 @@ load-bearing claim (claim-driven invalidation via the existing
 - *Soft (document adversary):* a subagent reads the artifact and its spec and
   returns PASS or needs-edits with concrete reasons (proof depth,
   motivation, worked examples, appropriateness for the level). needs-edits is
-  a blocking gap, recorded in `audits/`.
+  a blocking gap. The report is committed as
+  `audits/document-adversary-<name>.md` (name in `paper`, `slides`, `web`) and
+  ends with an explicit `VERDICT: PASS` or `VERDICT: NEEDS-EDITS` line. The
+  validator refuses a PASS when a required report is missing or its final
+  verdict is NEEDS-EDITS.
 
 ## Document-adversary gate (validator-enforced at PASS)
 
