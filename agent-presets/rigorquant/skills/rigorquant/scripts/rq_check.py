@@ -314,43 +314,62 @@ def notation_block(text: str, is_beamer: bool = False) -> str:
     return rest[:nxt.start()] if nxt else rest
 
 
-# Symbol -> witnesses that must appear in the Notation/Definitions block
-# whenever the symbol is USED anywhere in the document.
-SYMBOL_REQUIREMENTS = [
-    (r"B\(", ["ball"]),
-    (r"\\operatorname\{Unif\}", ["uniform"]),
-    (r"S\^\{d-1\}", ["sphere"]),
-    (r"poly", ["polynomial"]),
-    (r"O\^\*", ["polylog", "o^*", "hides"]),
-    (r"\\mathrm\{TV\}|total-variation", ["total-variation", "tv"]),
-    (r"R/r", ["condition number", "aspect ratio"]),
-    (r"\\delta", ["step"]),
-    (r"\\tau", ["autocorrelation", "iat"]),
-    (r"subgradient", ["subgradient"]),
+# Keyed symbol registry: key -> (usage regex, defining witnesses). The audience
+# spec's `must_define` and `avoid` lists name these keys.
+SYMBOL_KEYS = [
+    ("B(", r"B\(", ["ball"]),
+    ("Unif", r"\\operatorname\{Unif\}", ["uniform"]),
+    ("S^{d-1}", r"S\^\{d-1\}", ["sphere"]),
+    ("poly", r"poly", ["polynomial"]),
+    ("O*", r"O\^\*", ["polylog", "o^*", "hides"]),
+    ("TV", r"\\mathrm\{TV\}|total-variation", ["total-variation", "tv"]),
+    ("R/r", r"R/r", ["condition number", "aspect ratio"]),
+    ("delta", r"\\delta", ["step"]),
+    ("tau", r"\\tau", ["autocorrelation", "iat"]),
+    ("subgradient", r"subgradient", ["subgradient"]),
 ]
 
 
-def check_document_notation(text: str, label: str, problems, is_beamer: bool = False):
-    """Document-adversary gate: a Notation/Definitions block must exist and
-    define every load-bearing symbol the document uses."""
+def check_document_spec(text: str, spec, label: str, problems, is_beamer: bool = False):
+    """Enforce a stored per-deliverable audience spec against a document.
+
+    spec: dict with `sentence` (must appear verbatim), `must_define` (symbol
+    keys that must have a defining witness in the Notation block), `avoid`
+    (symbol keys that must NOT be used outside the Notation block).
+    """
     block = notation_block(text, is_beamer)
     if not block:
         problems.append(
-            f"PASS refused: {label} has no Notation/Definitions section; all "
+            f"PASS refused: {label} has no Notation/Definitions block; all "
             f"symbols must be defined and conventions never assumed "
             f"(e.g. B( ) as the Euclidean ball, poly(...), O^*, R/r, tau)")
         return
     low_block = block.lower()
-    doc = text.lower()
-    for pattern, witnesses in SYMBOL_REQUIREMENTS:
-        used = re.search(pattern, doc, re.IGNORECASE)
-        if not used:
-            continue
+
+    def _norm(s):
+        return " ".join(str(s).split())
+
+    doc_norm = _norm(text).lower()
+    sentence = (spec or {}).get("sentence", "")
+    if sentence and _norm(sentence).lower() not in doc_norm:
+        problems.append(
+            f"PASS refused: {label} does not state its confirmed audience "
+            f"sentence ({sentence!r}); the audience spec is authoritative")
+    body = text.replace(block, " ")
+    for key in (spec or {}).get("must_define", []):
+        row = next((r for r in SYMBOL_KEYS if r[0] == key), None)
+        witnesses = row[2] if row else [str(key).lower()]
         if not any(w in low_block for w in witnesses):
             problems.append(
-                f"PASS refused: {label} uses {used.group(0)!r} but its "
-                f"Notation/Definitions block does not define it (expected a "
-                f"witness among {witnesses})")
+                f"PASS refused: {label} must define {key!r} in its "
+                f"Notation/Definitions block (expected a witness among "
+                f"{witnesses})")
+    for key in (spec or {}).get("avoid", []):
+        row = next((r for r in SYMBOL_KEYS if r[0] == key), None)
+        if row and re.search(row[1], body, re.IGNORECASE):
+            problems.append(
+                f"PASS refused: {label} uses the avoided convention {key!r} "
+                f"outside its definition; the audience spec forbids it")
 
 
 def check_deliverables(study, root: Path, problems):
@@ -373,6 +392,23 @@ def check_deliverables(study, root: Path, problems):
             f"deliverables gate: `web` must be 'optional' or 'required', got {d.get('web')!r}")
     if not claiming_pass(study):
         return
+    if d.get("consultation_pending"):
+        problems.append(
+            "PASS refused: deliverables.consultation_pending is true — the "
+            "one-time audience consultation has not been completed; answer the "
+            "checkpointed questionnaire before claiming PASS")
+    aud = d.get("audience") or {}
+    paper_spec = aud.get("paper")
+    slides_spec = aud.get("slides")
+    web_spec = aud.get("web")
+    if not isinstance(paper_spec, dict):
+        problems.append(
+            "PASS refused: deliverables.audience.paper is missing — the paper's "
+            "audience spec must be set by the post-research consultation")
+    if slides_req.startswith("required") and not isinstance(slides_spec, dict):
+        problems.append(
+            "PASS refused: deliverables.audience.slides is missing — the slides' "
+            "audience spec must be set by the post-research consultation")
     engine = find_tex_engine()
     if engine is None:
         problems.append(
@@ -423,8 +459,8 @@ def check_deliverables(study, root: Path, problems):
                 problems.append(
                     "PASS refused: paper bibliography file(s) missing: "
                     f"{missing_bib}")
-        check_document_notation(text, "artifacts/paper/main.tex", problems,
-                                is_beamer=False)
+        check_document_spec(text, paper_spec, "artifacts/paper/main.tex", problems,
+                            is_beamer=False)
         if engine is not None:
             compile_tex_artifact(engine, paper, "artifacts/paper/main.tex", problems)
     if slides_req.startswith("required"):
@@ -447,17 +483,15 @@ def check_deliverables(study, root: Path, problems):
                     problems.append(
                         "PASS refused: slides bibliography file(s) missing: "
                         f"{missing_bib}")
-            check_document_notation(t, "artifacts/slides/main.tex", problems,
-                                    is_beamer=True)
-            if not re.search(r"graduate course|prerequisite|audience|Econ Ph\.?D",
-                             t, re.IGNORECASE):
-                problems.append(
-                    "PASS refused: slides do not state their audience and "
-                    "prerequisites (a document must say who it is for and what "
-                    "technical level it assumes)")
+            check_document_spec(t, slides_spec, "artifacts/slides/main.tex", problems,
+                                is_beamer=True)
             if engine is not None:
                 compile_tex_artifact(engine, slides, "artifacts/slides/main.tex", problems)
     if web_req == "required":
+        if not isinstance(web_spec, dict):
+            problems.append(
+                "PASS refused: deliverables.audience.web is missing — the web "
+                "artifact's audience spec must be set by the post-research consultation")
         web = root / "artifacts" / "web" / "index.html"
         if not web.exists() or web.stat().st_size < 50:
             problems.append("PASS refused: artifacts/web/index.html missing "
@@ -479,6 +513,11 @@ def check_deliverables(study, root: Path, problems):
                 problems.append(
                     "PASS refused: artifacts/web/index.html does not close its <html> tag")
             raw = web.read_text(errors="replace")
+            if (web_spec or {}).get("sentence") and \
+                    web_spec["sentence"].lower() not in raw.lower():
+                problems.append(
+                    "PASS refused: artifacts/web/index.html does not state its "
+                    "confirmed audience sentence; the audience spec is authoritative")
             if not (re.search(r'id\s*=\s*["\']references["\']', raw, re.IGNORECASE)
                     or re.search(r"<h[1-6][^>]*>\s*references", raw, re.IGNORECASE)):
                 problems.append(

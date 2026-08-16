@@ -146,6 +146,58 @@ URL as the `href`); bare URLs with no anchor text fail the check.
    appears in one of those records.
 3. `python3 scripts/rq_check.py --study <study-root>` gates the result.
 
+## Audience consultation (post-research, one-time, per deliverable)
+
+Research always runs at the maximum technical level; the audience is chosen
+only after the study is considered done. The lifecycle therefore has an
+explicit **`research-complete`** state: every subproblem route `passed`,
+`validity_stages` stage-3 + stage-5 recorded, and `rq_check.py` accepting the
+state with deliverable gates suppressed.
+
+At `research-complete`, before any deliverable is crafted:
+
+1. A **consulting subagent** reads `study.json`, `registry.json`, the
+   `artifacts/*.md` results, and the existing artifacts, and drafts — per
+   declared deliverable (paper / slides / web) — an **audience spec**:
+   `role`, `level`, `sentence` (the one-sentence audience statement the
+   artifact must state verbatim), `assume_known[]` (prerequisites to take for
+   granted), `must_define[]` (symbol keys that must be defined in the
+   Notation block), `avoid[]` (conventions that must not be used outside the
+   definition), `depth` (proof sketches vs. full proofs), and `format`. Each
+   draft carries a justification tied to the artifact content it read.
+2. The **user accepts or edits** each draft — this is the consultation. It is
+   the user's decision, never auto-filled, and never time-out-accepted.
+3. The confirmed specs are persisted as
+   `deliverables.audience.<name>` in `study.json`; `consultation_pending`
+   is cleared; a `consultation_record` (agent id, date, artifact hashes read)
+   is written; `last_accepted` retains the previous spec across a dial-back.
+
+**Fail-closed / resume.** The full questionnaire (drafts + justifications) is
+checkpointed into `study.json` before asking. If no answerer is available,
+approvals are disabled, or the session ends mid-consultation, the study stays
+`research-complete` with `consultation_pending: true`, and the next human turn
+re-presents the same checkpoint (re-drafting only if the artifacts changed
+since). Partial answers persist; only the unanswered deliverables re-present.
+
+**Dial-back.** The user may roll the study back to `active` at any time. This
+sets `consultation_pending: true` and retains the audience spec as
+`last_accepted`, but it does **not** mark verified, correct artifacts or PASS
+evidence stale. Artifacts lose validity only when new research changes a
+load-bearing claim (claim-driven invalidation via the existing
+"superseded" mechanism); they are then re-crafted and re-verified.
+
+**Enforcement at PASS (three tiers).**
+
+- *Hard (validator):* the artifact states its confirmed audience `sentence`;
+  a Notation/Definitions block exists; every `must_define` key has a defining
+  witness in the block; every `avoid` key is absent from the text outside the
+  block; the artifact compiles/renders. `consultation_pending: true` or a
+  missing audience spec refuses the PASS.
+- *Soft (document adversary):* a subagent reads the artifact and its spec and
+  returns PASS or needs-edits with concrete reasons (proof depth,
+  motivation, worked examples, appropriateness for the level). needs-edits is
+  a blocking gap, recorded in `audits/`.
+
 ## Document-adversary gate (validator-enforced at PASS)
 
 Stage-4 documents are written for the declared audience's technical level, and

@@ -189,19 +189,30 @@ Each orchestrator round = fan-out → ground truth → adversary → synthesize.
    genuinely non-special instance whose ground truth was derived independently
    for this purpose. A study whose simplified cases are box/ball/simplex/
    ellipsoid must not PASS on box/ball/simplex/ellipsoid evidence alone.
-4. **Deliverables** — produce the declared artifacts (white paper
+4. **Audience consultation (research-complete gate)** — when stages 1–3 are
+   done, the study enters the explicit `research-complete` state (visible in
+   `study.json.status`). Research never down-shifts for an audience. A
+   consulting subagent reads the study record + artifacts and drafts, per
+   declared deliverable (paper / slides / web), an **audience spec**; the user
+   accepts or edits it once. Fail closed on no answer (the checkpointed
+   questionnaire waits, `deliverables.consultation_pending: true`). Full
+   mechanics, dial-back (claim-driven invalidation only), and the three-tier
+   enforcement: [references/deliverables.md](references/deliverables.md).
+5. **Deliverables** — produce the declared artifacts (white paper
    `artifacts/paper/main.tex`, Beamer slides `artifacts/slides/main.tex`, and
    `artifacts/web/index.html` when required) by ASSEMBLING the validated
-   records (registry, derivations, audits, battery results) — never by writing
-   new claims. Structure and the no-overclaim rule:
-   [references/deliverables.md](references/deliverables.md). `rq_check.py`
-   verifies existence, structure, and that the paper does not overclaim the
-   recorded evidence levels.
+   records (registry, derivations, audits, battery results) and writing them
+   against the confirmed audience specs — never by writing new claims.
+   Structure, the no-overclaim rule, bibliography, and the document-adversary
+   gate: [references/deliverables.md](references/deliverables.md).
+   `rq_check.py` verifies existence, structure, compilation, references, and
+   that the paper does not overclaim the recorded evidence levels.
 
 A study declares PASS only when the broad criterion is satisfied by stages
-1–3 together AND the declared stage-4 deliverables exist. A battery-only PASS
-on special cases is BLOCKED, not PASS — record the exact missing stage as the
-blockedReason.
+1–3 together, the audience consultation is answered, and the declared
+stage-4 deliverables exist and satisfy their audience specs. A battery-only
+PASS on special cases is BLOCKED, not PASS — record the exact missing stage
+as the blockedReason.
 
 **Proof and refutation tracks (parallel).** Do not assume an affirmative result
 exists. For every load-bearing claim, run the refutation track alongside the

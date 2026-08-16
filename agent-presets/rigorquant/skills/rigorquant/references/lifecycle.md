@@ -29,7 +29,17 @@ a study (registry.json, journal.md, audits) are study-root-relative.
   "deliverables": {
     "paper": "required",
     "slides": "required | not-required:<reason recorded at intake>",
-    "web": "optional | required"
+    "web": "optional | required",
+    "consultation_pending": false,
+    "consultation_record": { "date": "...", "agent": "...", "artifacts_read": ["..."] },
+    "last_accepted": { "paper": {...}, "slides": {...}, "web": {...} },
+    "audience": {
+      "paper": { "role": "...", "level": "...", "sentence": "...",
+                 "assume_known": ["..."], "must_define": ["B(", "poly", "O*"],
+                 "avoid": ["..."], "depth": "...", "format": "..." },
+      "slides": { "...": "..." },
+      "web": { "...": "..." }
+    }
   },
   "simplified_cases": ["..."],
   "seeds": { "task_seed": 0, "convention": "per-run seed = task_seed + run_index" },
@@ -149,12 +159,27 @@ stage-5 evidence is invalid, and the meta-validator
 
 ## Terminal states
 
+- **research-complete** — an intermediate, explicit state reached when every
+  subproblem route is `passed`, `validity_stages` stage-3 + stage-5 evidence
+  are recorded, and `rq_check.py` accepts the study with deliverable gates
+  suppressed. It is visible in `study.json.status`. At this point the
+  **one-time audience consultation** (references/deliverables.md) must fire
+  before any deliverable is crafted; until it is answered,
+  `deliverables.consultation_pending` is `true` and a PASS is refused. The
+  user may dial the study back to `active` from this (or any later) state;
+  dial-back sets `consultation_pending: true`, retains the audience spec as
+  `deliverables.last_accepted`, and does **not** mark verified artifacts
+  stale — invalidation is claim-driven only (an artifact loses validity when
+  new research changes a load-bearing claim it asserts, via the "superseded"
+  mechanism), never merely because a dial-back happened.
 - **PASS** — the staged validity case (above) passes for the sub-problem. A
   study-level PASS additionally requires the `validity_stages` stage-3 and
   stage-5 evidence recorded, the declared `deliverables` produced
   (`artifacts/paper/main.tex`; `artifacts/slides/main.tex` when required;
   `artifacts/web/index.html` when required — assembled from validated records
-  per references/deliverables.md), AND the meta-validator to accept it (run
+  per references/deliverables.md), the **audience consultation completed**
+  (`consultation_pending` false; `deliverables.audience.<name>` present for
+  every declared deliverable), AND the meta-validator to accept it (run
   `python3 scripts/rq_check.py --study <study-root>` before declaring). A
   battery-only PASS on special cases is not a study PASS.
   Auto-implementation is allowed only under a safety protocol: create a branch
