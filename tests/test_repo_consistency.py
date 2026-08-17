@@ -286,3 +286,13 @@ def test_install_script_installs_literature_skills():
         assert ('$DSH_HOME/skills/%s"' % skill) in install or \
                ('$DSH_HOME/skills/%s ' % skill) in install, \
                "install.sh never installs %s globally" % skill
+
+
+def test_j_space_is_bundled_installed_and_uninstallable():
+    """The J-Space integration must be self-contained and removable."""
+    assert (REPO / "agent-presets/rigorquant/skills/j-space/SKILL.md").exists()
+    install = (REPO / "install.sh").read_text()
+    assert "$DSH_HOME/skills/j-space" in install, \
+        "install.sh never installs j-space globally"
+    assert 'rm -rf "$DSH_HOME/skills/j-space"' in install, \
+        "install.sh --uninstall never removes j-space"

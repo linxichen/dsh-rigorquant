@@ -1,8 +1,8 @@
 #!/bin/sh
-# Install the dsh-rigorquant agent preset (and its bundled skill) into DSH.
-#   ./install.sh                 → install the preset + skill + shared compute lane
-#   ./install.sh --skill-only    → install only the rigorquant skill (any preset)
-#   ./install.sh --uninstall     → remove the installed preset, skill, and lane
+# Install the dsh-rigorquant agent preset (and its bundled skills) into DSH.
+#   ./install.sh                 → install the preset + skills + shared compute lane
+#   ./install.sh --skill-only    → install only the rigorquant + j-space skills (any preset)
+#   ./install.sh --uninstall     → remove the installed preset, skills, and lane
 #   ./install.sh --version       → print the bundled version
 #   ./install.sh --help          → print usage
 set -eu
@@ -14,10 +14,10 @@ usage() {
   cat <<EOF
 Usage: $0 [--skill-only] [--uninstall] [--version] [--help]
 
-  (no args)      Install the RigorQuant preset, its bundled skill, and the
+  (no args)      Install the RigorQuant preset, its bundled skills, and the
                  shared compute lane under \$DSH_HOME/share/rigorquant.
-  --skill-only   Install only the rigorquant skill (for use with any preset).
-  --uninstall    Remove the installed preset, skill, and shared lane.
+  --skill-only   Install only the rigorquant + j-space skills (for use with any preset).
+  --uninstall    Remove the installed preset, skills, and shared lane.
   --version      Print the bundled version and exit.
   --help         Show this help and exit.
 EOF
@@ -58,18 +58,20 @@ install_dir() {
 if [ "$mode" = uninstall ]; then
   rm -rf "$DSH_HOME/.agent-presets/rigorquant"
   rm -rf "$DSH_HOME/skills/rigorquant"
+  rm -rf "$DSH_HOME/skills/j-space"
   rm -rf "$DSH_HOME/skills/arxiv"
   rm -rf "$DSH_HOME/skills/academic-paper-search"
   rm -rf "$DSH_HOME/share/rigorquant"
-  echo "Removed the RigorQuant preset, skill, and shared lane."
+  echo "Removed the RigorQuant preset, skills, and shared lane."
   exit 0
 fi
 
 if [ "$mode" = skill ]; then
   install_dir "$HERE/agent-presets/rigorquant/skills/rigorquant" "$DSH_HOME/skills/rigorquant"
+  install_dir "$HERE/agent-presets/rigorquant/skills/j-space" "$DSH_HOME/skills/j-space"
   install_dir "$HERE/agent-presets/rigorquant/skills/arxiv" "$DSH_HOME/skills/arxiv"
   install_dir "$HERE/agent-presets/rigorquant/skills/academic-paper-search" "$DSH_HOME/skills/academic-paper-search"
-  echo "Installed skills to $DSH_HOME/skills/ (rigorquant, arxiv, academic-paper-search; the directory watcher loads them immediately)."
+  echo "Installed skills to $DSH_HOME/skills/ (rigorquant, j-space, arxiv, academic-paper-search; the directory watcher loads them immediately)."
 else
   install_dir "$HERE/agent-presets/rigorquant" "$DSH_HOME/.agent-presets/rigorquant"
   # Stable anchor for the compute lane + escalation docs. SKILL.md Step 2
@@ -77,9 +79,10 @@ else
   install_dir "$HERE/env" "$DSH_HOME/share/rigorquant/env"
   install_dir "$HERE/mcp" "$DSH_HOME/share/rigorquant/mcp"
   install_dir "$HERE/docs" "$DSH_HOME/share/rigorquant/docs"
+  install_dir "$HERE/agent-presets/rigorquant/skills/j-space" "$DSH_HOME/skills/j-space"
   install_dir "$HERE/agent-presets/rigorquant/skills/arxiv" "$DSH_HOME/skills/arxiv"
   install_dir "$HERE/agent-presets/rigorquant/skills/academic-paper-search" "$DSH_HOME/skills/academic-paper-search"
-  echo "Installed global skills arxiv + academic-paper-search to $DSH_HOME/skills/"
+  echo "Installed global skills j-space, arxiv + academic-paper-search to $DSH_HOME/skills/"
   echo "Installed preset to $DSH_HOME/.agent-presets/rigorquant"
   echo "Installed compute lane to $DSH_HOME/share/rigorquant"
   echo "Start a new session and pick the 'RigorQuant' preset in the session picker."

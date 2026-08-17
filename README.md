@@ -7,9 +7,12 @@ research** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harnes
 — economics, finance, portfolio construction/optimization, simulation,
 computational econ/finance.
 
-RigorQuant is an agent preset + bundled skill that turns one DSH session into a
+RigorQuant is an agent preset + bundled skills that turns one DSH session into a
 context-isolated multi-agent research lab:
 
+- **J-Space** is used integrally across the root persona, every subagent role,
+  and plan mode as the inference-time cognitive-control layer (workspace gate,
+  ledger, seam refresh, dense inner / clean outer registers).
 - **Parallel explorers** propose candidate methods (`subagent`, blank context).
 - A **ground-truth track** re-derives the analytic closed forms, invariants, and
   bounds for simplified cases — twice, by different means (two independent
@@ -42,22 +45,23 @@ session. Crossing a session boundary disarms the goal; one human turn
 
 Two install forms:
 
-**Bundle (skill layer)** — one command, makes the `rigorquant` skill available
-to every session of a profile; the repo declares a `dsh.bundle` manifest so the
-ecosystem's `dsh plugin add` path works:
+**Bundle (skill layer)** — one command, makes the `rigorquant` and `j-space`
+skills available to every session of a profile; the repo declares a
+`dsh.bundle` manifest so the ecosystem's `dsh plugin add` path works:
 
 ```sh
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 
 **Preset (full framework)** — the RigorQuant agent preset (persona +
-orchestration + tools) with the bundled skill:
+orchestration + tools) with the bundled skills:
 
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
-./install.sh                    # installs the preset + skill + compute lane
-# ./install.sh --skill-only     # or just the rigorquant skill, for any preset
+./install.sh                    # installs the preset + skills + compute lane
+# ./install.sh --skill-only     # or just the rigorquant + j-space skills
+# ./install.sh --uninstall      # removes the preset, skills, and shared lane
 ```
 
 Start a new DSH session and pick the **RigorQuant** preset. Then:
@@ -78,12 +82,13 @@ row, and the framework asks for approval before any one-time provisioning
 
 ```
 package.json                dsh.bundle manifest (dsh plugin add support)
-cordis.patch.yml            bundle patch: registers the rigorquant skill
-agent-presets/rigorquant/   preset composition + persona + bundled skill
+cordis.patch.yml            bundle patch: registers the rigorquant + j-space skills
+agent-presets/rigorquant/   preset composition + persona + bundled skills
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)
   .../schemas/              study.json + registry.json JSON Schemas, which the
                             validator loads — so schema and checker cannot drift
+  skills/j-space/           J-Space cognition suite (SKILL.md + modules/ + references/ + scripts/)
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources
