@@ -1,6 +1,6 @@
 // RigorQuant model router — host half.
 //
-// One settings namespace (`rigorquant.models`) maps every RigorQuant role to a
+// One settings namespace (`rigorquant-models`) maps every RigorQuant role to a
 // primary model and a per-role fallback model, each with its own reasoning
 // effort. Routing happens in the `agent/request` waterfall: this plugin mounts
 // at profile boot, so its listener registers before any agent-scoped model
@@ -33,7 +33,7 @@ const name = 'rq-model-router'
 const inject = ['settings']
 
 /** Settings namespace served to the Plugins configuration tab. */
-const NS = 'rigorquant.models'
+const NS = 'rigorquant-models'
 /** Persona tag the preset stamps into every role persona. */
 const TAG = /\[\[rq:role=([a-z-]+)\]\]/
 /** The persona slot's reserved section name (dsh-system-prompt contract). */

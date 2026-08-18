@@ -135,7 +135,7 @@ if (verdict.applyIsFunction) {
           llm: { models: async () => ({ result: { ok: false, error: { code: 'stub', message: 'stub' } } }) },
           settings: {
             describe: async () => ({
-              result: { ok: true, value: { namespaces: [{ ns: 'rigorquant.models', schema: { uid: 1, refs: {} } }] } },
+              result: { ok: true, value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] } },
             }),
           },
         },

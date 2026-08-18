@@ -9,7 +9,7 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [Unreleased]
 
 ### Added
-- Role-routed models: the `rigorquant.models` settings namespace maps every
+- Role-routed models: the `rigorquant-models` settings namespace maps every
   RigorQuant role to a primary and a fallback model, each with its own
   reasoning effort, and the router rewrites `agent/request` per role. Roles are
   identified by a `[[rq:role=...]]` tag in the preset persona, so sessions on

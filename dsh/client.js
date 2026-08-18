@@ -1,6 +1,6 @@
 // RigorQuant model router — browser half.
 //
-// One card in the Plugins settings tab, keyed by the `rigorquant.models`
+// One card in the Plugins settings tab, keyed by the `rigorquant-models`
 // settings namespace this package's host half serves. Each role row stages a
 // primary choice (model + reasoning effort) and a per-role fallback choice;
 // "inherit" clears the user layer for that field so the composition default
@@ -26,7 +26,7 @@
 
 window.__ModuleLoader__.load({ id: 'dsh-rigorquant', factory: (require) => {
 
-const CARD_KEY = 'rigorquant.models'
+const CARD_KEY = 'rigorquant-models'
 const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary']
 const SLOTS = ['Primary', 'Fallback']
 const EFFORTS = ['off', 'high', 'max']

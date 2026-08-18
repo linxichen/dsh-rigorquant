@@ -240,7 +240,7 @@ composition.
   session+role to the role's own fallback and forces exactly one retry. A
   successful assistant step on the fallback — or the TTL (10 min) — restores
   the primary; a failing fallback is never retried again by the router.
-- **Persistence and UI.** Choices live in the `rigorquant.models` settings
+- **Persistence and UI.** Choices live in the `rigorquant-models` settings
   namespace (user layer of `settings.yaml`); the browser half renders the
   card in the Plugins settings tab, keyed by that namespace, with model and
   effort dropdowns from the live provider catalog.

@@ -27,7 +27,7 @@
           - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('agent-presets/rigorquant/skills/', baseUrl))"
 
     # Role-routed models (see docs/architecture.md, Decision 16). The plugin
-    # serves the `rigorquant.models` settings namespace (Plugins settings tab
+    # serves the `rigorquant-models` settings namespace (Plugins settings tab
     # renders its card) and routes agent requests per role: primary choice,
     # per-role fallback on terminal route failure, per-choice reasoning
     # effort. Untagged sessions — other presets, workflow workers, fork

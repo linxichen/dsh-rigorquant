@@ -14,6 +14,7 @@ ever executed by a browser. These tests execute it the way the shell does.
 """
 
 import json
+import re
 import shutil
 import subprocess
 
@@ -90,7 +91,7 @@ def test_apply_mounts_the_card_into_the_settings_ring(verdict):
     assert "mountError" not in verdict, verdict.get("mountError")
     assert verdict["mounted"]
     assert verdict["mountRing"] == "settings.plugin.item"
-    assert verdict["cards"] == ["rigorquant.models"]
+    assert verdict["cards"] == ["rigorquant-models"]
 
 
 def test_card_renders_with_framework_composed_props(verdict):
@@ -156,6 +157,30 @@ def test_clearing_an_override_unsets_rather_than_writing_a_blank(verdict):
     draft = verdict["draft"]
     assert draft["resetOps"] == ["unset:explorerPrimary"]
     assert draft["afterReset"] is False
+
+
+def test_settings_namespace_is_writable_by_the_host():
+    """dsh brands namespaces with /^[a-z][a-z0-9-]*$/ — kebab-case, no dots.
+
+    `ctx.settings.register` takes a raw string and accepts anything, and
+    `settings.describe` will happily list an illegal name, so the card looks
+    fine right up to the first Save: the wire path brands the namespace and
+    rejects every write with `settings-rejected`. A dotted namespace therefore
+    produces a card that can display but can never persist a choice.
+    """
+    pattern = re.compile(r"^[a-z][a-z0-9-]*$")
+    host = (REPO / "dsh/index.js").read_text()
+    ns = re.search(r"const NS = '([^']+)'", host)
+    assert ns, "dsh/index.js no longer declares its settings namespace"
+    assert pattern.match(ns.group(1)), (
+        "settings namespace %r is unwritable: dsh requires %s" % (ns.group(1), pattern.pattern))
+
+
+def test_card_key_equals_the_served_namespace():
+    """The keyed slot dispatches on namespace: the key must BE the namespace."""
+    host = re.search(r"const NS = '([^']+)'", (REPO / "dsh/index.js").read_text()).group(1)
+    card = re.search(r"const CARD_KEY = '([^']+)'", (REPO / "dsh/client.js").read_text()).group(1)
+    assert card == host, "card key %r != served namespace %r" % (card, host)
 
 
 def test_graph_edges_cover_every_service_the_card_injects():
