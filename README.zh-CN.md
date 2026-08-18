@@ -9,6 +9,8 @@
 RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一个上下文隔离的
 多智能体研究实验室：
 
+- **J-Space** 作为推理时认知控制层，被整体集成到根 persona、每个子智能体角色
+  与 plan mode：工作台门控、账本、接缝刷新、稠密内轨/干净外轨。
 - **并行探索者**提出候选方法（`subagent`，空白上下文）。
 - **真值轨道**独立重推导简化情形下的解析闭式解、不变量与界——用两种不同手段
   各推一遍（两次独立的 `subagent_ground_truth` 调用）。
@@ -37,9 +39,9 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 两种安装形态：
 
-**Bundle（技能层）**——一条命令，让某个 profile 的所有会话都能使用
-`rigorquant` 技能；仓库声明了 `dsh.bundle` manifest，生态的
-`dsh plugin add` 安装路径可直接使用：
+**Bundle（技能层 + 模型路由）**——一条命令，让某个 profile 的所有会话都能使用
+`rigorquant` 与 `j-space` 技能，并挂载 **rq-model-router** 插件；仓库声明了
+`dsh.bundle` manifest，生态的 `dsh plugin add` 安装路径可直接使用：
 
 ```sh
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
@@ -51,7 +53,8 @@ dsh plugin --profile web add github:linxichen/dsh-rigorquant
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
 ./install.sh                    # 安装 preset + 技能 + 计算通道
-# ./install.sh --skill-only     # 或只安装 rigorquant 技能，供任意 preset 使用
+# ./install.sh --skill-only     # 或只安装 rigorquant + j-space 技能
+# ./install.sh --uninstall      # 移除 preset、技能与共享通道
 ```
 
 启动一个新的 DSH 会话并选择 **RigorQuant** preset，然后说：
@@ -67,16 +70,36 @@ cd dsh-rigorquant
 `scripts/provision-lean.sh` 安装 Lean 工具链）。详见
 [mcp/jacobian.md](mcp/jacobian.md)。
 
+## 角色模型路由（rq-model-router）
+
+内置插件为每个 RigorQuant 角色单独路由模型与推理强度，每个角色各有一个
+回退模型。配置入口：**设置 → 插件 → RigorQuant 模型路由**；最后一次保存的
+选择会持久化（写入设置用户层）。默认配置：
+
+| 角色 | 主选 | 回退 |
+| --- | --- | --- |
+| 真值预言机 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
+| 对抗审计 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
+| 根编排者、探索者、文献角色 | 继承（root 跟随聊天框选择器） | — |
+
+主选路由遇到终止性失败（无适配器 / HTTP 4xx）时，该角色降级到自己的回退
+模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他
+preset、workflow 工作进程、fork 子进程）一律不干预。需要 DSH ≥ 0.1.0-rc.7
+（插件自注册设置）。设计记录见
+[docs/architecture.md](docs/architecture.md) 决策 16。
+
 ## 仓库结构
 
 ```
 package.json                dsh.bundle manifest（支持 dsh plugin add）
-cordis.patch.yml            bundle patch：注册 rigorquant 技能
+cordis.patch.yml            bundle patch：技能层 + rq-model-router 行
+dsh/                        rq-model-router 插件（宿主半 + 插件设置卡片）
 agent-presets/rigorquant/   preset 组合 + persona + 内置技能
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   元校验器（唯一正式副本）
   .../schemas/              study.json 与 registry.json 的 JSON Schema；
                             校验器直接加载它们，因此二者不会漂移
+  skills/j-space/           J-Space 认知套件（SKILL.md + modules/ + references/ + scripts/）
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源

@@ -7,6 +7,7 @@ those checks.
 """
 
 import json
+import os
 import re
 import subprocess
 
@@ -86,6 +87,66 @@ def test_architecture_record_matches_the_preset_composition():
     for claimed in claims:
         assert claimed in depths, (
             "architecture.md claims maxDepth: %s but the preset uses %s" % (claimed, depths))
+
+
+def _preset_blocks(preset):
+    """Yield (id, block) for every row of the preset composition."""
+    for match in re.finditer(r"^\s{4}- id: (\S+)\n((?:\s{6,}.*\n|\n)*)", preset, re.MULTILINE):
+        yield match.group(1), match.group(2)
+
+
+def test_every_role_persona_carries_its_router_tag():
+    """The model router identifies roles by [[rq:role=X]] in the persona.
+
+    A persona that loses its tag silently falls back to the session model —
+    the oracle running on flash is exactly the failure this pins out.
+    """
+    roles = {
+        "tool-subagent": "explorer",
+        "tool-subagent-novel": "novel",
+        "tool-subagent-ground-truth": "oracle",
+        "tool-subagent-adversary": "adversary",
+        "tool-subagent-lit-line": "lit-line",
+        "tool-subagent-lit-adversary": "lit-adversary",
+    }
+    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    blocks = dict(_preset_blocks(preset))
+    for row_id, role in roles.items():
+        block = blocks.get(row_id)
+        assert block is not None, "preset lost the %s row" % row_id
+        assert "[[rq:role=%s]]" % role in block, (
+            "%s must carry the routing tag [[rq:role=%s]]" % (row_id, role))
+        # No stray tags: a copy-pasted persona would route under the wrong role.
+        for _, other in roles.items():
+            if other != role:
+                assert "[[rq:role=%s]]" % other not in block, (
+                    "%s carries the wrong tag [[rq:role=%s]]" % (row_id, other))
+
+
+def test_router_roles_cover_the_tagged_roles_exactly():
+    """dsh/index.js ROLES must match the roles the preset can tag.
+
+    The router routes a tag it does not know nowhere, and a role it names but
+    no persona tags is a silent dead setting — both are drift this catches.
+    """
+    import pathlib
+
+    router = (pathlib.Path(__file__).resolve().parents[1] / "dsh" / "index.js").read_text()
+    match = re.search(r"export const ROLES = \[([^\]]*)\]", router)
+    assert match, "dsh/index.js no longer exports its ROLES list"
+    declared = set(re.findall(r"'([a-z-]+)'", match.group(1)))
+    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    tagged = set(re.findall(r"\[\[rq:role=([a-z-]+)\]\]", preset))
+    assert declared == tagged | {"root"}, (
+        "router ROLES %s != tagged roles %s + root" % (sorted(declared), sorted(tagged)))
+
+
+def test_bundle_patch_mounts_the_model_router():
+    """The router rows travel with the dsh plugin add bundle."""
+    patch = (REPO / "cordis.patch.yml").read_text()
+    assert "rq-model-router" in patch, "cordis.patch.yml no longer mounts the model router"
+    assert "name: 'dsh-rigorquant'" in patch or 'name: "dsh-rigorquant"' in patch, (
+        "the router row must load this package (name: dsh-rigorquant)")
 
 
 def test_no_document_claims_more_enforcement_tiers_than_it_lists():
@@ -286,3 +347,78 @@ def test_install_script_installs_literature_skills():
         assert ('$DSH_HOME/skills/%s"' % skill) in install or \
                ('$DSH_HOME/skills/%s ' % skill) in install, \
                "install.sh never installs %s globally" % skill
+
+
+def test_j_space_is_bundled_installed_and_uninstallable():
+    """The J-Space integration must be self-contained and removable."""
+    assert (REPO / "agent-presets/rigorquant/skills/j-space/SKILL.md").exists()
+    install = (REPO / "install.sh").read_text()
+    assert "$DSH_HOME/skills/j-space" in install, \
+        "install.sh never installs j-space globally"
+    assert 'rm -rf "$DSH_HOME/skills/j-space"' in install, \
+        "install.sh --uninstall never removes j-space"
+
+
+def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
+    """The custom root must stay a custom root, because its RANK is the contract.
+
+    dsh ranks a custom skill root at 300 and $DSH_HOME/skills at 400, and the
+    lower rank wins a duplicate name. That is the only reason a machine which
+    also ran ./install.sh resolves j-space, arxiv, and academic-paper-search to
+    the copies shipped here rather than to whatever is in $DSH_HOME/skills.
+    Letting this provider include the default roots would put both copies in
+    one provider and make the winner registration order instead.
+    """
+    patch = (REPO / "cordis.patch.yml").read_text()
+    assert "includeDefaultRoots: false" in patch, (
+        "the rigorquant skill provider must not scan the default roots")
+
+
+def test_every_globally_installed_skill_also_ships_in_the_package():
+    """install.sh copies skills into $DSH_HOME/skills; the package must have them.
+
+    These are the skills that end up supplied twice on a machine running both
+    the preset and the plugin. The duplication is deliberate and resolves by
+    rank, but it is only safe while the packaged copy actually exists -- a
+    rename here would leave install.sh copying a directory that is gone.
+    """
+    installed = re.findall(r"install_dir \"\$HERE/agent-presets/rigorquant/skills/([a-z-]+)\"",
+                           (REPO / "install.sh").read_text())
+    assert installed, "install.sh no longer installs any skill globally"
+    for name in set(installed):
+        assert (REPO / "agent-presets/rigorquant/skills" / name).is_dir(), (
+            "install.sh installs %s but the package does not ship it" % name)
+
+
+def test_the_package_is_executable_as_a_one_line_installer():
+    """`npx dsh-rigorquant` must reach install.sh.
+
+    The one-line install depends on three things holding together: a bin entry,
+    the script shipping in the npm files list, and its executable bit (npm
+    preserves mode, and npx runs the bin through its shebang).
+    """
+    manifest = json.loads((REPO / "package.json").read_text())
+    assert manifest.get("bin") == {"dsh-rigorquant": "./install.sh"}, manifest.get("bin")
+    assert "install.sh" in manifest["files"]
+    assert os.access(REPO / "install.sh", os.X_OK), "install.sh is not executable"
+
+
+def test_the_installer_installs_the_plugin_by_default():
+    """install.sh writing only to $DSH_HOME left the router silently absent."""
+    script = (REPO / "install.sh").read_text()
+    assert "install_plugin" in script, "install.sh no longer installs the plugin"
+    # The default (full) branch must call it -- not just define it.
+    full = script.split("if [ \"$mode\" = skill ]", 1)[1]
+    assert "install_plugin" in full, "the default install path does not install the plugin"
+
+
+def test_a_fetched_copy_installs_the_published_version():
+    """A checkout installs itself; an npx copy must not use a `file:` spec.
+
+    npx unpacks into a cache directory that disappears after the run, so a
+    `file:` spec would leave the profile pointing at nothing.
+    """
+    script = (REPO / "install.sh").read_text()
+    assert 'if [ -d "$HERE/.git" ]' in script, "install.sh no longer distinguishes checkout from fetched copy"
+    assert 'spec="dsh-rigorquant@${VERSION:-latest}"' in script, (
+        "the fetched-copy path must install the published version by name")

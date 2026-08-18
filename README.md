@@ -7,9 +7,12 @@ research** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harnes
 — economics, finance, portfolio construction/optimization, simulation,
 computational econ/finance.
 
-RigorQuant is an agent preset + bundled skill that turns one DSH session into a
+RigorQuant is an agent preset + bundled skills that turns one DSH session into a
 context-isolated multi-agent research lab:
 
+- **J-Space** is used integrally across the root persona, every subagent role,
+  and plan mode as the inference-time cognitive-control layer (workspace gate,
+  ledger, seam refresh, dense inner / clean outer registers).
 - **Parallel explorers** propose candidate methods (`subagent`, blank context).
 - A **ground-truth track** re-derives the analytic closed forms, invariants, and
   bounds for simplified cases — twice, by different means (two independent
@@ -40,24 +43,36 @@ session. Crossing a session boundary disarms the goal; one human turn
 
 ## Install
 
-Two install forms:
+Requires DSH ≥ 0.1.0-rc.7.
 
-**Bundle (skill layer)** — one command, makes the `rigorquant` skill available
-to every session of a profile; the repo declares a `dsh.bundle` manifest so the
-ecosystem's `dsh plugin add` path works:
+**One line, everything** — the preset, the compute lane, and the plugin (role
+model router + its Settings card):
 
 ```sh
-dsh plugin --profile web add github:linxichen/dsh-rigorquant
+npx dsh-rigorquant
+# npx dsh-rigorquant --profile tui     # a profile other than web
 ```
 
-**Preset (full framework)** — the RigorQuant agent preset (persona +
-orchestration + tools) with the bundled skill:
+**From a clone** — the same install, from your own working tree. A checkout
+installs itself into the profile, so re-run this after editing `dsh/` to
+refresh the plugin:
 
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
-./install.sh                    # installs the preset + skill + compute lane
-# ./install.sh --skill-only     # or just the rigorquant skill, for any preset
+./install.sh
+# ./install.sh --skill-only     # only the skills, for any preset, no plugin
+# ./install.sh --uninstall      # removes everything, plugin included
+```
+
+**Plugin only** — the router, its card, and the skills, with no preset and no
+compute lane. Useful to add role routing to a profile you drive with your own
+preset; note that the `root` role routes only sessions running the
+`rigorquant` preset, so this form alone leaves the router with nothing to
+route:
+
+```sh
+dsh plugin --profile web add dsh-rigorquant
 ```
 
 Start a new DSH session and pick the **RigorQuant** preset. Then:
@@ -74,16 +89,37 @@ row, and the framework asks for approval before any one-time provisioning
 (`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain via the skill's
 `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian.md).
 
+## Role-routed models (rq-model-router)
+
+The bundled plugin routes each RigorQuant role to its own model + reasoning
+effort, with one fallback per role. Configure it in **Settings → Plugins →
+RigorQuant model routing**: the last saved selection persists (settings user
+layer). Shipped defaults:
+
+| Role | Primary | Fallback |
+| --- | --- | --- |
+| Ground-truth oracle | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
+| Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
+| Root, explorers, literature roles | inherit (root follows the chatbox picker) | — |
+
+On a terminal primary failure (no adapter / HTTP 4xx) the role degrades to its
+fallback for one forced retry, and recovers on the next success or after 10
+minutes. Untagged agents (other presets, workflow workers, forks) are never
+touched. Requires DSH ≥ 0.1.0-rc.7 (self-registered plugin settings). Design
+record: [docs/architecture.md](docs/architecture.md) Decision 16.
+
 ## Repository layout
 
 ```
 package.json                dsh.bundle manifest (dsh plugin add support)
-cordis.patch.yml            bundle patch: registers the rigorquant skill
-agent-presets/rigorquant/   preset composition + persona + bundled skill
+cordis.patch.yml            bundle patch: skills layer + rq-model-router row
+dsh/                        rq-model-router plugin (host half + Plugins-tab card)
+agent-presets/rigorquant/   preset composition + persona + bundled skills
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)
   .../schemas/              study.json + registry.json JSON Schemas, which the
                             validator loads — so schema and checker cannot drift
+  skills/j-space/           J-Space cognition suite (SKILL.md + modules/ + references/ + scripts/)
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources

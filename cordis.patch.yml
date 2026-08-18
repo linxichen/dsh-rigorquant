@@ -1,14 +1,22 @@
-# dsh-rigorquant bundle patch — the skill layer of this distribution.
+# dsh-rigorquant bundle patch — the skill layer and model router of this
+# distribution.
 #
 # `dsh plugin --profile <p> add dsh-rigorquant` (or the github: spec) makes
-# the `rigorquant` skill available to every session of that profile. The full
-# RigorQuant agent preset (persona + orchestration + tools) installs
-# separately with ./install.sh.
+# the `rigorquant` and `j-space` skills and the role-model router available to
+# every session of that profile. The full RigorQuant agent preset (persona +
+# orchestration + tools) installs separately with ./install.sh.
 #
 # `baseUrl` anchors at this file's location — the installed package root — so
-# the skill directory resolves inside the package wherever pnpm put it. The
-# provider scans ONLY this custom root (includeDefaultRoots: false) so it can
-# never double-supply skills the user's own roots already provide.
+# the skill directory resolves inside the package wherever pnpm put it.
+#
+# `includeDefaultRoots: false` keeps THIS provider off the default roots; it
+# does not stop the default provider from serving them. A machine that also ran
+# ./install.sh therefore has j-space, arxiv, and academic-paper-search in both
+# places. That resolves deterministically rather than ambiguously: a custom
+# root ranks 300 and $DSH_HOME/skills ranks 400, and the lower rank wins a
+# duplicate name, so the copy shipped with this package is always the one that
+# serves. The $DSH_HOME/skills copies are shadowed, not consulted — running
+# ./install.sh --skill-only alongside the plugin is redundant, not harmful.
 - insert:
     - id: skill-filesystem-rigorquant
       name: '@deepseek-ai/dsh-skill-filesystem'
@@ -17,3 +25,14 @@
         includeDefaultRoots: false
         customSkillDirs:
           - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('agent-presets/rigorquant/skills/', baseUrl))"
+
+    # Role-routed models (see docs/architecture.md, Decision 16). The plugin
+    # serves the `rigorquant-models` settings namespace (Plugins settings tab
+    # renders its card) and routes agent requests per role: primary choice,
+    # per-role fallback on terminal route failure, per-choice reasoning
+    # effort. Untagged sessions — other presets, workflow workers, fork
+    # children — are never touched. Defaults ship the tier matrix: oracle and
+    # adversary on deepseek-v4-pro with a deepseek-v4-flash fallback; every
+    # other role inherits the session model (root follows the chatbox picker).
+    - id: rq-model-router
+      name: 'dsh-rigorquant'
