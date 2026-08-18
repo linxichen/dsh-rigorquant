@@ -45,9 +45,10 @@ session. Crossing a session boundary disarms the goal; one human turn
 
 Two install forms:
 
-**Bundle (skill layer)** — one command, makes the `rigorquant` and `j-space`
-skills available to every session of a profile; the repo declares a
-`dsh.bundle` manifest so the ecosystem's `dsh plugin add` path works:
+**Bundle (skill layer + model router)** — one command, makes the `rigorquant`
+and `j-space` skills and the **rq-model-router** plugin available to every
+session of a profile; the repo declares a `dsh.bundle` manifest so the
+ecosystem's `dsh plugin add` path works:
 
 ```sh
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
@@ -78,11 +79,31 @@ row, and the framework asks for approval before any one-time provisioning
 (`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain via the skill's
 `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian.md).
 
+## Role-routed models (rq-model-router)
+
+The bundled plugin routes each RigorQuant role to its own model + reasoning
+effort, with one fallback per role. Configure it in **Settings → Plugins →
+RigorQuant model routing**: the last saved selection persists (settings user
+layer). Shipped defaults:
+
+| Role | Primary | Fallback |
+| --- | --- | --- |
+| Ground-truth oracle | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
+| Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
+| Root, explorers, literature roles | inherit (root follows the chatbox picker) | — |
+
+On a terminal primary failure (no adapter / HTTP 4xx) the role degrades to its
+fallback for one forced retry, and recovers on the next success or after 10
+minutes. Untagged agents (other presets, workflow workers, forks) are never
+touched. Requires DSH ≥ 0.1.0-rc.7 (self-registered plugin settings). Design
+record: [docs/architecture.md](docs/architecture.md) Decision 16.
+
 ## Repository layout
 
 ```
 package.json                dsh.bundle manifest (dsh plugin add support)
-cordis.patch.yml            bundle patch: registers the rigorquant + j-space skills
+cordis.patch.yml            bundle patch: skills layer + rq-model-router row
+dsh/                        rq-model-router plugin (host half + Plugins-tab card)
 agent-presets/rigorquant/   preset composition + persona + bundled skills
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)

@@ -10,8 +10,10 @@
     "quant",
     "research"
   ],
+  "type": "module",
   "files": [
     "cordis.patch.yml",
+    "dsh/",
     "agent-presets/",
     "env/",
     "mcp/",
@@ -22,9 +24,28 @@
     "README.zh-CN.md",
     "LICENSE"
   ],
+  "exports": {
+    ".": "./dsh/index.js",
+    "./client": "./dsh/client.js",
+    "./package.json": "./package.json"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ],
+      "platform": "web",
+      "immediately": true
     }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "*"
   }
 }

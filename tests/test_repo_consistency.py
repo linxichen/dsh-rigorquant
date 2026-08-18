@@ -88,6 +88,66 @@ def test_architecture_record_matches_the_preset_composition():
             "architecture.md claims maxDepth: %s but the preset uses %s" % (claimed, depths))
 
 
+def _preset_blocks(preset):
+    """Yield (id, block) for every row of the preset composition."""
+    for match in re.finditer(r"^\s{4}- id: (\S+)\n((?:\s{6,}.*\n|\n)*)", preset, re.MULTILINE):
+        yield match.group(1), match.group(2)
+
+
+def test_every_role_persona_carries_its_router_tag():
+    """The model router identifies roles by [[rq:role=X]] in the persona.
+
+    A persona that loses its tag silently falls back to the session model —
+    the oracle running on flash is exactly the failure this pins out.
+    """
+    roles = {
+        "tool-subagent": "explorer",
+        "tool-subagent-novel": "novel",
+        "tool-subagent-ground-truth": "oracle",
+        "tool-subagent-adversary": "adversary",
+        "tool-subagent-lit-line": "lit-line",
+        "tool-subagent-lit-adversary": "lit-adversary",
+    }
+    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    blocks = dict(_preset_blocks(preset))
+    for row_id, role in roles.items():
+        block = blocks.get(row_id)
+        assert block is not None, "preset lost the %s row" % row_id
+        assert "[[rq:role=%s]]" % role in block, (
+            "%s must carry the routing tag [[rq:role=%s]]" % (row_id, role))
+        # No stray tags: a copy-pasted persona would route under the wrong role.
+        for _, other in roles.items():
+            if other != role:
+                assert "[[rq:role=%s]]" % other not in block, (
+                    "%s carries the wrong tag [[rq:role=%s]]" % (row_id, other))
+
+
+def test_router_roles_cover_the_tagged_roles_exactly():
+    """dsh/index.js ROLES must match the roles the preset can tag.
+
+    The router routes a tag it does not know nowhere, and a role it names but
+    no persona tags is a silent dead setting — both are drift this catches.
+    """
+    import pathlib
+
+    router = (pathlib.Path(__file__).resolve().parents[1] / "dsh" / "index.js").read_text()
+    match = re.search(r"export const ROLES = \[([^\]]*)\]", router)
+    assert match, "dsh/index.js no longer exports its ROLES list"
+    declared = set(re.findall(r"'([a-z-]+)'", match.group(1)))
+    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    tagged = set(re.findall(r"\[\[rq:role=([a-z-]+)\]\]", preset))
+    assert declared == tagged | {"root"}, (
+        "router ROLES %s != tagged roles %s + root" % (sorted(declared), sorted(tagged)))
+
+
+def test_bundle_patch_mounts_the_model_router():
+    """The router rows travel with the dsh plugin add bundle."""
+    patch = (REPO / "cordis.patch.yml").read_text()
+    assert "rq-model-router" in patch, "cordis.patch.yml no longer mounts the model router"
+    assert "name: 'dsh-rigorquant'" in patch or 'name: "dsh-rigorquant"' in patch, (
+        "the router row must load this package (name: dsh-rigorquant)")
+
+
 def test_no_document_claims_more_enforcement_tiers_than_it_lists():
     text = (SKILL_DIR / "references/deliverables.md").read_text()
     m = re.search(r"\*\*Enforcement at PASS \((\w+) tiers?\)\.\*\*(.*?)\n\n##", text, re.DOTALL)

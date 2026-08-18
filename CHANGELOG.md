@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
+## [Unreleased]
+
+### Added
+- Role-routed models: the `rigorquant.models` settings namespace maps every
+  RigorQuant role to a primary and a fallback model, each with its own
+  reasoning effort, and the router rewrites `agent/request` per role. Roles are
+  identified by a `[[rq:role=...]]` tag in the preset persona, so sessions on
+  other presets — and forks, workflow workers, and ralph children — are never
+  touched.
+- A browser half (`dsh/client.js`) serving that namespace as a card in
+  Settings -> Plugins, with a per-role primary/fallback selection and a
+  per-choice reasoning effort.
+- `tests/test_client_bundle.py` and its Node probe: the browser half is
+  executed the way the web shell executes it, covering the four contracts a
+  client bundle has to satisfy (loader registration, cordis surface, slot
+  registration, and render under framework-composed props). Nothing in this
+  repository could catch a browser-half defect before.
+
 ## [0.2.0] - 2026-08-15
 
 ### Added

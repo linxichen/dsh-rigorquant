@@ -206,11 +206,63 @@ while the preset keeps its own copies under
 roles deny `skill` outright, so a global install never widens what the novel
 lane can reach.
 
+## Decision 16 — role-routed models (the rq-model-router plugin)
+
+The preset used to run every agent on one model: children inherit the parent's
+route, so the session default (flash@high) powered the oracle and the
+adversary too. The economics point both ways — most of the agent volume is
+divergent exploration and retrieval where flash@high is the right price, while
+the two proof-critical roles are exactly where a weak model burns the most
+rounds (a wrong derivation or a missed counterexample triggers the whole
+BLOCKED loop). Decision: route **per role**, in a plugin, not in the
+composition.
+
+- **Mechanism.** The `dsh-rigorquant` package ships a host half that listens
+  on the `agent/request` waterfall. It mounts at profile boot, so its listener
+  registers before any agent-scoped model-selection listener; the outermost
+  listener's rewrite composes last, and the per-role choice — provider, model,
+  AND reasoning effort — wins over both the chatbox picker (root) and parent
+  inheritance (children). Effort per role is expressible here even though
+  `AgentOptions` (the per-tool `agentOptions:` channel) cannot carry it.
+- **Role identity.** Every role persona carries a machine-readable tag
+  `[[rq:role=<role>]]`. Continuable children persist the persona in their
+  first `subagent/descriptor` event; one-shot (foreground) children carry it
+  only in the live prompt, so the router probes the child's assembled persona
+  section once. Children without a tag — fork, workflow workers, ralph
+  rounds — and sessions on other presets are never touched. The `root` role
+  applies only to sessions without a `parentSession` (a workflow worker also
+  runs under this preset, but it is not the root).
+- **Root follows the chatbox.** The root role has no primary by default: the
+  picker stays the master switch for the root and for every role left on
+  "inherit". Pinning root is a one-select action in the card.
+- **One fallback per role.** On a terminal primary failure (no adapter, or an
+  HTTP 4xx the route cannot recover from) the router degrades that
+  session+role to the role's own fallback and forces exactly one retry. A
+  successful assistant step on the fallback — or the TTL (10 min) — restores
+  the primary; a failing fallback is never retried again by the router.
+- **Persistence and UI.** Choices live in the `rigorquant.models` settings
+  namespace (user layer of `settings.yaml`); the browser half renders the
+  card in the Plugins settings tab, keyed by that namespace, with model and
+  effort dropdowns from the live provider catalog.
+- **Shipped defaults.** Oracle and adversary: `deepseek-v4-pro`@high with a
+  `deepseek-v4-flash`@high fallback. Every other role: inherit. Defaults
+  assume the `deepseek-official` catalog; a deployment without it overrides
+  the row config or the card, and a default that cannot route degrades
+  through the same fallback lane (or fails loudly if the fallback cannot
+  either).
+
+Guarded by tests: every role persona must keep its tag, and the router's
+ROLES list must equal the tagged roles plus `root` — a persona that loses its
+tag silently falls back to the session model, which is exactly the failure
+class this closes.
+
 ## Repo map
 
 ```
 agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
   skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
+dsh/                        the rq-model-router plugin (host + client halves)
+cordis.patch.yml            bundle patch: skill layer + model-router row
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        this record

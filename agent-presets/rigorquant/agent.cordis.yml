@@ -218,6 +218,8 @@
           prose and exact statements. A marker (✓/?/✗) ends in a settle with
           verifier and coverage, never in a spin.
 
+          Harness model-routing tag, internal, ignore it: [[rq:role=explorer]]
+
     - id: tool-subagent-novel
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
@@ -260,6 +262,7 @@
           negative is a closed path: it is neither a premise nor a clue, and
           you must not try to reconstruct what it came from.
           You cannot delegate further.
+          Harness model-routing tag, internal, ignore it: [[rq:role=novel]]
         toolFilter:
           deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
 
@@ -306,6 +309,7 @@
           plus its exact remaining gap — nothing else. A verified negative the
           orchestrator passed you is a closed path, not a premise and not a
           clue. You cannot delegate further.
+          Harness model-routing tag, internal, ignore it: [[rq:role=oracle]]
         toolFilter:
           deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
 
@@ -330,6 +334,8 @@
           the audit report in clean outer prose. Every ✗ must carry the killing
           evidence; every ✓ must state the verifier and coverage; unresolved
           items stay explicitly open (`?`), never silently dropped.
+
+          Harness model-routing tag, internal, ignore it: [[rq:role=adversary]]
 
     - id: tool-subagent-lit-line
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -357,6 +363,7 @@
           lines expandable, and write the dossier in clean outer prose. A
           revisit is a hub read, never a re-derivation; if a fact is settled,
           record it once and read it from the ledger thereafter.
+          Harness model-routing tag, internal, ignore it: [[rq:role=lit-line]]
         toolFilter:
           deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
 
@@ -386,6 +393,7 @@
           lines expandable, and write verdicts in clean outer prose. Every
           verdict must name the verifier, coverage, and remaining uncertainty;
           do not let a sweep that found nothing count as a verified claim.
+          Harness model-routing tag, internal, ignore it: [[rq:role=lit-adversary]]
         toolFilter:
           deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
 

@@ -1,9 +1,10 @@
-# dsh-rigorquant bundle patch — the skill layer of this distribution.
+# dsh-rigorquant bundle patch — the skill layer and model router of this
+# distribution.
 #
 # `dsh plugin --profile <p> add dsh-rigorquant` (or the github: spec) makes
-# the `rigorquant` and `j-space` skills available to every session of that
-# profile. The full RigorQuant agent preset (persona + orchestration + tools)
-# installs separately with ./install.sh.
+# the `rigorquant` and `j-space` skills and the role-model router available to
+# every session of that profile. The full RigorQuant agent preset (persona +
+# orchestration + tools) installs separately with ./install.sh.
 #
 # `baseUrl` anchors at this file's location — the installed package root — so
 # the skill directory resolves inside the package wherever pnpm put it. The
@@ -17,3 +18,14 @@
         includeDefaultRoots: false
         customSkillDirs:
           - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('agent-presets/rigorquant/skills/', baseUrl))"
+
+    # Role-routed models (see docs/architecture.md, Decision 16). The plugin
+    # serves the `rigorquant.models` settings namespace (Plugins settings tab
+    # renders its card) and routes agent requests per role: primary choice,
+    # per-role fallback on terminal route failure, per-choice reasoning
+    # effort. Untagged sessions — other presets, workflow workers, fork
+    # children — are never touched. Defaults ship the tier matrix: oracle and
+    # adversary on deepseek-v4-pro with a deepseek-v4-flash fallback; every
+    # other role inherits the session model (root follows the chatbox picker).
+    - id: rq-model-router
+      name: 'dsh-rigorquant'
