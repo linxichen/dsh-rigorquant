@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 .pytest_cache/
 .session-recovery/
+node_modules/
+package-lock.json
