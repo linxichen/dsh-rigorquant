@@ -83,6 +83,11 @@ else
   install_dir "$HERE/agent-presets/rigorquant/skills/arxiv" "$DSH_HOME/skills/arxiv"
   install_dir "$HERE/agent-presets/rigorquant/skills/academic-paper-search" "$DSH_HOME/skills/academic-paper-search"
   echo "Installed global skills j-space, arxiv + academic-paper-search to $DSH_HOME/skills/"
+  # If this package is ALSO composed as a plugin (dsh plugin add dsh-rigorquant),
+  # its bundle patch serves the same skills from inside the package. A custom
+  # skill root outranks $DSH_HOME/skills, so the packaged copies win and these
+  # become shadowed spares -- redundant, not conflicting.
+  echo "  (shadowed by the packaged copies when dsh-rigorquant is also composed as a plugin)"
   echo "Installed preset to $DSH_HOME/.agent-presets/rigorquant"
   echo "Installed compute lane to $DSH_HOME/share/rigorquant"
   echo "Start a new session and pick the 'RigorQuant' preset in the session picker."

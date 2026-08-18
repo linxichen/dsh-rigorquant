@@ -356,3 +356,34 @@ def test_j_space_is_bundled_installed_and_uninstallable():
         "install.sh never installs j-space globally"
     assert 'rm -rf "$DSH_HOME/skills/j-space"' in install, \
         "install.sh --uninstall never removes j-space"
+
+
+def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
+    """The custom root must stay a custom root, because its RANK is the contract.
+
+    dsh ranks a custom skill root at 300 and $DSH_HOME/skills at 400, and the
+    lower rank wins a duplicate name. That is the only reason a machine which
+    also ran ./install.sh resolves j-space, arxiv, and academic-paper-search to
+    the copies shipped here rather than to whatever is in $DSH_HOME/skills.
+    Letting this provider include the default roots would put both copies in
+    one provider and make the winner registration order instead.
+    """
+    patch = (REPO / "cordis.patch.yml").read_text()
+    assert "includeDefaultRoots: false" in patch, (
+        "the rigorquant skill provider must not scan the default roots")
+
+
+def test_every_globally_installed_skill_also_ships_in_the_package():
+    """install.sh copies skills into $DSH_HOME/skills; the package must have them.
+
+    These are the skills that end up supplied twice on a machine running both
+    the preset and the plugin. The duplication is deliberate and resolves by
+    rank, but it is only safe while the packaged copy actually exists -- a
+    rename here would leave install.sh copying a directory that is gone.
+    """
+    installed = re.findall(r"install_dir \"\$HERE/agent-presets/rigorquant/skills/([a-z-]+)\"",
+                           (REPO / "install.sh").read_text())
+    assert installed, "install.sh no longer installs any skill globally"
+    for name in set(installed):
+        assert (REPO / "agent-presets/rigorquant/skills" / name).is_dir(), (
+            "install.sh installs %s but the package does not ship it" % name)
