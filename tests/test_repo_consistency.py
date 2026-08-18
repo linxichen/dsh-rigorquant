@@ -7,6 +7,7 @@ those checks.
 """
 
 import json
+import os
 import re
 import subprocess
 
@@ -387,3 +388,37 @@ def test_every_globally_installed_skill_also_ships_in_the_package():
     for name in set(installed):
         assert (REPO / "agent-presets/rigorquant/skills" / name).is_dir(), (
             "install.sh installs %s but the package does not ship it" % name)
+
+
+def test_the_package_is_executable_as_a_one_line_installer():
+    """`npx dsh-rigorquant` must reach install.sh.
+
+    The one-line install depends on three things holding together: a bin entry,
+    the script shipping in the npm files list, and its executable bit (npm
+    preserves mode, and npx runs the bin through its shebang).
+    """
+    manifest = json.loads((REPO / "package.json").read_text())
+    assert manifest.get("bin") == {"dsh-rigorquant": "./install.sh"}, manifest.get("bin")
+    assert "install.sh" in manifest["files"]
+    assert os.access(REPO / "install.sh", os.X_OK), "install.sh is not executable"
+
+
+def test_the_installer_installs_the_plugin_by_default():
+    """install.sh writing only to $DSH_HOME left the router silently absent."""
+    script = (REPO / "install.sh").read_text()
+    assert "install_plugin" in script, "install.sh no longer installs the plugin"
+    # The default (full) branch must call it -- not just define it.
+    full = script.split("if [ \"$mode\" = skill ]", 1)[1]
+    assert "install_plugin" in full, "the default install path does not install the plugin"
+
+
+def test_a_fetched_copy_installs_the_published_version():
+    """A checkout installs itself; an npx copy must not use a `file:` spec.
+
+    npx unpacks into a cache directory that disappears after the run, so a
+    `file:` spec would leave the profile pointing at nothing.
+    """
+    script = (REPO / "install.sh").read_text()
+    assert 'if [ -d "$HERE/.git" ]' in script, "install.sh no longer distinguishes checkout from fetched copy"
+    assert 'spec="dsh-rigorquant@${VERSION:-latest}"' in script, (
+        "the fetched-copy path must install the published version by name")

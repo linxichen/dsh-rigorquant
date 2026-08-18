@@ -62,15 +62,26 @@ install_plugin() {
     printf '         install it later with: dsh plugin --profile %s add %s\n' "$PROFILE" "$HERE" >&2
     return 0
   fi
-  # `file:` explicitly: pnpm resolves a bare directory argument as `link:`, a
-  # live symlink into this checkout, so moving or deleting the clone would
-  # break the installed profile. An installer should leave a self-contained
-  # copy behind. The cost is that editing this checkout no longer changes the
-  # installed plugin -- re-run this script to refresh it.
-  if dsh plugin --profile "$PROFILE" add "file:$HERE" >/dev/null 2>&1; then
-    echo "Installed the plugin into the '$PROFILE' profile (model router + Settings card)."
+  # Which spec to install depends on where this script is running from.
+  #
+  # A git checkout is a developer's working tree: install `file:$HERE` so the
+  # profile carries a copy of THIS tree, and re-running the script refreshes
+  # it. `file:` rather than a bare path, because pnpm resolves a bare directory
+  # argument as `link:` — a live symlink into the checkout, so moving or
+  # deleting the clone would break the installed profile.
+  #
+  # Anything else is a copy npm already fetched — `npx dsh-rigorquant` unpacks
+  # into a cache directory that disappears afterwards, so a `file:` spec would
+  # point at nothing. Install the published version by name instead.
+  if [ -d "$HERE/.git" ]; then
+    spec="file:$HERE"
   else
-    printf 'warning: `dsh plugin --profile %s add %s` failed; the preset and lane are installed, the plugin is not.\n' "$PROFILE" "$HERE" >&2
+    spec="dsh-rigorquant@${VERSION:-latest}"
+  fi
+  if dsh plugin --profile "$PROFILE" add "$spec" >/dev/null 2>&1; then
+    echo "Installed the plugin ($spec) into the '$PROFILE' profile (model router + Settings card)."
+  else
+    printf 'warning: `dsh plugin --profile %s add %s` failed; the preset and lane are installed, the plugin is not.\n' "$PROFILE" "$spec" >&2
   fi
 }
 

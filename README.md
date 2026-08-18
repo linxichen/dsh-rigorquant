@@ -43,26 +43,36 @@ session. Crossing a session boundary disarms the goal; one human turn
 
 ## Install
 
-Two install forms:
+Requires DSH ≥ 0.1.0-rc.7.
 
-**Bundle (skill layer + model router)** — one command, makes the `rigorquant`
-and `j-space` skills and the **rq-model-router** plugin available to every
-session of a profile; the repo declares a `dsh.bundle` manifest so the
-ecosystem's `dsh plugin add` path works:
+**One line, everything** — the preset, the compute lane, and the plugin (role
+model router + its Settings card):
 
 ```sh
-dsh plugin --profile web add github:linxichen/dsh-rigorquant
+npx dsh-rigorquant
+# npx dsh-rigorquant --profile tui     # a profile other than web
 ```
 
-**Preset (full framework)** — the RigorQuant agent preset (persona +
-orchestration + tools) with the bundled skills:
+**From a clone** — the same install, from your own working tree. A checkout
+installs itself into the profile, so re-run this after editing `dsh/` to
+refresh the plugin:
 
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
-./install.sh                    # installs the preset + skills + compute lane
-# ./install.sh --skill-only     # or just the rigorquant + j-space skills
-# ./install.sh --uninstall      # removes the preset, skills, and shared lane
+./install.sh
+# ./install.sh --skill-only     # only the skills, for any preset, no plugin
+# ./install.sh --uninstall      # removes everything, plugin included
+```
+
+**Plugin only** — the router, its card, and the skills, with no preset and no
+compute lane. Useful to add role routing to a profile you drive with your own
+preset; note that the `root` role routes only sessions running the
+`rigorquant` preset, so this form alone leaves the router with nothing to
+route:
+
+```sh
+dsh plugin --profile web add dsh-rigorquant
 ```
 
 Start a new DSH session and pick the **RigorQuant** preset. Then:

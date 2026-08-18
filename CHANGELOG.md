@@ -6,7 +6,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
-## [Unreleased]
+## [0.3.0] - 2026-08-18
 
 ### Added
 - Role-routed models: the `rigorquant-models` settings namespace maps every
@@ -23,6 +23,24 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   client bundle has to satisfy (loader registration, cordis surface, slot
   registration, and render under framework-composed props). Nothing in this
   repository could catch a browser-half defect before.
+- One-line installation. `./install.sh` now installs the plugin as well as the
+  preset and compute lane, and the package is executable, so
+  `npx dsh-rigorquant` installs everything without a clone. A checkout
+  installs `file:` from itself; a fetched copy installs the published version.
+
+### Fixed
+- The settings namespace is `rigorquant-models`, not `rigorquant.models`. dsh
+  brands namespaces with /^[a-z][a-z0-9-]*$/ only on the wire path, so
+  registration and `settings.describe` accepted the dotted name and every
+  write was rejected — the card could display a choice but never persist one.
+
+### Changed
+- Requires DSH ≥ 0.1.0-rc.7: the bundle patch now inserts a loader entry that
+  needs rc.7's keyed `settings.plugin.item` slot and self-registered plugin
+  settings.
+- `./install.sh` no longer copies skills into $DSH_HOME/skills in its default
+  mode; the plugin serves them from a higher-ranked custom root. `--skill-only`
+  remains the path for skills without the plugin.
 
 ## [0.2.0] - 2026-08-15
 
