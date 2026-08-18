@@ -91,7 +91,7 @@ const copy = {
     description: 'Per-role model and reasoning effort for RigorQuant sessions. Root defaults to the chatbox picker; oracle and adversary default to DeepSeek-V4-Pro with a flash fallback. Roles on inherit follow the session model.',
     inherit: 'Inherit',
     none: 'None',
-    effortInherit: 'Adapter default',
+    effortInherit: 'Default',
     save: 'Save',
     discard: 'Discard',
     expand: 'Expand',
@@ -117,7 +117,7 @@ const copy = {
     description: '为 RigorQuant 会话的每个角色单独选择模型与推理强度。root 默认跟随聊天框选择器；oracle 与 adversary 默认使用 DeepSeek-V4-Pro，并以 flash 作为独立回退。选择“继承”的角色沿用会话模型。',
     inherit: '继承',
     none: '无',
-    effortInherit: '适配器默认',
+    effortInherit: '默认',
     save: '保存',
     discard: '放弃',
     expand: '展开',
@@ -412,14 +412,6 @@ class RqModelsCardController {
   }
 }
 
-/** Human label for a stored choice, falling back to raw ids the catalog lacks. */
-function labelFor(models, choice) {
-  if (choice === null) return ''
-  const key = choiceKey(choice)
-  const match = models.find((model) => model.value === key)
-  return match === undefined ? `${choice.provider} · ${choice.model}` : match.label
-}
-
 function choiceKey(choice) {
   return choice === null ? '' : `${choice.provider}::${choice.model}`
 }
@@ -454,7 +446,7 @@ function EffortSelect(props) {
   return React().createElement(Select, {
     value: choice?.reasoningEffort ?? '',
     options,
-    basis: '0 1 9em',
+    basis: '0 1 8em',
     disabled: choice === null,
     onChange: (effort) => onChange(effort === '' ? undefined : effort),
   })
@@ -475,9 +467,10 @@ function RoleRow(props) {
     // Name what clearing the field falls back to. `inherited` is the resolved
     // value (schema defaults, then the plugin's composition base), so a role
     // the plugin ships a default for says so instead of reading as empty.
+    const placeholder = slot === 'Fallback' ? t('none') : t('inherit')
     const inheritLabel = state.inherited === null
-      ? (slot === 'Fallback' ? t('none') : t('inherit'))
-      : `${slot === 'Fallback' ? t('none') : t('inherit')} · ${labelFor(models, state.inherited)}`
+      ? placeholder
+      : `${placeholder} · ${state.inherited.model}`
     const options = [
       { value: '', label: inheritLabel },
       ...models,
@@ -507,7 +500,7 @@ function RoleRow(props) {
       // select is opened.
       React().createElement('span', {
         style: {
-          flex: 'none', minWidth: '4.5em', fontSize: 12,
+          flex: 'none', minWidth: '4em', fontSize: 12,
           color: 'var(--dsw-alias-label-tertiary)',
         },
       }, t(slot === 'Fallback' ? 'fallback' : 'primary')),
@@ -531,7 +524,7 @@ function RoleRow(props) {
   }
   return React().createElement('div', {
     style: {
-      display: 'grid', gridTemplateColumns: 'minmax(0, 15em) minmax(0, 1fr)', gap: '2px 12px',
+      display: 'grid', gridTemplateColumns: 'minmax(0, 11em) minmax(0, 1fr)', gap: '2px 12px',
       alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--dsw-alias-border-l2)',
     },
   },
