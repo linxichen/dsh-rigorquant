@@ -2,6 +2,20 @@
 
 [English](README.md) | **简体中文**
 
+<p align="center">
+  <img src="docs/figs/edgesworth-box.png" alt="Edgeworth box with contract curve and Pareto optimum" width="52%">
+  <img src="docs/figs/utility-maximization.png" alt="Utility maximization: convex indifference curves against a convex budget set" width="44%">
+</p>
+<p align="center">
+  <img src="docs/figs/binomial-tree.png" alt="Three-step binomial option pricing tree with backward-induction values" width="80%">
+</p>
+<p align="center"><sub>
+  <a href="docs/figs/edgesworth-box.png">埃奇沃思盒</a> &middot;
+  <a href="docs/figs/utility-maximization.png">效用最大化</a> &middot;
+  <a href="docs/figs/binomial-tree.png">二叉树期权定价</a> —
+  由 <a href="https://en.wikibooks.org/wiki/LaTeX/PGF/TikZ">TikZ</a> 手绘，非 AI 生成图
+</sub></p>
+
 面向 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的
 **会话内无人值守、长时运行的实证/计算数学研究**框架——覆盖经济学、金融、组合
 构建与优化、模拟、计算经济/金融等领域。

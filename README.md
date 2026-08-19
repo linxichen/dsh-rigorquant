@@ -2,6 +2,20 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+<p align="center">
+  <img src="docs/figs/edgesworth-box.png" alt="Edgeworth box with contract curve and Pareto optimum" width="52%">
+  <img src="docs/figs/utility-maximization.png" alt="Utility maximization: convex indifference curves against a convex budget set" width="44%">
+</p>
+<p align="center">
+  <img src="docs/figs/binomial-tree.png" alt="Three-step binomial option pricing tree with backward-induction values" width="80%">
+</p>
+<p align="center"><sub>
+  <a href="docs/figs/edgesworth-box.png">Edgeworth box</a> &middot;
+  <a href="docs/figs/utility-maximization.png">utility maximization</a> &middot;
+  <a href="docs/figs/binomial-tree.png">binomial option pricing</a> — hand-drawn in
+  <a href="https://en.wikibooks.org/wiki/LaTeX/PGF/TikZ">TikZ</a>, no AI-generated imagery
+</sub></p>
+
 Unattended-within-a-session, long-running **empirical/computational mathematics
 research** for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 — economics, finance, portfolio construction/optimization, simulation,
