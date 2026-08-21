@@ -14,6 +14,7 @@ a study (registry.json, journal.md, audits) are study-root-relative.
   "env_lane": "<absolute path to the pinned uv lane — added by Step 2>",
   "task_id": "<problem id>",
   "created": "YYYY-MM-DD",
+  "intake_pins": { "schema_sha256": "...", "validator_sha256": "..." },  # optional; hard-lessons L7
   "statement": "the problem statement",
   "broad_criterion": "the ORIGINAL broad claim a PASS must deliver, verbatim — never re-scoped to the simplified cases",
   "success_criterion": "summary of the broad criterion plus the stage evidence required",
@@ -23,7 +24,7 @@ a study (registry.json, journal.md, audits) are study-root-relative.
       "success_criterion": "...", "evidence_level": "..." }
   ],
   "validity_stages": {
-    "stage3_general_claim": { "claim": "...", "evidence_level": "...", "outputs": ["..."] },
+    "stage3_general_claim": { "claim": "...", "claim_sha256": "...", "evidence_level": "...", "outputs": ["..."] },
     "stage5_domain_scale": { "instance": "...", "outputs": ["..."] }
   },
   "deliverables": {
@@ -74,6 +75,23 @@ Notes on the schema:
   not a claim and does not trip the PASS gates. A status that begins with PASS
   but is also marked reopened (e.g. "PASS reopened") is likewise not a claim:
   the study re-entered active work, so the PASS gates do not fire.
+- **Status is written from verdicts (hard-lessons L4).** A status string that
+  asserts a certification outcome — certified, verdict, ruling, restored,
+  adjudicated, needs-edits — must reference the verdict file or frozen snapshot
+  hash it rests on; `rq_check.py` refuses a verdictless status claim. No status
+  string may assert a certification outcome that no independent verdict has
+  established: status prose is what a resumed session reads first, and if it
+  lies, every subsequent decision inherits the lie.
+- **The record is the source of truth (hard-lessons L6).** Load-bearing
+  text — claims, audience sentences, evidence levels — lives once, in
+  `study.json`, and the documents quote it. A change to such text reopens the
+  certification it participates in; record the change with its reason and its
+  new digest (`stage3_general_claim.claim_sha256`).
+- **Schema and validator pins (hard-lessons L7).** At intake, record
+  `intake_pins` (`schema_sha256`, `validator_sha256`) — digests of the
+  `study.schema.json` and `rq_check.py` in effect. A mid-run reissue that
+  rejects the study is a re-intake event, never an on-the-fly repair;
+  `rq_check.py` flags a recorded pin mismatch.
 - `mode` is the clean enum `"repo-root" | "multi-study"` (never a literal path
   or a `<...>` placeholder).
 - `env_lane` is an **absolute** path or the documented anchor
@@ -217,6 +235,13 @@ stage-5 evidence is invalid, and the meta-validator
   sub-problem: deliver the strongest rigorously proved derivation and the exact
   remaining gap (Jin's terminal report). Do not pad it with partial results or
   "why it is hard".
+- **Claim-keyed blocking — narrow before patch (hard-lessons L1).** BLOCKED is
+  keyed on the *claim*, not the gap. After two consecutive NEEDS-EDITS on the
+  same claim or section, the next round MUST either (a) narrow the claim's
+  declared scope to what is certified, or (b) declare BLOCKED with the exact
+  gap. A re-patch that changes only the mechanism, not the scope, is a defect.
+  Rationale: repeated independent failures on one claim are evidence of
+  over-scoping, and narrowing is strictly cheaper than the next patch.
 - **UNKNOWN** — the refutation track found no counterexample and the proof
   track found no proof (or the correct answer is impossibility /
   non-identifiability / divergence). Record it as `unknown`; do not relabel it

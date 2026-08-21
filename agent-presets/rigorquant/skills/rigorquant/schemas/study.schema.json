@@ -86,6 +86,11 @@
           "required": ["claim", "evidence_level", "outputs"],
           "properties": {
             "claim": { "type": "string" },
+            "claim_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$",
+              "description": "sha256 of the exact `claim` text at its last certification. rq_check.py flags a mismatch as 'needs re-certification' (hard-lessons L6): load-bearing text is the record's arbiter, and an edit reopens the certification it participates in."
+            },
             "evidence_level": {
               "enum": [
                 "falsification-surviving",
@@ -231,7 +236,24 @@
     },
     "status": {
       "type": "string",
-      "description": "free text, EXCEPT that a PASS is claimed only when the string begins with the token PASS (rq_check.py PASS_CLAIM_RE). 'round 2: SP3 active, no PASS yet' is not a claim, and a status that begins with PASS but is also marked reopened (contains 'reopen') is not a claim either."
+      "description": "free text, EXCEPT that a PASS is claimed only when the string begins with the token PASS (rq_check.py PASS_CLAIM_RE). 'round 2: SP3 active, no PASS yet' is not a claim, and a status that begins with PASS but is also marked reopened (contains 'reopen') is not a claim either. A status that asserts a certification outcome must reference the verdict file or frozen hash it rests on (hard-lessons L4)."
+    },
+    "intake_pins": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "digests of the schema and validator the study was created under, recorded at intake (hard-lessons L7). A reissue that changes them is a re-intake event, never an on-the-fly repair; rq_check.py flags a mismatch.",
+      "properties": {
+        "schema_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "description": "sha256 of the study.schema.json in effect at intake"
+        },
+        "validator_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "description": "sha256 of rq_check.py in effect at intake"
+        }
+      }
     }
   },
   "definitions": {

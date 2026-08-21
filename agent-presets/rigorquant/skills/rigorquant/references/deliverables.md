@@ -246,3 +246,25 @@ symbol conventions are never assumed:
   gate: a document that cannot say who it is for is not finished.
 - The gate checks documentation hygiene; it does not certify the mathematics
   (that remains the job of the check battery and the adversary).
+
+## Document-adversary passes are capped (hard-lessons L8)
+
+The 20260820 run's artifacts were "structurally valid, narratively empty":
+subagents wrote against the validator's gates (sections, notation, citations)
+and the document adversaries' verdicts — which predicted the human review
+almost exactly — were recorded and not acted on, because the certification
+loop had consumed the budget.
+
+- **Narrative first, then gate.** Prose deliverables are written by whoever
+  holds the narrative — the orchestrator, or a writer whose output the
+  orchestrator reads as prose BEFORE the gate runs. A document is not written
+  to satisfy the validator's structural checks; it is written for the
+  audience, and the checks verify it.
+- **Pass budget is two.** The document-adversary pass budget is **two** passes
+  per deliverable. The gate exists to verify, not to iterate the document
+  into existence; a document that would reach a third pass is re-authored (or
+  its audience spec is re-scoped), not patched again.
+- **Verdicts are acted on, in budget.** A document adversary's NEEDS-EDITS
+  verdict must be fixed before the next pass, within the two-pass budget.
+  Recorded-and-ignored verdicts are a defect: they are the cheapest
+  prediction of the human review the run will get.

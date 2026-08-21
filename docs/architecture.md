@@ -299,6 +299,51 @@ its own branch, not here.** The skill directory, its install/uninstall lines,
 and all inline persona references are removed; rigorquant no longer mandates
 it. Guarded by a consistency test asserting the absence.
 
+## Decision 19 — claim-keyed blocking (narrow before patch)
+
+The 20260820 var-expected-return-term run burned rounds 2–6 of an 8-round
+budget re-certifying one stage-3 claim: every round found a genuine new
+defect (interval-independence → input-truth hypothesis → funding → factor-map
+hypothesis → log-vs-simple funding rate), so the "same gap 3 rounds →
+BLOCKED" rule never fired and patching never had to stop. Repeated
+independent failures on one claim are evidence that the claim's scope exceeds
+what is provable. Decision: **BLOCKED is keyed on the claim, not the gap** —
+after two consecutive NEEDS-EDITS on the same claim or section, the next
+round must either narrow the declared scope to what is certified or declare
+BLOCKED with the exact gap; a re-patch that changes only the mechanism, not
+the scope, is a defect. Guarded by procedure (lifecycle.md, SKILL.md Step 3).
+
+## Decision 20 — verdict data is the deliverable; status waits for it
+
+The same run's other loops were all process failures: six delegated agents
+produced complete verdict JSON (36/36 cells) without ever writing the report
+files; queued follow-up messages to settled agents produced re-audits of dead
+documents; concurrent edits invalidated audit hashes; `status` certified the
+orchestrator's own repair before the ruling landed; and the orchestrator's
+own generator emitted a wrong table cell that went unaudited. Decision:
+
+- A delegated verdict is the **report with the `VERDICT:` line**; the JSON is
+  a side effect. A run that settles without the verdict line is a failed run:
+  read the results JSON once, record the verdict, never re-dispatch for
+  prose. The orchestrator may transcribe an independent agent's structured
+  verdict; transcription is not certification.
+- An artifact under adversarial audit is **frozen until the verdict lands**,
+  and the verdict records the audited snapshot's SHA-256. No follow-up
+  messages to in-flight or settled agents.
+- **Status is written from verdicts.** `rq_check.py` refuses a status that
+  asserts a certification outcome without referencing an existing verdict
+  file or frozen hash (`status.verdict-reference`).
+- The stage-3 claim's digest (`claim_sha256`) is recorded at certification;
+  `rq_check.py` flags an edit after certification as needs-re-certification
+  (`stage3.claim-digest`).
+- Schema and validator digests are pinned at intake (`intake_pins`);
+  `rq_check.py` flags a reissue mismatch as a re-intake event
+  (`intake.schema-pin` / `intake.validator-pin`).
+- Orchestrator-produced numbers are audited like agent output (second
+  instrument); document-adversary passes are capped at two per deliverable.
+
+Guarded by `tests/test_procedural_gates.py`.
+
 ## Repo map
 
 ```

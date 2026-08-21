@@ -1030,6 +1030,108 @@ def check_declared_hashes(root: Path, problems):
                         "artifacts on its line" % (p.name, declared[:12]))
 
 
+# ------------------------------------------------------------- procedural gates
+#
+# Hard lessons from the 20260820 var-expected-return-term run
+# (docs/hard-lessons-from-the-var-expected-return-run.md). These checks are
+# cheap, fire on the durable record, and convert the run's structural loops
+# into procedure: status is written from verdicts (L4), the record is the
+# source of truth for load-bearing text (L6), and schema/validator reissues are
+# re-intake events (L7).
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# Certification-outcome language: a status carrying any of these asserts that
+# an independent verdict has landed, so it must say which one.
+VERDICT_LANGUAGE = re.compile(
+    r"\b(certif\w*|verdict\w*|rulings?|ruled|restor\w*|adjudicat\w*|needs?-edits)\b",
+    re.IGNORECASE,
+)
+
+
+def check_status_verdict_reference(study, root: Path, problems):
+    """L4: status is written from verdicts, never before them.
+
+    A status string that asserts a certification outcome (certified, verdict,
+    ruling, restored, adjudicated, needs-edits) must tie the claim to an
+    artifact: a study-root-relative file path that exists, or a frozen
+    snapshot hash. A verdictless status claim is a defect.
+    """
+    status = str(study.get("status", ""))
+    hit = VERDICT_LANGUAGE.search(status)
+    if hit is None:
+        return
+    if re.search(r"(?i)\b[0-9a-f]{6,}\b", status) is not None:
+        return  # a frozen snapshot hash anchors the claim
+    refs = re.findall(r"(?:audits|derivations|artifacts)/[\w./-]+", status)
+    if any((root / ref).is_file() for ref in refs):
+        return
+    problems.add(
+        "status.verdict-reference",
+        "status asserts a certification outcome (%r) without referencing an "
+        "existing verdict file or a frozen snapshot hash. Status is written "
+        "from verdicts, never before them; name the audit/verdict file or the "
+        "frozen hash the claim rests on." % hit.group(0))
+
+
+def check_stage3_claim_digest(study, problems):
+    """L6: the record is the source of truth; edited load-bearing text reopens
+    certification.
+
+    When stage3_general_claim records `claim_sha256` (the digest of the claim
+    text at its last certification), a mismatch means the claim was edited
+    after that certification and must be re-certified before it can carry
+    evidence again.
+    """
+    s3 = (study.get("validity_stages") or {}).get("stage3_general_claim") or {}
+    recorded = s3.get("claim_sha256")
+    claim = s3.get("claim")
+    if not recorded or not claim:
+        return
+    recorded = str(recorded).lower()
+    current = sha256_text(claim)
+    if current != recorded:
+        problems.add(
+            "stage3.claim-digest",
+            "stage3_general_claim text changed since the recorded digest "
+            "%s... (current %s...). Load-bearing text is the record's arbiter; "
+            "an edit reopens certification (L6) -- re-certify the claim, then "
+            "record the new claim_sha256." % (recorded[:12], current[:12]))
+
+
+def check_intake_pins(study, root: Path, problems):
+    """L7: schema and validator digests are pinned at intake.
+
+    A study that records intake_pins.{schema,validator}_sha256 was created
+    under those exact files; a reissue that changed them is a re-intake
+    event, not an on-the-fly repair.
+    """
+    pins = study.get("intake_pins") or {}
+    schema_pin = pins.get("schema_sha256")
+    if schema_pin:
+        current = sha256_hex(SCHEMA_DIR / "study.schema.json")
+        if current != str(schema_pin).lower():
+            problems.add(
+                "intake.schema-pin",
+                "study was created under a different study.schema.json "
+                "(recorded %s..., current %s...); a schema reissue is a "
+                "re-intake event (L7), not an on-the-fly repair"
+                % (str(schema_pin)[:12], current[:12]))
+    validator_pin = pins.get("validator_sha256")
+    if validator_pin:
+        current = sha256_hex(Path(__file__))
+        if current != str(validator_pin).lower():
+            problems.add(
+                "intake.validator-pin",
+                "study was created under a different rq_check.py (recorded "
+                "%s..., current %s...); a validator reissue is a re-intake "
+                "event (L7), not an on-the-fly repair"
+                % (str(validator_pin)[:12], current[:12]))
+
+
 # ------------------------------------------------------------ literature gate
 #
 # Decision 14: the literature lane. Verified literature state lives ONLY in
@@ -1453,6 +1555,9 @@ def run(study_root: str):
     check_pass_evidence(study, root, problems)
     check_tolerance_reconciliation(study, root, problems)
     check_declared_hashes(root, problems)
+    check_status_verdict_reference(study, root, problems)
+    check_stage3_claim_digest(study, problems)
+    check_intake_pins(study, root, problems)
 
     hashes = {}
     for name in ("study.json", "registry.json"):

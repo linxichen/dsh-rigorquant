@@ -52,7 +52,12 @@ enter the round loop.
    dimensions, low N). These are scaffolding for the broad claim — never the
    definition of success.
 4. Record the **seed** for every stochastic run in `study.json`.
-5. **Declare deliverables (mandatory).** Record in `study.json`
+5. **Pin the tooling (hard-lessons L7).** Record `intake_pins` in `study.json`:
+   `schema_sha256` and `validator_sha256` — the digests of the
+   `<skill-dir>/schemas/study.schema.json` and `<skill-dir>/scripts/rq_check.py`
+   in effect at intake (hash them with `shasum -a 256`). A mid-run reissue
+   that rejects the study is a re-intake event, never an on-the-fly repair.
+6. **Declare deliverables (mandatory).** Record in `study.json`
    `deliverables`: `paper` (always `"required"`), `slides`
    (`"required"` unless a reason for `"not-required"` is recorded at intake),
    `web` (`"optional"` or `"required"` — required when the study will produce
@@ -196,10 +201,21 @@ Each orchestrator round = fan-out → ground truth → adversary → synthesize.
    drafts. Store the derivations in `derivations/`.
 3. **Adversary:** one `subagent_adversary` reads BOTH tracks' outputs. It runs
    the check battery (below) and hunts counterexamples. A route is eliminated
-   ONLY by a concrete failing case. It writes the audit report.
+   ONLY by a concrete failing case. It writes the audit report — and the
+   report is the deliverable: brief it as ending in `VERDICT: PASS` or
+   `VERDICT: NEEDS-EDITS`, and if it settles without the verdict line, read its
+   results JSON once, record the verdict, and do NOT re-dispatch for prose
+   (hard-lessons L2). Freeze the audited artifact until the verdict lands
+   (hash-bound verdicts); never edit a document under audit and never message
+   an in-flight or settled agent (L3).
 4. **Synthesize:** update `registry.json` (group by mathematical idea), mark
    BLOCKED routes with their exact gap, redirect over-crowded families, and
-   either advance a stage or relaunch with redirection.
+   either advance a stage or relaunch with redirection. On the SECOND
+   consecutive NEEDS-EDITS for the same claim or section, the next round
+   narrows the claim's declared scope or declares BLOCKED — never a third
+   re-patch of the same mechanism (L1). Write `status` from verdicts, never
+   before them (L4); orchestrator-produced numbers (generators, tables,
+   verification scripts) get a second instrument like any agent output (L5).
 
 **Stage order (each sub-problem passes only by its own success criterion):**
 
@@ -373,3 +389,16 @@ rounds) → checkpoint + report. Schema and rules:
 - Unseeded stochastic claims.
 - Handwaving an unproven load-bearing claim instead of escalating.
 - Auto-installing remote toolchains without user approval.
+- A third re-patch of the same claim's mechanism instead of narrowing its
+  scope (hard-lessons L1: after two NEEDS-EDITS, narrow or BLOCKED).
+- Re-dispatching a settled agent for prose when its structured verdict
+  already landed (L2); waiting on a report instead of reading the verdict JSON
+  once.
+- Editing a document under adversarial audit, or messaging an in-flight or
+  settled agent mid-audit (L3) — freeze on audit, hash-bound verdicts.
+- Certifying your own repair in `status` before an independent verdict lands
+  (L4); status prose that no verdict file or frozen hash backs.
+- Trusting orchestrator-produced tables/scripts/status without a second
+  instrument (L5) — orchestrator arithmetic is audited like agent output.
+- Editing load-bearing text (claims, audience sentences) without recording the
+  new digest and reopening certification (L6).

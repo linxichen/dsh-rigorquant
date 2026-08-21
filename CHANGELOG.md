@@ -32,6 +32,17 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   per-step re-sent surface on long runs (heavy outputs already live in files).
 - The model router's shipped fallback effort is `low` (was `high`): a fallback
   is a degrade lane, not a second full-price route.
+- **Procedural gates from the 20260820 var-expected-return run** (Decisions
+  19–20): claim-keyed BLOCKED (two NEEDS-EDITS on one claim → narrow the scope
+  or BLOCKED, never a third re-patch); report-first delegation (the `VERDICT:`
+  line is the deliverable, JSON is data, transcription is not certification);
+  freeze-on-audit with hash-bound verdicts and no messages to in-flight
+  agents; status written from verdicts; record-source-of-truth with
+  `claim_sha256`; schema/validator pins at intake; document-adversary passes
+  capped at two. `rq_check.py` now refuses a verdictless status claim
+  (`status.verdict-reference`), flags an edited stage-3 claim
+  (`stage3.claim-digest`), and flags a schema/validator reissue
+  (`intake.schema-pin` / `intake.validator-pin`).
 
 ## [0.3.0] - 2026-08-18
 

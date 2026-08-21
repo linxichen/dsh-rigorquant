@@ -69,3 +69,34 @@ non-identifiability, divergence, or a counterexample — record `unknown`
 rather than forcing PASS, and tag every claim with its evidence level
 (falsification-surviving / independently re-derived / certificate-checked /
 formally verified; see lifecycle.md).
+
+## Delegation discipline (hard-lessons L2, L3, L5)
+
+These rules exist because the 20260820 var-expected-return-term run's budget
+was consumed by process, not content: six agents produced complete verdict
+JSON without ever writing the reports, queued messages produced stale
+re-audits of dead documents, and orchestrator-produced numbers went
+unaudited.
+
+- **Report-first delegation (L2).** The adversarial verdict is structured
+  data; the prose report is archival. Every audit/certification brief states
+  the deliverable as *"the report, ending with `VERDICT: PASS` or
+  `VERDICT: NEEDS-EDITS`"*, and the orchestrator treats a settled run without
+  the verdict line as a failed run: read the results JSON once, record the
+  verdict it establishes, and do not re-dispatch for prose. The orchestrator
+  may transcribe an independent agent's structured verdict into the report
+  file; transcription is not certification — the producer≠checker constraint
+  is about who *judges*, not who *files*.
+- **Freeze on audit; never message an in-flight agent (L3).** An artifact
+  under adversarial review is read-only until the verdict lands, and the
+  verdict records the audited snapshot's SHA-256. Do not send follow-up
+  messages to a settled or running agent; queued messages delivered after
+  settlement describe a prior state and are discarded without action. A
+  hash-bound verdict is the only way a later reader can tell which document a
+  verdict judged.
+- **Orchestrator-produced numbers are audited like agent-produced numbers
+  (L5).** Anything the orchestrator produces that becomes evidence — a
+  generator, a table, a verification script, a status claim — goes through the
+  same adversarial check as agent output. The cheapest form: a second
+  instrument recomputes the cells; a generator that emits its own tables
+  cannot disagree with its formula.
