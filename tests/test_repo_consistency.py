@@ -149,6 +149,37 @@ def test_bundle_patch_mounts_the_model_router():
         "the router row must load this package (name: dsh-rigorquant)")
 
 
+def test_every_role_has_a_description_and_frequency_in_both_locales():
+    """The settings card explains each role and how often it is invoked.
+
+    A role that loses its copy row renders an empty left column (the badge
+    silently falls back to 'low'), which is exactly the drift this pins out.
+    """
+    import pathlib
+
+    router = (pathlib.Path(__file__).resolve().parents[1] / "dsh" / "index.js").read_text()
+    match = re.search(r"export const ROLES = \[([^\]]*)\]", router)
+    assert match, "dsh/index.js no longer exports its ROLES list"
+    roles = re.findall(r"'([a-z-]+)'", match.group(1))
+    client = (REPO / "dsh" / "client.js").read_text()
+    # Both locale sections of the card copy live inside the factory closure.
+    sections = re.findall(r"^\s{2}(en|zh): \{", client, re.MULTILINE)
+    assert sections == ["en", "zh"], "the card copy sections moved; update this test"
+    vocabulary = {"en": {"Frequent", "Common", "Rare"}, "zh": {"频繁", "常见", "少见"}}
+    for role in roles:
+        for locale in ("en", "zh"):
+            block = client[client.index(f"{locale}: {{"):]
+            block = block[:block.index("\n  },")]
+            for key in (f"'roleDesc.{role}':", f"'roleFreq.{role}':"):
+                assert key in block, (
+                    "client.js %s copy lacks %s for role %s" % (locale, key, role))
+            label = re.search(r"'roleFreq\.%s': '([^']+)'" % role, block)
+            assert label is not None, "roleFreq.%s missing in %s copy" % (role, locale)
+            assert label.group(1) in vocabulary[locale], (
+                "roleFreq.%s in %s copy is %r; expected one of %s"
+                % (role, locale, label.group(1), sorted(vocabulary[locale])))
+
+
 def test_no_document_claims_more_enforcement_tiers_than_it_lists():
     text = (SKILL_DIR / "references/deliverables.md").read_text()
     m = re.search(r"\*\*Enforcement at PASS \((\w+) tiers?\)\.\*\*(.*?)\n\n##", text, re.DOTALL)
