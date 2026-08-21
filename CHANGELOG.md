@@ -6,7 +6,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
-## [Unreleased]
+## [0.3.1] - 2026-08-21
 
 ### Changed
 - Study slugs now follow `YYYYMMDD_<kebab-topic>[_v<N>]` — the 8-digit intake
