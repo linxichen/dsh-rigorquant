@@ -30,6 +30,12 @@ const CARD_KEY = 'rigorquant-models'
 const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary']
 const SLOTS = ['Primary', 'Fallback']
 const EFFORTS = ['off', 'high', 'max']
+// Invocation frequency per role: the badge tone follows the level, the label
+// comes from the locale copy (`roleFreq.<role>`).
+const ROLE_FREQ = {
+  root: 'high', explorer: 'high', novel: 'low', oracle: 'medium',
+  adversary: 'medium', 'lit-line': 'low', 'lit-adversary': 'low',
+}
 
 let react = null
 function React() {
@@ -39,12 +45,12 @@ function React() {
 
 // The settings draft model: the same helpers the Settings surface itself edits
 // drafts with, so this card's override/reset semantics cannot drift from the
-// seam's. A platform module — the loader's frozen table answers it.
-let schemaFormModule = null
-function schemaForm() {
-  if (schemaFormModule === null) schemaFormModule = require('@deepseek-ai/dsh-client-schema-form')
-  return schemaFormModule
-}
+// seam's. Resolved per-controller for dual-version compatibility: DSH
+// >= 0.1.1-rc.2 folds these helpers into the `settingsSchema` service
+// (@deepseek-ai/dsh-client-ui-settings, renames rehydrateSchema->rehydrate and
+// validateDraft->validate, and deletes the standalone package); DSH
+// <= 0.1.0-rc.8 ships them as @deepseek-ai/dsh-client-schema-form. See
+// RqModelsCardController#schemaForm below.
 
 /**
  * Narrow a stored value to a selectable choice. A `{}` can reach the user layer
@@ -111,6 +117,20 @@ const copy = {
     'role.adversary': 'Adversary',
     'role.lit-line': 'Literature line',
     'role.lit-adversary': 'Literature adversary',
+    'roleDesc.root': 'Runs the whole study: plans, delegates to every role, checkpoints, and synthesizes.',
+    'roleDesc.explorer': 'Proposes candidate methods and routes with exact statements; spawned in parallel batches at each proposal stage.',
+    'roleDesc.novel': 'Derives from the problem statement only — no prior context, no web. The novelty-isolation lane for critical routes.',
+    'roleDesc.oracle': 'Re-derives closed forms, invariants, and bounds from first principles, twice by different means.',
+    'roleDesc.adversary': 'Audits candidate methods and the checks themselves; eliminates routes only by concrete counterexample.',
+    'roleDesc.lit-line': 'Traverses one research line (backward/forward citations) and writes a bounded dossier.',
+    'roleDesc.lit-adversary': 'Independently re-retrieves and verifies load-bearing literature claims (validity and freshness).',
+    'roleFreq.root': 'High',
+    'roleFreq.explorer': 'High',
+    'roleFreq.novel': 'Low',
+    'roleFreq.oracle': 'Medium',
+    'roleFreq.adversary': 'Medium',
+    'roleFreq.lit-line': 'Low',
+    'roleFreq.lit-adversary': 'Low',
   },
   zh: {
     title: 'RigorQuant 角色模型路由',
@@ -137,6 +157,20 @@ const copy = {
     'role.adversary': '对抗审计',
     'role.lit-line': '文献主线',
     'role.lit-adversary': '文献对抗',
+    'roleDesc.root': '运行整个研究：规划、向各角色派发、检查点与综合。',
+    'roleDesc.explorer': '提出候选方法与路径（含精确陈述），在每个提案阶段以并行批次派出。',
+    'roleDesc.novel': '仅基于问题陈述推导——无前序上下文、无网络。关键路径的新颖性隔离通道。',
+    'roleDesc.oracle': '从第一性原理重新推导闭式解、不变量与界，以两种不同方式各做一次。',
+    'roleDesc.adversary': '审计候选方法与检查本身；仅以具体反例消除路径。',
+    'roleDesc.lit-line': '遍历一条研究线（前向/后向引用）并产出有界档案。',
+    'roleDesc.lit-adversary': '独立重新检索并核验关键文献论断（有效性与时效性）。',
+    'roleFreq.root': '高频',
+    'roleFreq.explorer': '高频',
+    'roleFreq.novel': '低频',
+    'roleFreq.oracle': '中频',
+    'roleFreq.adversary': '中频',
+    'roleFreq.lit-line': '低频',
+    'roleFreq.lit-adversary': '低频',
   },
 }
 
@@ -221,6 +255,31 @@ class RqModelsCardController {
     this.scope.subscribe(() => this.publish())
   }
 
+  /**
+   * The settings draft model, dual-version:
+   * - DSH >= 0.1.1-rc.2 folds it into the `settingsSchema` service
+   *   (@deepseek-ai/dsh-client-ui-settings), renaming rehydrateSchema->rehydrate
+   *   and validateDraft->validate and DELETING the standalone package;
+   * - DSH <= 0.1.0-rc.8 ships it as @deepseek-ai/dsh-client-schema-form.
+   * Prefer the service (optional read; absent on older harnesses); fall back
+   * to the legacy module so one build runs on both. The path helpers keep
+   * their names on both surfaces.
+   */
+  schemaForm() {
+    const service = this.ctx.get('settingsSchema')
+    if (service !== undefined) {
+      return {
+        rehydrateSchema: (serialized) => service.rehydrate(serialized),
+        validateDraft: (schema, draft) => service.validate(schema, draft),
+        getPath: (value, path) => service.getPath(value, path),
+        hasPath: (value, path) => service.hasPath(value, path),
+        setPath: (root, path, value) => service.setPath(root, path, value),
+        deletePath: (root, path) => service.deletePath(root, path),
+      }
+    }
+    return require('@deepseek-ai/dsh-client-schema-form')
+  }
+
   async load() {
     await Promise.all([this.loadCatalog(), this.loadSchema()])
     this.publish()
@@ -254,7 +313,7 @@ class RqModelsCardController {
       if (!response.result.ok) return
       const view = (response.result.value.namespaces ?? []).find((entry) => entry.ns === CARD_KEY)
       if (view === undefined) return
-      this.schema = schemaForm().rehydrateSchema(view.schema)
+      this.schema = this.schemaForm().rehydrateSchema(view.schema)
     } catch {
       // No client-side validation this session; the Host still rejects a bad
       // write, and `failed` reports it.
@@ -283,7 +342,7 @@ class RqModelsCardController {
    * plugin's composition base). A field with no override renders as inherit.
    */
   shown(field) {
-    const { hasPath, getPath } = schemaForm()
+    const { hasPath, getPath } = this.schemaForm()
     const path = [field]
     const source = hasPath(this.editing(), path) ? this.editing() : undefined
     const value = source === undefined ? undefined : getPath(source, path)
@@ -292,12 +351,12 @@ class RqModelsCardController {
 
   /** The value a cleared field falls back to: composition base, then schema defaults. */
   inherited(field) {
-    const { getPath } = schemaForm()
+    const { getPath } = this.schemaForm()
     return asChoice(getPath(this.snapshot()?.value, [field]))
   }
 
   projection() {
-    const { hasPath } = schemaForm()
+    const { hasPath } = this.schemaForm()
     const snapshot = this.snapshot()
     const editing = this.editing()
     const user = this.userLayer()
@@ -335,7 +394,7 @@ class RqModelsCardController {
 
   /** Stage one field: a choice sets it, `null` clears it (the per-field reset). */
   stage(field, choice) {
-    const { setPath, deletePath } = schemaForm()
+    const { setPath, deletePath } = this.schemaForm()
     const base = this.editing()
     this.draft = choice === null
       ? deletePath(base, [field])
@@ -353,12 +412,12 @@ class RqModelsCardController {
 
   async save() {
     if (this.saving || this.draft === undefined) return
-    const { hasPath } = schemaForm()
+    const { hasPath } = this.schemaForm()
     const draft = this.draft
     // Validate against the Host's own rehydrated schema before any write, so an
     // invalid draft is reported as one message instead of a partial write.
     if (this.schema !== undefined) {
-      const failure = schemaForm().validateDraft(this.schema, draft)
+      const failure = this.schemaForm().validateDraft(this.schema, draft)
       if (failure !== undefined) {
         this.failed = failure
         this.publish()
@@ -452,6 +511,29 @@ function EffortSelect(props) {
   })
 }
 
+/** Invocation-frequency pill: label from the locale, tone by level (strong→dim). */
+function FrequencyBadge(props) {
+  const { t, role } = props
+  const level = ROLE_FREQ[role] ?? 'low'
+  const tone = level === 'high'
+    ? 'var(--dsw-alias-label-primary)'
+    : level === 'medium'
+      ? 'var(--dsw-alias-label-secondary)'
+      : 'var(--dsw-alias-label-tertiary)'
+  return React().createElement('span', {
+    style: {
+      alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5,
+      borderRadius: 999, padding: '0 8px', fontSize: 11, lineHeight: '16px',
+      background: 'var(--dsw-alias-bg-module-platform)',
+      color: 'var(--dsw-alias-label-secondary)',
+    },
+  },
+    React().createElement('span', {
+      style: { width: 6, height: 6, borderRadius: 999, background: tone, flex: 'none' },
+    }),
+    t(`roleFreq.${role}`))
+}
+
 function RoleRow(props) {
   const { t, role, fields, catalog, stage } = props
   const models = []
@@ -529,8 +611,15 @@ function RoleRow(props) {
     },
   },
     React().createElement('div', {
-      style: { fontSize: 13, color: 'var(--dsw-alias-label-secondary)' },
-    }, t(`role.${role}`)),
+      style: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
+    },
+      React().createElement('span', {
+        style: { fontSize: 13, color: 'var(--dsw-alias-label-secondary)' },
+      }, t(`role.${role}`)),
+      React().createElement('span', {
+        style: { fontSize: 12, lineHeight: 1.45, color: 'var(--dsw-alias-label-tertiary)' },
+      }, t(`roleDesc.${role}`)),
+      React().createElement(FrequencyBadge, { t, role })),
     React().createElement('div', { style: { display: 'grid', gap: 4, minWidth: 0 } },
       renderSlot('Primary'),
       renderSlot('Fallback')))

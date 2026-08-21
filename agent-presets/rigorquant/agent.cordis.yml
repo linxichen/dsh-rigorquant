@@ -202,6 +202,9 @@
           track is OPEN — known results and libraries are allowed. Reject status
           reports and vague optimism. You cannot delegate further.
 
+          Deliver your findings with the `report` tool before you finish — one
+          self-contained call with the concrete result; the agent that started
+          you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=explorer]]
 
     - id: tool-subagent-novel
@@ -238,6 +241,9 @@
           negative is a closed path: it is neither a premise nor a clue, and
           you must not try to reconstruct what it came from.
           You cannot delegate further.
+          Deliver your findings with the `report` tool before you finish — one
+          self-contained call with the concrete result; the agent that started
+          you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=novel]]
         toolFilter:
           deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
@@ -277,6 +283,9 @@
           plus its exact remaining gap — nothing else. A verified negative the
           orchestrator passed you is a closed path, not a premise and not a
           clue. You cannot delegate further.
+          Deliver your derivation with the `report` tool before you finish — one
+          self-contained call with the exact result; the agent that started you
+          receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=oracle]]
         toolFilter:
           deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
@@ -295,6 +304,10 @@
           never by style or vibes. Run the check battery and hunt
           counterexamples; write the audit report. You cannot delegate further.
 
+          Deliver your audit verdict with the `report` tool before you finish —
+          the verdict line (`VERDICT: PASS` / `VERDICT: NEEDS-EDITS`) plus the
+          killing evidence; the agent that started you receives only what you
+          report.
           Harness model-routing tag, internal, ignore it: [[rq:role=adversary]]
 
     - id: tool-subagent-lit-line
@@ -315,6 +328,8 @@
           bounded dossier (schema in the literature skill), record the frontier,
           and record every completeness-checklist sweep you performed. Do not
           read another line's dossier. You cannot delegate further.
+          Deliver your load-bearing findings with the `report` tool before you
+          finish; the agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-line]]
         toolFilter:
           deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
@@ -338,6 +353,8 @@
           and X is current", never that X is mathematically true. You cannot
           delegate further.
 
+          Deliver each claim verdict with the `report` tool before you finish;
+          the agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-adversary]]
         toolFilter:
           deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
@@ -349,6 +366,18 @@
         toolName: subagent_fork
         backgroundMode: continuable
 
+    # Named external-agent instances (DSH >= 0.1.1-rc.1): install the
+    # provider bundle once per profile (`dsh plugin --profile <p> add
+    # @deepseek-ai/dsh-subagent-codex` / `...-claude-code`) and configure its
+    # named instances there (providerName / permissionMode / env /
+    # disposeGraceMs). Permission modes: Codex `never` (default) |
+    # `approve-for-me` | `dangerously-bypass-approvals-and-sandbox`; Claude
+    # Code `dontAsk` (default) | `acceptEdits` | `auto` | `plan` |
+    # `bypassPermissions`. The escalation lane prefers plan/never modes and
+    # reserves bypass modes for the approval-gated escalation flow
+    # (references/escalation.md). Enabling a row whose bundle is not installed
+    # fails children at spawn, not the preset mount, so rows stay disabled
+    # here; flip on per study.
     - id: tool-subagent-codex
       name: '@deepseek-ai/dsh-tool-subagent'
       disabled: true

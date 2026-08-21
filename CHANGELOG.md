@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
+## [Unreleased]
+
+### Added
+- **0.1.1-rc.2 readiness (Decision 21):** the browser half is dual-version —
+  `dsh/client.js` resolves the settings draft model from the rc.2
+  `settingsSchema` service (the standalone `dsh-client-schema-form` package was
+  deleted in rc.2) and falls back to the legacy module on older harnesses; the
+  bundle probe gains an `rc2` mode proving the mount without the deleted
+  package.
+- Every role persona now delivers its verdict through the harness child
+  `report` tool (report-first delegation, L2): continuable children get it,
+  and the delivered report wakes the orchestrator.
+- The literature lane batches independent `web_search` queries (`queries`
+  array, DSH >= 0.1.1-rc.1).
+- Documented named Claude Code / Codex profile bundles (per-role permission
+  modes; rows stay disabled — bundles install at the profile) and the rc.2
+  multimodal stack (vision model, Files API, `read_image`). The experimental
+  `agent-team` domain is flagged as a watch item, not wired.
+
 ## [0.3.1] - 2026-08-21
 
 ### Changed

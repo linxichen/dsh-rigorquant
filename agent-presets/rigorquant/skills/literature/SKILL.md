@@ -40,6 +40,10 @@ theorem/method → references, then follow backward (references) and forward
 (citations via Semantic Scholar). Deduplicate by arXiv id / DOI / title; a
 revisit marks a hub, never a re-read. Write interim/lit/<line-slug>/dossier.json
 (schema: schemas/dossier.schema.json). Never read another line's dossier.
+Batch independent web queries: on DSH >= 0.1.1-rc.1, one web_search call
+accepts a `queries` array (up to the configured `searchMaxQueries`, default 4)
+run in parallel and merged — batch rather than serialize; a single-query
+schema accepts one query per call.
 
 ## Step 2 — literature adversary (independent)
 

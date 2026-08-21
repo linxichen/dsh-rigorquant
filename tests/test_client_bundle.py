@@ -53,6 +53,24 @@ def verdict():
     return json.loads(out.stdout)
 
 
+@pytest.fixture(scope="module")
+def verdict_rc2():
+    """The same bundle against a 0.1.1-rc.2 runtime surface.
+
+    In rc.2 the standalone draft-model package is deleted and the
+    `settingsSchema` service replaces it; the probe removes the package from
+    the module table and serves the service, so any residual legacy require
+    throws and fails the mount.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to execute the client bundle")
+    client = REPO / manifest()["exports"]["./client"]
+    out = subprocess.run([node, str(PROBE), str(client), PLUGIN_ID, "rc2"],
+                         capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
 def test_client_export_points_at_a_shipped_file():
     client = manifest()["exports"]["./client"]
     assert (REPO / client).is_file(), client
@@ -123,12 +141,29 @@ def test_card_root_is_a_list_item(verdict):
 
 
 def test_card_uses_the_settings_draft_model(verdict):
-    """The card edits through @deepseek-ai/dsh-client-schema-form.
+    """The card edits through the settings draft model (rc.7 surface).
 
-    That package is the settings surface's own draft model. Using it is what
-    keeps this card's override/reset semantics from drifting from the seam's.
+    On pre-rc.2 harnesses that is the standalone
+    @deepseek-ai/dsh-client-schema-form module. Using it is what keeps this
+    card's override/reset semantics from drifting from the seam's.
     """
     assert "@deepseek-ai/dsh-client-schema-form" in verdict["required"]
+
+
+def test_card_mounts_on_rc2_settings_schema_service(verdict_rc2):
+    """The rc.2 blocker: the legacy draft-model package is deleted.
+
+    The card must resolve the settingsSchema service instead — the probe
+    removes the legacy package from the module table, so a residual require
+    would throw and fail the mount. Absence of the specifier from `required`
+    proves the bundle never touched the deleted module.
+    """
+    assert verdict_rc2["mode"] == "rc2"
+    assert "factoryError" not in verdict_rc2, verdict_rc2.get("factoryError")
+    assert "mountError" not in verdict_rc2, verdict_rc2.get("mountError")
+    assert verdict_rc2["mounted"]
+    assert verdict_rc2["cards"] == ["rigorquant-models"]
+    assert "@deepseek-ai/dsh-client-schema-form" not in verdict_rc2["required"]
 
 
 def test_staging_records_an_override_and_discard_drops_it(verdict):

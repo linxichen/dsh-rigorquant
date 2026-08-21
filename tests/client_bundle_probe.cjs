@@ -8,7 +8,8 @@
 const fs = require('node:fs')
 const vm = require('node:vm')
 
-const [, , bundlePath, pluginId] = process.argv
+const [, , bundlePath, pluginId, mode] = process.argv
+const RC2 = mode === 'rc2'
 const code = fs.readFileSync(bundlePath, 'utf8')
 
 let handoff = null
@@ -24,7 +25,7 @@ sandbox.document = {
 sandbox.window.__ModuleLoader__ = { load: (h) => { handoff = h } }
 vm.createContext(sandbox)
 
-const verdict = { registered: false }
+const verdict = { registered: false, mode: RC2 ? 'rc2' : 'rc7' }
 try {
   vm.runInContext(code, sandbox, { filename: bundlePath })
 } catch (error) {
@@ -44,11 +45,14 @@ verdict.factoryIsFunction = typeof handoff.factory === 'function'
 
 // The module table only answers platform seed words; anything else is a
 // guaranteed runtime throw in the browser, so record what was asked for.
+// In rc2 mode the legacy draft-model package is DELETED from the table (that
+// is the rc.2 change), so any require of it throws and proves the bundle
+// reached the settingsSchema service instead.
 const PLATFORM = new Set([
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots', '@deepseek-ai/dsh-client-web-react',
   '@deepseek-ai/dsh-client-ui-primitives', '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form',
+  ...(RC2 ? [] : ['@deepseek-ai/dsh-client-schema-form']),
 ])
 const required = []
 const registrations = []
@@ -106,6 +110,17 @@ const schemaForm = {
   rehydrateSchema: (serialized) => ({ serialized }),
   validateDraft: () => undefined,
 }
+// rc.2's settingsSchema service: the same helpers under the service surface
+// (renames rehydrateSchema->rehydrate, validateDraft->validate; path helpers
+// unchanged), provided by @deepseek-ai/dsh-client-ui-settings.
+const settingsSchemaService = {
+  rehydrate: (serialized) => ({ serialized }),
+  validate: () => undefined,
+  getPath: schemaForm.getPath,
+  hasPath: schemaForm.hasPath,
+  setPath: schemaForm.setPath,
+  deletePath: schemaForm.deletePath,
+}
 const reqStub = (spec) => {
   required.push(spec)
   if (!PLATFORM.has(spec)) throw new Error(`module table cannot answer "${spec}"`)
@@ -140,7 +155,9 @@ if (verdict.applyIsFunction) {
           },
         },
       }
-      : undefined),
+      : (RC2 && name === 'settingsSchema'
+        ? settingsSchemaService
+        : undefined)),
     locale: { register: () => {}, bind: () => (key) => key },
     settingsScope: {
       bind: () => ({

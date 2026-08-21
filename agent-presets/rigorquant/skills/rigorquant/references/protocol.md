@@ -81,12 +81,15 @@ unaudited.
 - **Report-first delegation (L2).** The adversarial verdict is structured
   data; the prose report is archival. Every audit/certification brief states
   the deliverable as *"the report, ending with `VERDICT: PASS` or
-  `VERDICT: NEEDS-EDITS`"*, and the orchestrator treats a settled run without
-  the verdict line as a failed run: read the results JSON once, record the
-  verdict it establishes, and do not re-dispatch for prose. The orchestrator
-  may transcribe an independent agent's structured verdict into the report
-  file; transcription is not certification — the producer≠checker constraint
-  is about who *judges*, not who *files*.
+  `VERDICT: NEEDS-EDITS`"*, and children deliver that verdict through the
+  harness `report` tool before finishing (continuable in-process children get
+  it; the delivered report wakes the orchestrator). The orchestrator treats a
+  settled run without a verdict line — reported or written — as a failed run:
+  read the results JSON once, record the verdict it establishes, and do not
+  re-dispatch for prose. The orchestrator may transcribe an independent
+  agent's structured verdict into the report file; transcription is not
+  certification — the producer≠checker constraint is about who *judges*, not
+  who *files*.
 - **Freeze on audit; never message an in-flight agent (L3).** An artifact
   under adversarial review is read-only until the verdict lands, and the
   verdict records the audited snapshot's SHA-256. Do not send follow-up

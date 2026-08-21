@@ -203,11 +203,14 @@ Each orchestrator round = fan-out → ground truth → adversary → synthesize.
    the check battery (below) and hunts counterexamples. A route is eliminated
    ONLY by a concrete failing case. It writes the audit report — and the
    report is the deliverable: brief it as ending in `VERDICT: PASS` or
-   `VERDICT: NEEDS-EDITS`, and if it settles without the verdict line, read its
-   results JSON once, record the verdict, and do NOT re-dispatch for prose
-   (hard-lessons L2). Freeze the audited artifact until the verdict lands
-   (hash-bound verdicts); never edit a document under audit and never message
-   an in-flight or settled agent (L3).
+   `VERDICT: NEEDS-EDITS`, and children deliver that verdict through the
+   harness `report` tool before finishing (continuable children get it; the
+   report wakes the orchestrator). If a child settles without the verdict
+   line — reported or written — read its results JSON once, record the
+   verdict, and do NOT re-dispatch for prose (hard-lessons L2). Freeze the
+   audited artifact until the verdict lands (hash-bound verdicts); never edit
+   a document under audit and never message an in-flight or settled agent
+   (L3).
 4. **Synthesize:** update `registry.json` (group by mathematical idea), mark
    BLOCKED routes with their exact gap, redirect over-crowded families, and
    either advance a stage or relaunch with redirection. On the SECOND

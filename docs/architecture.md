@@ -344,6 +344,46 @@ own generator emitted a wrong table cell that went unaudited. Decision:
 
 Guarded by `tests/test_procedural_gates.py`.
 
+## Decision 21 — adopt the 0.1.1-rc.2 builtins; dual-version the browser half
+
+Studied deepseek-harness 0.1.1-rc.2 (the newest release; the running harness
+is 0.1.0-rc.7). The host half and preset are byte-compatible; the browser half
+hit the one breaking change: `@deepseek-ai/dsh-client-schema-form` was deleted
+in rc.2 and its helpers folded into the `settingsSchema` service
+(`rehydrate`/`validate`; path helpers unchanged). Decision:
+
+- **Dual-version the client.** `dsh/client.js` resolves the draft model from
+  `ctx.settingsSchema` when present (rc.2+) and falls back to the legacy
+  module on older harnesses, so one bundle runs on both. The bundle probe
+  gains an `rc2` mode that removes the legacy module from the table and serves
+  the service — a residual require would throw and fail the mount
+  (`tests/client_bundle_probe.cjs`, `test_card_mounts_on_rc2_settings_schema_service`).
+- **Adopt the child `report` channel.** Continuable in-process children carry
+  a child-scoped `report` tool (host-mounted, present since rc.7; rc.2 renamed
+  the delivery mode `wakeup`→`next-step`). RigorQuant's L2 report-first
+  delegation now instructs every role to deliver its verdict through `report`
+  — the verdict is pushed to the orchestrator and wakes it, replacing
+  wait-for-report-file loops. Works on the current harness, no upgrade needed.
+- **Parallel `web_search`.** rc.8 added a `queries` array (default 4, merged);
+  the literature lane batches independent queries.
+- **Named external-agent bundles.** Claude Code / Codex are installable as
+  profile bundles (named instances, per-role permission modes: plan/never
+  default, bypass reserved for the approval-gated escalation lane). The
+  preset documents the modes on the disabled rows; bundles install at the
+  profile, not in this preset.
+- **Multimodal.** rc.8/rc.1/rc.2 add native DeepSeek image requests, the
+  `deepseek-v4-flash-vision-exp` model, Files API upload+reuse, and a
+  model-facing `read_image` tool. The router card renders the live catalog, so
+  the vision model appears on rc.2 without config; roles that read figures may
+  use `read_image` when the route supports image input.
+- **Watch (not wired):** the experimental `agent-team` domain (shared task
+  DAG, `spawn_teammate`/`wait_agent`) is the closest native match to the
+  round-loop fan-out; adopt only when it stabilizes.
+
+Storage note: rc.8 changed the SQLite backend format (no migration), but it is
+opt-in; rigorquant sessions persist as JSONL, which is byte-compatible across
+the upgrade.
+
 ## Repo map
 
 ```
