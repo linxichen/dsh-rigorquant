@@ -106,8 +106,8 @@ layer). Shipped defaults:
 
 | Role | Primary | Fallback |
 | --- | --- | --- |
-| Ground-truth oracle | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
-| Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
+| Ground-truth oracle | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
+| Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
 | Root, explorers, literature roles | inherit (root follows the chatbox picker) | — |
 
 On a terminal primary failure (no adapter / HTTP 4xx) the role degrades to its
@@ -127,7 +127,6 @@ agent-presets/rigorquant/   preset composition + persona + bundled skills
   .../scripts/rq_check.py   the meta-validator (single canonical copy)
   .../schemas/              study.json + registry.json JSON Schemas, which the
                             validator loads — so schema and checker cannot drift
-  skills/j-space/           J-Space cognition suite (SKILL.md + modules/ + references/ + scripts/)
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources

@@ -8,7 +8,7 @@ from conftest import RQ_CHECK, SKILL_DIR, read_study, run_check, write_study
 
 FORGED_PAPER = r"""\documentclass{article}
 \begin{document}
-This paper says nothing. totally-bogus \cite{x}
+This paper says nothing. 20260815_totally-bogus \cite{x}
 \section{Notation}
 ball, uniform.
 \section{Statement} method validity certification limitations reproduction.
@@ -29,7 +29,7 @@ def test_the_reviews_forged_study_is_refused(tmp_path, tex_available):
     (root / "audits").mkdir()
     (root / "derivations").mkdir()
     (root / "study.json").write_text(json.dumps({
-        "slug": "totally-bogus",
+        "slug": "20260815_totally-bogus",
         "title": "Nothing At All",
         "mode": "repo-root",
         "repo_root": "/tmp",

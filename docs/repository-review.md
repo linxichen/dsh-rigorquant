@@ -529,9 +529,9 @@ N1 in particular contradicts the framework's own stated trust discipline.
 **Reviewer:** third independent AI reviewer, at the maintainer's request.
 **Scope:** the two prior reviews above, checked against HEAD (`2239f79`), the
 DeepSeek Harness source checkout at `~/gits/deepseek-harness`, the live npm
-registry, and the working study `rq-convex-sampling-01`, which has since been
+registry, and the working study `20260814_convex-sampling`, which has since been
 moved out of this repository to
-`/Users/linxi/gits/rigorquant_studies/0001_rq-convex-sampling-01/` (HEAD does
+`/Users/linxi/gits/rigorquant_studies/studies/20260814_convex-sampling/` (HEAD does
 not track it). **Study-relative paths** cited below are relative to that
 external root.
 
@@ -792,10 +792,10 @@ flagship run required a human to type "continue."
 
 `<study>/journal.md` records a workspace incident that no review saw, because
 it is not visible at HEAD: an uncoordinated repository reorganization moved
-the entire runtime workspace (`.rigorquant/` → `studies/rq-convex-sampling-01/`)
+the entire runtime workspace (`.rigorquant/` → `studies/20260814_convex-sampling/`)
 **while the Round-2 battery was executing with cwd-relative paths**. The
 recovery was to recreate `.rigorquant` as a symlink to
-`studies/rq-convex-sampling-01` so the in-flight `battery-results.md` write
+`studies/20260814_convex-sampling` so the in-flight `battery-results.md` write
 would land in the canonical location. The study has since moved to the
 external root given in the scope note, and both `studies/` and the symlink
 have been removed from this repository.
@@ -1083,8 +1083,8 @@ writes the seed where no Gate-D reproducibility audit will look for it.
 > sequence this after T5 to avoid aligning twice.
 >
 > **Reject:** the claim that `studies/` does not exist in the framework repo.
-> It existed as the dogfood study `studies/rq-convex-sampling-01/`, which has
-> since moved to `/Users/linxi/gits/rigorquant_studies/0001_rq-convex-sampling-01/`
+> It existed as the dogfood study `studies/20260814_convex-sampling/`, which has
+> since moved to `/Users/linxi/gits/rigorquant_studies/studies/20260814_convex-sampling/`
 > (this checkout is kept plugin-only); the cloud checkout simply had no
 > untracked files. The reviewer's underlying discomfort is still worth one
 > clarifying word, though: `studies/` is neither tracked nor listed in
@@ -1149,7 +1149,7 @@ passed as well.
    against the repository's own schema, and `install.sh` never shipped it.
 3. **One study hard-coded into a general framework.** `deliverables.md` required
    *every* study's slides to carry convex-body, TV-distance and oracle-model
-   background frames and named counterexamples from `rq-convex-sampling-01`;
+   background frames and named counterexamples from `20260814_convex-sampling`;
    `rq_check.py`'s symbol registry was that study's notation. For the
    portfolio-optimization use case on the README's first line, the document gate
    was inert.

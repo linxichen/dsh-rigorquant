@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
+## [Unreleased]
+
+### Changed
+- Study slugs now follow `YYYYMMDD_<kebab-topic>[_v<N>]` — the 8-digit intake
+  date, a kebab-case topic, and an optional `_v<N>` variant tag — instead of
+  `rq-<topic>-<NN>`. The schema pattern enforces the new form, SKILL.md Step 1
+  documents minting (date fixed at intake, never changed on resume), and the
+  five archived studies in rigorquant_studies were renamed in place
+  (`rq-convex-sampling-01` → `20260814_convex-sampling`, etc.) with their
+  internal references updated.
+- **Bounded budgets with explicit escalation** (Decision 17): default
+  `max_orchestrator_rounds` 5→3, fan-out 2–4→1–2 explorers, the second
+  ground-truth track mandatory only for load-bearing claims, and literature
+  budget 8/4/80/8 → 4/3/20/4. The "10+ hour runs are expected / budget is
+  never a finish target" framing is replaced by budget-as-finish-target with a
+  recorded user escalation for overruns; `max_wall_minutes` stays unset and
+  the journal stays append-only.
+- **j-space is unbundled** (Decision 18): the bundled skill directory,
+  install.sh wiring, and every inline j-space persona paragraph are removed —
+  rigorquant no longer depends on j-space (including the blind roles, which
+  cannot load skills anyway); it ships from its own distribution.
+- Compaction now fires at 60% of the routed context window (was 80%) and the
+  tool-result pruner retains 4 KiB per result (was 8 KiB) — both shrink the
+  per-step re-sent surface on long runs (heavy outputs already live in files).
+- The model router's shipped fallback effort is `low` (was `high`): a fallback
+  is a degrade lane, not a second full-price route.
+
 ## [0.3.0] - 2026-08-18
 
 ### Added

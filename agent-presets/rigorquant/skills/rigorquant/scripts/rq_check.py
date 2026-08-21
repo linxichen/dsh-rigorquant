@@ -858,8 +858,12 @@ def check_deliverables(study, root: Path, problems):
                     "deliverables.sections",
                     "PASS refused: paper is missing required sections as \\section "
                     "headings: %s" % missing)
+            # Slugs use underscores (YYYYMMDD_topic); a paper that cites its
+            # slug must escape them for LaTeX (\_), so match against the
+            # unescaped source.
+            ref_source = source.replace(r"\_", "_")
             for ref in (study.get("slug", ""), study.get("task_id", "")):
-                if ref and ref in source:
+                if ref and ref in ref_source:
                     break
             else:
                 problems.add("deliverables.paper",

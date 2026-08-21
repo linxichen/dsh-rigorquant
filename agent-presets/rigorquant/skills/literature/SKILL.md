@@ -27,7 +27,7 @@ math lane before relying on it.
 
 ## Step 0 — line hypotheses
 
-The orchestrator forms 2–8 crude lines per sub-problem (seed queries, seed
+The orchestrator forms 2–4 crude lines per sub-problem (seed queries, seed
 papers, sub-questions) from prior knowledge + one shallow web_search. No line is
 told it is favored.
 
@@ -88,12 +88,15 @@ to stop (or none). "The model finished early" is a failing condition.
 ## Termination and budget
 
 Done when the adversary certifies every leaf is current, or a foundational sink
-/ citation closure is reached. Budget (max_lines / max_depth /
-max_papers_per_line / max_rounds) is a resume-able safety ceiling, never a
-finish target; 10+ hour runs are expected. Checkpoint map + frontiers +
-checklist after every round; a resumed session continues the walk. When the
-orchestrator cannot decide (new rounds / conclude / unclear), it is a HARD STOP:
-checkpoint and ask the human.
+/ citation closure is reached. The budget (max_lines / max_depth /
+max_papers_per_line / max_rounds) is the **default finish target, not a
+floor**: a line concludes at the budget with the strongest completed dossier
+and its remaining completeness-checklist items recorded as open. Exceeding the
+budget requires an **explicit user escalation** recorded in study.json
+(`literature.budget`) — a silent overrun is a defect. Checkpoint map +
+frontiers + checklist after every round; a resumed session continues the walk.
+When the orchestrator cannot decide (new rounds / conclude / unclear), it is a
+HARD STOP: checkpoint and ask the human.
 
 ## Retrieval order (executable)
 

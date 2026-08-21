@@ -28,7 +28,7 @@ RQ_CHECK = Path(os.environ.get("RQ_CHECK_BIN", SKILL_DIR / "scripts/rq_check.py"
 PAPER_TEX = r"""\documentclass{article}
 \usepackage{amsmath}
 \begin{document}
-\title{Minimum-variance weights: rq-minvar-demo}
+\title{Minimum-variance weights: 20260815\_minvar-demo}
 \maketitle
 
 This paper is written for a working quantitative researcher.
@@ -80,7 +80,7 @@ REFS_BIB = """@article{markowitz1952,
 }
 """
 
-BATTERY_RESULTS = """# Battery results -- rq-minvar-demo
+BATTERY_RESULTS = """# Battery results -- 20260815_minvar-demo
 
 Run seed: task_seed 20260815; per-run seed = task_seed + run_index.
 
@@ -118,12 +118,12 @@ def golden_study(root: Path) -> Path:
     (root / "artifacts" / "paper").mkdir(parents=True, exist_ok=True)
 
     study = {
-        "slug": "rq-minvar-demo",
+        "slug": "20260815_minvar-demo",
         "title": "Minimum-variance portfolio weights",
         "mode": "repo-root",
         "repo_root": str(root),
         "env_lane": "/opt/dsh/share/rigorquant/env",
-        "task_id": "rq-minvar-demo",
+        "task_id": "20260815_minvar-demo",
         "created": "2026-08-15",
         "statement": "Derive and certify minimum-variance weights under a full-investment constraint.",
         "broad_criterion": "The method returns the true minimum-variance weights for any symmetric positive definite covariance matrix.",
@@ -193,7 +193,7 @@ def golden_study(root: Path) -> Path:
     (root / "study.json").write_text(json.dumps(study, indent=2) + "\n")
 
     registry = {
-        "task": "rq-minvar-demo",
+        "task": "20260815_minvar-demo",
         "rounds": 2,
         "subproblems": {
             "SP1": {

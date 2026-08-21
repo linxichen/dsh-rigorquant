@@ -72,7 +72,7 @@ def test_registry_needs_a_real_passed_route_not_the_substring(study, tex_availab
     (study / "registry.json").write_text(
         json.dumps(
             {
-                "task": "rq-minvar-demo",
+                "task": "20260815_minvar-demo",
                 "rounds": 1,
                 "subproblems": {
                     "SP1": {"status": "active", "families": []},

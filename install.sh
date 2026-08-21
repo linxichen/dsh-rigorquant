@@ -105,7 +105,6 @@ install_dir() {
 if [ "$mode" = uninstall ]; then
   rm -rf "$DSH_HOME/.agent-presets/rigorquant"
   rm -rf "$DSH_HOME/skills/rigorquant"
-  rm -rf "$DSH_HOME/skills/j-space"
   rm -rf "$DSH_HOME/skills/arxiv"
   rm -rf "$DSH_HOME/skills/academic-paper-search"
   rm -rf "$DSH_HOME/share/rigorquant"
@@ -123,10 +122,9 @@ fi
 
 if [ "$mode" = skill ]; then
   install_dir "$HERE/agent-presets/rigorquant/skills/rigorquant" "$DSH_HOME/skills/rigorquant"
-  install_dir "$HERE/agent-presets/rigorquant/skills/j-space" "$DSH_HOME/skills/j-space"
   install_dir "$HERE/agent-presets/rigorquant/skills/arxiv" "$DSH_HOME/skills/arxiv"
   install_dir "$HERE/agent-presets/rigorquant/skills/academic-paper-search" "$DSH_HOME/skills/academic-paper-search"
-  echo "Installed skills to $DSH_HOME/skills/ (rigorquant, j-space, arxiv, academic-paper-search; the directory watcher loads them immediately)."
+  echo "Installed skills to $DSH_HOME/skills/ (rigorquant, arxiv, academic-paper-search; the directory watcher loads them immediately)."
 else
   install_dir "$HERE/agent-presets/rigorquant" "$DSH_HOME/.agent-presets/rigorquant"
   # Stable anchor for the compute lane + escalation docs. SKILL.md Step 2

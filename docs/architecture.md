@@ -245,7 +245,8 @@ composition.
   card in the Plugins settings tab, keyed by that namespace, with model and
   effort dropdowns from the live provider catalog.
 - **Shipped defaults.** Oracle and adversary: `deepseek-v4-pro`@high with a
-  `deepseek-v4-flash`@high fallback. Every other role: inherit. Defaults
+  `deepseek-v4-flash`@low fallback (a fallback is a degrade lane, not a second
+  full-price route). Every other role: inherit. Defaults
   assume the `deepseek-official` catalog; a deployment without it overrides
   the row config or the card, and a default that cannot route degrades
   through the same fallback lane (or fails loudly if the fallback cannot
@@ -255,6 +256,48 @@ Guarded by tests: every role persona must keep its tag, and the router's
 ROLES list must equal the tagged roles plus `root` — a persona that loses its
 tag silently falls back to the session model, which is exactly the failure
 class this closes.
+
+## Decision 17 — budgets are finish targets, with explicit escalation
+
+Measured on real runs, the previous framing — "the budget is a resume-able
+safety ceiling, never a finish target; 10+ hour runs are expected"
+(literature lane), `max_orchestrator_rounds: 5`, fan-out 2–4, and an
+unconditional dual ground-truth track — let a single study bill into the
+hundreds of millions of metered tokens, dominated by per-step re-sends of a
+~9k-token header plus open-ended traversal. Decision: **bounded by default,
+escalation is an explicit recorded act.**
+
+- `max_orchestrator_rounds` default 5 → **3**; BUDGET fires at 3 rounds.
+- Fan-out default 2–4 explorers → **1–2**; the second ground-truth track is
+  mandatory only for **load-bearing** claims (the whole study rests on them),
+  never one agent doing both "independent" derivations.
+- Literature budget default 8/4/80/8 → **4/3/20/4**. A line concludes at the
+  budget with the strongest completed dossier and remaining checklist items
+  recorded open. Exceeding the budget requires an explicit user escalation
+  recorded in `study.json` `literature.budget` (raising numbers or setting
+  `max_cost_usd`); a silent overrun is a defect. `max_wall_minutes` stays
+  unset by default (the field remains nullable).
+- Compaction fires at **60%** of the routed context window (was 80%) and the
+  tool-result pruner retains **4 KiB** per result (was 8 KiB): an earlier,
+  smaller compaction shrinks the cached prefix re-sent on every step. The
+  model-facing tool catalog itself is host-plane — the heavy tools
+  (`workflow`, `ralph`, `ask_user_question`, …) are registered by the profile
+  composition, not this preset, so they cannot be trimmed from this
+  repository; a session's catalog is the union of host tools + preset rows.
+- Journal stays append-only (a rolling journal was considered and rejected:
+  the append-only record is the study's audit trail).
+
+## Decision 18 — j-space is unbundled
+
+The j-space cognition suite shipped inside this preset (skill directory,
+install.sh wiring, and an inline j-space protocol paragraph in every persona).
+It is the user's separate distribution and adds a hard external dependency to
+every rigorquant session — including the blind roles (`novel`, `oracle`),
+which deny the `skill` tool and can never load it, so the inline block was
+pure prompt tax on every one of their requests. Decision: **j-space lives in
+its own branch, not here.** The skill directory, its install/uninstall lines,
+and all inline persona references are removed; rigorquant no longer mandates
+it. Guarded by a consistency test asserting the absence.
 
 ## Repo map
 

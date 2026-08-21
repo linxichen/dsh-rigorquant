@@ -48,7 +48,7 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 两种安装形态：
 
 **Bundle（技能层 + 模型路由）**——一条命令，让某个 profile 的所有会话都能使用
-`rigorquant` 与 `j-space` 技能，并挂载 **rq-model-router** 插件；仓库声明了
+`rigorquant` 技能，并挂载 **rq-model-router** 插件；仓库声明了
 `dsh.bundle` manifest，生态的 `dsh plugin add` 安装路径可直接使用：
 
 ```sh
@@ -61,7 +61,7 @@ dsh plugin --profile web add github:linxichen/dsh-rigorquant
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
 ./install.sh                    # 安装 preset + 技能 + 计算通道
-# ./install.sh --skill-only     # 或只安装 rigorquant + j-space 技能
+# ./install.sh --skill-only     # 或只安装技能（rigorquant、arxiv、academic-paper-search）
 # ./install.sh --uninstall      # 移除 preset、技能与共享通道
 ```
 
@@ -86,8 +86,8 @@ cd dsh-rigorquant
 
 | 角色 | 主选 | 回退 |
 | --- | --- | --- |
-| 真值预言机 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
-| 对抗审计 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ high |
+| 真值预言机 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
+| 对抗审计 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
 | 根编排者、探索者、文献角色 | 继承（root 跟随聊天框选择器） | — |
 
 主选路由遇到终止性失败（无适配器 / HTTP 4xx）时，该角色降级到自己的回退
@@ -107,7 +107,6 @@ agent-presets/rigorquant/   preset 组合 + persona + 内置技能
   .../scripts/rq_check.py   元校验器（唯一正式副本）
   .../schemas/              study.json 与 registry.json 的 JSON Schema；
                             校验器直接加载它们，因此二者不会漂移
-  skills/j-space/           J-Space 认知套件（SKILL.md + modules/ + references/ + scripts/）
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源

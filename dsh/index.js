@@ -67,7 +67,7 @@ const SettingsSchema = z.object(Object.fromEntries(
 ))
 
 const DEFAULT_PRIMARY = { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' }
-const DEFAULT_FALLBACK = { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'high' }
+const DEFAULT_FALLBACK = { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'low' }
 
 const Config = z.object({
   presetId: z.string().default('rigorquant'),

@@ -95,6 +95,16 @@ relative to the **study root** unless prefixed otherwise.
    Persist mode, slug, and `repo_root` in `study.json` (`env_lane` is resolved
    and added by Step 2); resumes never re-ask.
 
+   **Mint the slug as `YYYYMMDD_<kebab-topic>[_v<N>]`** — the 8-digit intake
+   date (same day as the `created` field), a kebab-case topic, and `_v<N>`
+   only when that date+topic already exists or this is a deliberate later run
+   of the same topic. The schema pattern enforces this form. The date is fixed
+   at intake and the slug never changes on resume; renaming is an explicit
+   migration (directory, `slug`, `task_id`, and any in-study references), never
+   a resume-side edit. In LaTeX deliverables, write the slug with escaped
+   underscores (`20260814\_convex-sampling`); rq_check.py unescapes before the
+   paper's slug/task_id reference check.
+
 ### Study layout (identical in both modes)
 
 ```
@@ -169,19 +179,21 @@ owning decision: docs/architecture.md Decision 14.
 
 Each orchestrator round = fan-out → ground truth → adversary → synthesize.
 
-1. **Fan-out (explorers, method track, OPEN):** launch 2–4 `subagent` calls in
+1. **Fan-out (explorers, method track, OPEN):** launch 1–2 `subagent` calls in
    one message (the explorer role; blank context). Diversify the portfolio
    (formulations, invariants, reductions, algebraic viewpoints, structural
    inductions, decompositions, embeddings, extremal arguments, computational
    sanity checks). Do not tell most of them the favored approach. Require
    concrete outputs: lemmas, equations, constructions, candidate methods with
    exact statements — reject status reports and "routine".
-2. **Ground-truth track (semi-isolated):** launch **two separate**
-   `subagent_ground_truth` calls, each receiving ONLY the problem statement and
-   the simplified case, and each assigned a different means (one symbolic
-   derivation, one independent brute-force/special-case computation). They must
-   not see each other's output or the explorers' drafts. Store both derivations
-   in `derivations/`.
+2. **Ground-truth track (semi-isolated):** launch `subagent_ground_truth`
+   calls that receive ONLY the problem statement and the simplified case, each
+   assigned a different means (one symbolic derivation, one independent
+   brute-force/special-case computation). Two independent calls are mandatory
+   only when the claim is load-bearing (the whole study rests on it);
+   otherwise one suffices — never one agent performing both "independent"
+   derivations. They must not see each other's output or the explorers'
+   drafts. Store the derivations in `derivations/`.
 3. **Adversary:** one `subagent_adversary` reads BOTH tracks' outputs. It runs
    the check battery (below) and hunts counterexamples. A route is eliminated
    ONLY by a concrete failing case. It writes the audit report.
@@ -340,7 +352,7 @@ Triggers and the full approval-gated flow:
 ## Lifecycle
 
 PASS → auto-implement + proceed. BLOCKED (same exact gap, 3 consecutive
-rounds) → deliver strongest derivation + exact gap. BUDGET (5 orchestrator
+rounds) → deliver strongest derivation + exact gap. BUDGET (3 orchestrator
 rounds) → checkpoint + report. Schema and rules:
 [references/lifecycle.md](references/lifecycle.md).
 

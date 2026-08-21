@@ -7,7 +7,7 @@ a study (registry.json, journal.md, audits) are study-root-relative.
 
 ```json
 {
-  "slug": "kebab-case study id",
+  "slug": "YYYYMMDD_<kebab-topic>[_v<N>] — intake date + topic; see SKILL.md Step 1",
   "title": "one-line title",
   "mode": "repo-root | multi-study",
   "repo_root": "<absolute path resolved at intake>",
@@ -47,7 +47,7 @@ a study (registry.json, journal.md, audits) are study-root-relative.
     "deterministic": { "abs": "...", "rel": "..." },
     "stochastic": { "se_units": 3, "confidence": 0.95, "lln_grid": [1000, 10000, 100000] }
   },
-  "budget": { "max_orchestrator_rounds": 5, "max_cost_usd": null, "max_wall_minutes": null },
+  "budget": { "max_orchestrator_rounds": 3, "max_cost_usd": null, "max_wall_minutes": null },
   "literature": {
     "phase": "not-run | running | concluded | skipped",
     "skip_reason": "the verbatim user assertion — required when phase is skipped",
@@ -56,7 +56,7 @@ a study (registry.json, journal.md, audits) are study-root-relative.
     "negative_exports_file": "literature/negative-exports.json",
     "completeness_file": "literature/completeness.json",
     "refs_seed_file": "literature/refs-seed.bib",
-    "budget": { "max_lines": 8, "max_depth": 4, "max_papers_per_line": 80, "max_rounds": 8 }
+    "budget": { "max_lines": 4, "max_depth": 3, "max_papers_per_line": 20, "max_rounds": 4 }
   },
   "status": "per-sub-problem status + current round; a PASS is claimed ONLY when this string begins with the token PASS"
 }
@@ -221,7 +221,7 @@ stage-5 evidence is invalid, and the meta-validator
   track found no proof (or the correct answer is impossibility /
   non-identifiability / divergence). Record it as `unknown`; do not relabel it
   PASS or BLOCKED.
-- **BUDGET** — 5 orchestrator rounds reached without PASS or a stable block.
+- **BUDGET** — 3 orchestrator rounds reached without PASS or a stable block.
   Checkpoint registry.json + journal.md, deliver a status report, halt. Budget
   fields (`max_cost_usd`, `max_wall_minutes`) may be set to impose limits;
   unset means unbounded.
@@ -240,12 +240,16 @@ The lane is entered at intake (Step 2b of SKILL.md) — mandatorily, unless the
 user explicitly asserts known/novel there, which is recorded as
 `phase: "skipped"` plus a verbatim `skip_reason` — and is **re-enterable per
 round** on a recorded trigger — "is X still open after the adversary's
-counterexample?" is a legitimate reason to re-open it mid-study. Its own budget
-(`literature.budget`) is a **resume-able safety ceiling, never a finish
-target**: hitting `max_lines` / `max_depth` / `max_papers_per_line` /
-`max_rounds` checkpoints and resumes, and a run concludes only on the
-completeness checklist plus the lit-adversary's certification.
-`max_wall_minutes` may stay null so a 10+ hour traversal is legal.
+counterexample?" is a legitimate reason to re-open it mid-study. Its budget
+(`literature.budget`: `max_lines` / `max_depth` / `max_papers_per_line` /
+`max_rounds`) is the **default finish target, not a floor**: a line concludes
+at the budget with the strongest completed dossier and its remaining
+completeness-checklist items recorded as open. Exceeding the budget requires
+an **explicit user escalation** recorded in `study.json` `literature.budget`
+(raising the numbers, or setting `max_cost_usd`) — a silent overrun is a
+defect. The shipped defaults are bounded (max_lines 4 / max_depth 3 /
+max_papers_per_line 20 / max_rounds 4); the completeness checklist gates what
+a concluded line must have swept within that budget.
 
 **Consult-human is a hard stop.** When the orchestrator cannot decide between
 (a) more rounds, (b) conclude, and (c) unclear, it checkpoints the map, the

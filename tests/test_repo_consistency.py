@@ -349,14 +349,19 @@ def test_install_script_installs_literature_skills():
                "install.sh never installs %s globally" % skill
 
 
-def test_j_space_is_bundled_installed_and_uninstallable():
-    """The J-Space integration must be self-contained and removable."""
-    assert (REPO / "agent-presets/rigorquant/skills/j-space/SKILL.md").exists()
+def test_j_space_is_not_bundled():
+    """j-space lives in its own distribution, never in this preset/plugin.
+
+    The rigorquant personas must not mandate it (the blind roles cannot even
+    load skills), and install.sh must neither install nor remove it.
+    """
+    assert not (REPO / "agent-presets/rigorquant/skills/j-space").exists(), \
+        "the j-space skill must not ship inside dsh-rigorquant"
     install = (REPO / "install.sh").read_text()
-    assert "$DSH_HOME/skills/j-space" in install, \
-        "install.sh never installs j-space globally"
-    assert 'rm -rf "$DSH_HOME/skills/j-space"' in install, \
-        "install.sh --uninstall never removes j-space"
+    assert "j-space" not in install, "install.sh must not reference j-space"
+    for p in (REPO / "agent-presets/rigorquant").rglob("*.yml"):
+        assert "j-space" not in p.read_text(), \
+            "%s must not mandate the external j-space skill" % p.name
 
 
 def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
@@ -364,8 +369,8 @@ def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
 
     dsh ranks a custom skill root at 300 and $DSH_HOME/skills at 400, and the
     lower rank wins a duplicate name. That is the only reason a machine which
-    also ran ./install.sh resolves j-space, arxiv, and academic-paper-search to
-    the copies shipped here rather than to whatever is in $DSH_HOME/skills.
+    also ran ./install.sh resolves rigorquant, arxiv, and academic-paper-search
+    to the copies shipped here rather than to whatever is in $DSH_HOME/skills.
     Letting this provider include the default roots would put both copies in
     one provider and make the winner registration order instead.
     """

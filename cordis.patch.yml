@@ -2,21 +2,22 @@
 # distribution.
 #
 # `dsh plugin --profile <p> add dsh-rigorquant` (or the github: spec) makes
-# the `rigorquant` and `j-space` skills and the role-model router available to
-# every session of that profile. The full RigorQuant agent preset (persona +
-# orchestration + tools) installs separately with ./install.sh.
+# the `rigorquant` skill and the role-model router available to every session
+# of that profile. The full RigorQuant agent preset (persona + orchestration +
+# tools) installs separately with ./install.sh.
 #
 # `baseUrl` anchors at this file's location — the installed package root — so
 # the skill directory resolves inside the package wherever pnpm put it.
 #
 # `includeDefaultRoots: false` keeps THIS provider off the default roots; it
 # does not stop the default provider from serving them. A machine that also ran
-# ./install.sh therefore has j-space, arxiv, and academic-paper-search in both
-# places. That resolves deterministically rather than ambiguously: a custom
-# root ranks 300 and $DSH_HOME/skills ranks 400, and the lower rank wins a
-# duplicate name, so the copy shipped with this package is always the one that
-# serves. The $DSH_HOME/skills copies are shadowed, not consulted — running
-# ./install.sh --skill-only alongside the plugin is redundant, not harmful.
+# ./install.sh therefore has rigorquant, arxiv, and academic-paper-search in
+# both places. That resolves deterministically rather than ambiguously: a
+# custom root ranks 300 and $DSH_HOME/skills ranks 400, and the lower rank wins
+# a duplicate name, so the copy shipped with this package is always the one
+# that serves. The $DSH_HOME/skills copies are shadowed, not consulted —
+# running ./install.sh --skill-only alongside the plugin is redundant, not
+# harmful.
 - insert:
     - id: skill-filesystem-rigorquant
       name: '@deepseek-ai/dsh-skill-filesystem'

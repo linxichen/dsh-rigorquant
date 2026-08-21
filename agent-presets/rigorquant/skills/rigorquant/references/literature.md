@@ -27,5 +27,8 @@ Key facts (summary only):
   sweep, or swept line; a phase that under-claims the record; and any bib entry
   (seed or PASS-time) that does not trace to a verified-current, non-open
   record.
-- Budget is a safety ceiling, never a finish target; 10+ hour runs are expected;
-  the completeness checklist — not the budget — is the finish line.
+- Budget (max_lines / max_depth / max_papers_per_line / max_rounds) is the
+  default finish target, not a floor: a line concludes at the budget with the
+  strongest completed dossier and its remaining checklist items open. Exceeding
+  it requires an explicit user escalation recorded in study.json; the
+  completeness checklist gates what a concluded line must have swept.

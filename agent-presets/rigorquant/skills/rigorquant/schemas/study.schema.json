@@ -23,8 +23,8 @@
   "properties": {
     "slug": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]*$",
-      "description": "kebab-case study id"
+      "pattern": "^[0-9]{8}_[a-z0-9]+(-[a-z0-9]+)*(_v[0-9]+)?$",
+      "description": "study id: YYYYMMDD_<kebab-topic>[_v<N>]. The 8-digit date is the intake date (same day as `created`), the topic is kebab-case, and the optional _v<N> marks a later run of the same topic (also used to disambiguate a same-day date+topic collision). Fixed at intake; renaming is an explicit migration, never a resume-side edit."
     },
     "title": { "type": "string" },
     "mode": {
