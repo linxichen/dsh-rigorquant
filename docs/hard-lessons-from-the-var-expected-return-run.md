@@ -7,10 +7,15 @@ this repository, and a worked example from the run.*
 
 Source run: `studies/20260820_var-expected-return-term` (repo
 `rigorquant_studies`), a VaR drift-modelling literature + specification study.
-Outcome: research complete and validator-green; stage-3 claim and both
-deliverables **never formally PASSed**, not because the content failed its
-gates but because three structural loops consumed the budget and six delegated
-agents produced verdict *data* without ever writing the verdict *reports*.
+Outcome: research complete, validator-green, and formally **PASSed by
+`rq_check`** — but only after the human accepted a disclosed
+orchestrator-performed re-verification path, because three structural loops
+consumed the budget and fourteen delegated agents produced verdict *data*
+without ever writing the verdict *reports*. The PASS carries that disclosure
+in the verdict files and the study status; it is not a clean
+delegation-layer pass. This document diagnoses the loops; L9–L12 cover what
+the final validator gate cost when its rules were discovered by archaeology
+instead of by reading the checker.
 
 This document is a diagnosis and a patch list. The token-economy decisions
 (17–18 in `docs/architecture.md`) fix the *meter*; this file fixes the
@@ -282,6 +287,165 @@ human review almost exactly. The failure was that their verdicts were
 certification loop. Cap the adversary passes, and fix the narrative before
 the first pass, not after the third.
 
+### L9 — Read the gate's exact predicate before touching content
+
+**Symptom.** After the run "ended", three validator problems survived two
+blind rounds of fixing — including editing N-grid and failure-condition
+markers into the paper's LaTeX, which could *never* count: the evidence
+corpus scans only `.md/.txt/.json/.csv` and never `.tex`. Every remaining
+problem was a literal predicate in `rq_check.py`: the section-heading regex
+`\\(?:sub)?section\*?\{[^}]*\b<word>`, the symbol witnesses as exact
+substrings inside the Notation block, the N-grid regex
+`n\s*(?:in|=)\s*\{[^}\n]*?1e\d`, and the literal strings `failure condition`
+and `mutation` in the corpus.
+
+**Rule.** *When a gate refuses with a named problem, read the checker's exact
+predicate — file, line, regex, scan surface — before editing any content.
+Never "fix" a gate problem from its error message alone.*
+
+**Reasoning.** A gate is code; a refusal names the test. Reading the
+predicate turned three problems into ten minutes of edits; guessing turned
+them into two wasted rounds and a class of edits that could never work. The
+`.tex`-not-scanned fact alone invalidated an entire fixing strategy.
+
+### L10 — Evidence markers live in permanent files; cleanups delete them silently
+
+**Symptom.** Between two validator runs with zero content changes, the
+N-grid and `failure condition` checks flipped from passing to failing: a
+housekeeping cleanup had removed the file carrying the markers, and no other
+file in the corpus matched.
+
+**Rule.** *Validator markers (seeded N-grid, failure condition, mutation)
+live in permanent round-N audit files that are never candidates for
+deletion. After any cleanup — venv removal, cache purge, tmp sweep — re-run
+the gate before claiming the pre-cleanup state.*
+
+**Reasoning.** The evidence corpus *is* the record; anything housekeeping can
+delete is not the record. Markers belong in files whose whole purpose is
+evidence, so a cleanup cannot silently un-satisfy a gate and send the next
+round into archaeology.
+
+### L11 — Hash-stabilization pass: gate edits first, then freeze hashes, then write verdicts
+
+**Symptom.** The disclosed verdict reports and the study status quoted
+hashes that the gate edits themselves made stale — heading prefixes and two
+notation rows changed the paper/slides digests after the records were
+written, forcing a second round of hash updates plus "Hash note" addenda in
+every report to keep the disclosure truthful.
+
+**Rule.** *The final pass has a fixed order: (1) all content edits; (2) all
+gate-compliance edits (headings, notation rows, markers); (3) freeze files
+and compute hashes once; (4) write verdict records quoting those hashes;
+(5) validate; (6) refresh checkpoint snapshots. Any later edit — even a
+purely presentational one — re-opens every record quoting the affected
+hash.*
+
+**Reasoning.** "Gate edits change no math" is true but irrelevant:
+certification records bind to file hashes, and hash binding is all-or-
+nothing. Writing verdicts before the gate edits guarantees a stale-record
+round; the hash-stabilization order makes it impossible.
+
+### L12 — Checkpoint snapshots inside the evidence corpus are refreshed at the seam
+
+**Symptom.** `audits/rq-check-pass.json` remained a FAIL snapshot after the
+study passed — a stale checkpoint contradicting the current state from
+inside the evidence corpus itself.
+
+**Rule.** *A checkpoint artifact living in `audits/ derivations/
+artifacts/` is evidence, so it is refreshed at every seam — or renamed with
+its date so its snapshot nature is unambiguous. Never leave a FAIL snapshot
+under a "pass" name in the corpus.*
+
+**Reasoning.** Evidence must not contradict the current claim; a stale
+checkpoint is a trap for the next auditor, and refreshing it costs one
+command at the seam where the state actually changed.
+
+### L13 — Derived state is disposed at close; the environment is reproduced by declaration, not presence
+
+**Symptom.** At study close the repo held ~729 MB of junk: a hidden
+`.rigorquant-venv` (496 MB), two per-study `interim/venv`s, two
+`interim/*/uv-cache`s, and a root `.uv-cache`. The venvs existed only
+because the pinned compute lane pointed `UV_PROJECT_ENVIRONMENT` and
+`UV_CACHE_DIR` inside the study tree so the file sandbox could reach them;
+nothing ever removed them, so the "study" carried megabytes of derived state
+alongside its actual record.
+
+**Root cause.** Derived state (virtualenvs, package caches) was created
+inside the tree for sandbox reachability and never treated as disposable.
+There was no rule saying the tree must be reproducible from a *declaration*,
+which made the venv look load-bearing when it was only an artifact.
+
+**Rule.** *A study tree holds inputs and records — sources, derivations,
+audits, artifacts — plus the dependency declaration (`pyproject.toml` +
+`uv.lock`) it runs under. Virtualenvs and uv caches are derived state:
+gitignored, never committed, deleted at study close, and rebuilt with
+`uv sync --frozen` (or the pinned `uv run --frozen` lane). After any
+cleanup, re-run one pinned script and the validator to prove the environment
+reproduces; disk is not part of the record.*
+
+**Reasoning.** The venv was never load-bearing — the lockfile is the
+reproducibility guarantee: `uv sync --frozen` resolves the exact pinned set
+from the committed lock (the rigorquant lane's `pyproject.toml` pins
+`numpy`, `scipy`, `sympy`, `mpmath`, `cvxpy[clarabel,scs]`, `hypothesis`,
+`jax` with `[tool.uv] package = false`). Deleting a venv costs nothing
+because it is recreated deterministically; keeping it costs ~0.5 GB of noise
+that hides the study and imports megabytes of unverifiable state into a
+record whose whole point is verifiability.
+
+**Worked example.** The 20260820 run ended at ~729 MB. Cleanup removed
+`.rigorquant-venv` (496 MB), two `interim/venv`s, two `interim/*/uv-cache`s,
+and the root `.uv-cache` (~2.5 GB freed in total), and `.gitignore` now
+carries `.uv-cache/` and `.rigorquant-venv/` annotated *"regenerable;
+recreated by uv run"*. The pinned lane
+`/Users/linxi/.dsh/share/rigorquant/env` (pyproject.toml + uv.lock) still
+runs every study script via `uv run --frozen --project … python …`; a
+re-run rebuilds the environment from the lock. Repo now ~235 MB, study
+~30 MB, `rq_check` still PASS.
+
+### L14 — Reproduction is a committed path; cleanup and reproducibility are the same pass
+
+**Symptom.** The slides' Reproduction frame ran three scripts from
+`interim/gt-scripts/` and `interim/tmp/` — all gitignored. A fresh clone had
+*zero* working reproduction commands while the deck promised "real
+reproduction"; the scripts existed only in the author's tree. The same
+disease hit the record: `study.json` notes and `registry.json` outputs cited
+`interim/` paths, and the validator flagged the registry entries the moment
+files moved.
+
+**Root cause.** Documents and the record referenced working-tree paths
+without checking they were part of the committed record. "Reproduction" was
+verified by local execution, never by repository resolution; and cleanup was
+a separate, after-the-fact activity instead of the moment when
+tracked/untracked boundaries get fixed.
+
+**Rule.** *Close-out is one sweep with a fixed order: (1) grep every
+deliverable and the record (`study.json`, `registry.json`) for referenced
+paths; (2) move study-generating scripts into a tracked `code/` dir —
+byte-identical copies (`cmp`), so hash statements already recorded in audits
+stay valid of the tracked copies; (3) relocate record-cited data files out
+of gitignored `interim/` into tracked `audits/` and update every citation
+(documents, record, registry); (4) delete only what the record never cites
+(`.DS_Store`, `__pycache__`, scratch); (5) re-run `rq_check` — the validator
+itself checks that registry outputs exist, so it is the reproduction gate.*
+
+**Reasoning.** Reproducibility is a property of the repository, not of the
+author's checkout; a command that works locally but not from a clone is
+documentation of a file, not reproduction of a study. Doing cleanup and
+path-fixing in the same pass means nothing is deleted that the record
+cites, and nothing cited is left untracked. The validator's
+registry-output-exists check turns the sweep into an enforced gate instead
+of an intention.
+
+**Worked example.** 20260820 close-out: 8 generator scripts copied to
+tracked `code/` (verified `cmp`-identical; `code/README.md` documents the
+boundary); slides' three reproduction commands updated to `code/` paths;
+record-cited `explorer-reports/` E1–E3 and `adv5-sp6-recertification-
+results.json` relocated to `audits/` with every citation (docket, registry,
+study.json notes) updated — the validator caught the four stale registry
+paths on the first re-run; 6 `.DS_Store` files deleted; `rq_check` PASS at
+every intermediate step. Slides hash 22d6f9e1 → 7976c8b3 with the hash note
+in the disclosed report updated accordingly.
+
 ---
 
 ## 4. Implementation checklist for the next agent
@@ -303,6 +467,24 @@ Ordered by cost/benefit:
    record is flagged "needs re-certification" (compare a recorded digest).
 6. **Schema** — the YYYYMMDD slug pattern is already enforced (Decision 17);
    add a note that intake records the schema digest (L7).
+7. **`references/protocol.md`** — add L9 read-the-gate-first (a one-page gate
+   cheat-sheet: scan extensions, section-heading regex, symbol-witness rule,
+   N-grid regex, literal markers — verified against `rq_check.py`, never
+   instead of it) and L10 markers-live-in-permanent-files +
+   re-run-gate-after-cleanup.
+8. **`references/deliverables.md`** — add L11's hash-stabilization order
+   (gate edits → freeze hashes → write verdicts → validate → refresh
+   checkpoints) and L12's refresh-checkpoints-at-the-seam rule.
+9. **`references/protocol.md`** — add L13: derived state (venv, uv caches)
+   is gitignored, deleted at study close, and rebuilt from the committed
+   `pyproject.toml` + `uv.lock` via `uv sync --frozen` / the pinned
+   `uv run --frozen` lane; after every cleanup, re-run one pinned script and
+   `rq_check` to prove the environment reproduces.
+10. **`references/protocol.md`** — add L14's close-out sweep as the study
+    completion step: grep deliverable + record paths, move generators to
+    tracked `code/`, relocate record-cited files to `audits/`, delete only
+    uncited junk, then let `rq_check`'s registry-outputs-exist check be the
+    reproduction gate.
 
 ## 5. What NOT to do
 
@@ -329,6 +511,15 @@ A study that hits any of these loops should now fail *fast and cheap*:
   messages in flight, hash-bound verdicts.
 - Status overclaims → validator-refusable.
 - Orchestrator arithmetic → second-instrument checked, like everything else.
+- Final-gate loop → L9 makes the last three validator problems a one-round
+  read-then-edit; L11 makes stale-record hash rounds impossible; L12 keeps
+  the corpus from contradicting the current claim.
+- Junk-accumulation loop → derived state is gitignored and deleted at close;
+  `uv sync --frozen` plus a validator re-run prove the environment
+  reproduces, so a study never carries megabytes of unverifiable state.
+- Broken-reproduction loop → impossible: L14's sweep makes every command a
+  deliverable prints resolve to a tracked file, with the validator's
+  registry-outputs check as the gate.
 
 The 20260820 run's research was sound; its budget was consumed by process.
 These rules convert that process into procedure.

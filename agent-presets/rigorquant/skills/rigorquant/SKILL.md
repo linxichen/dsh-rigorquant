@@ -25,6 +25,17 @@ destination: the study is complete only when the broad original question is
 answered. When correctness hinges on an unproven claim, escalate to
 proof-grade verification first (see escalation.md).
 
+**Core philosophy — reproducibility is the record; junk is derived state.**
+The committed study record is self-contained: a fresh clone of the repo plus
+the pinned uv lane regenerates every piece of study evidence, and nothing
+disposable sits on the committed surface. Concretely: every command a
+deliverable prints, and every path the record cites, resolves to a tracked
+file — never to `interim/` scratch; virtualenvs and uv caches are derived
+state, rebuilt by `uv sync --frozen` from the pinned lane's lockfile, never
+committed; and cleanup and reproducibility are the same close-out pass,
+enforced by `rq_check.py` at PASS time (see
+[references/reproducibility.md](references/reproducibility.md)).
+
 **Unattended, precisely:** the framework runs unattended within one live
 session. Crossing a session boundary disarms the goal; one human turn
 ("continue") re-arms it. Checkpoint state to `study.json` / `registry.json` /
@@ -135,7 +146,10 @@ relative to the **study root** unless prefixed otherwise.
 
 Everything except `interim/` and the transient `.lock` is meant to be committed
 to git. Internal references recorded in registry.json / journal.md / audits are
-study-root-relative.
+study-root-relative. Study-generating scripts additionally live in a tracked
+`code/` directory with a `code/README.md`; the validator refuses PASS while
+derived state sits on the committed surface or a deliverable cites `interim/`
+(see [references/reproducibility.md](references/reproducibility.md)).
 
 **Run identity and lock (once per launched check run):** resolve the study root
 to an **absolute path** and mint a run id (`<date>-<short-hash>`); record both

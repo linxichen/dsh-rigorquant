@@ -384,6 +384,34 @@ Storage note: rc.8 changed the SQLite backend format (no migration), but it is
 opt-in; rigorquant sessions persist as JSONL, which is byte-compatible across
 the upgrade.
 
+## Decision 22 — reproducibility is the record; junk is derived state
+
+Core philosophy of the plugin, hard-won from the 20260820
+var-expected-return-term run: the study tree ended at ~729 MB of venvs and
+caches, its deliverables promised "reproduction" through gitignored scratch
+paths, and a fresh clone had zero working reproduction commands. Two
+obligations:
+
+- **Perfect reproducibility.** The committed study record is self-contained:
+  a fresh clone plus the pinned uv lane regenerates every piece of evidence.
+  Every command a deliverable prints, and every path the record cites,
+  resolves to a tracked file — never to `interim/` scratch. Study-generating
+  scripts live in a tracked `code/` directory; record-cited data files live
+  in `audits/` / `literature/`; the pinned lane's `pyproject.toml` + `uv.lock`
+  make the environment reproducible by declaration, not by presence.
+- **Minimal junk.** Derived state (venvs, uv caches, bytecode, OS metadata)
+  is never committed and is deleted at close-out; `interim/` is the one
+  designated scratch home, gitignored at intake. Cleanup and reproducibility
+  are the same close-out pass.
+
+Enforcement is in `rq_check.py` at PASS time: `evidence.junk` (derived state
+on the committed surface), `deliverables.scratch-refs` (a deliverable citing
+`interim/`), `deliverables.repro-paths` (a deliverable citing a missing
+`code/|derivations/|audits/|literature/` file), plus the pre-existing
+registry-outputs-exist check. Full statement, operational rules R1-R7, junk
+taxonomy and the close-out sweep protocol:
+`agent-presets/rigorquant/skills/rigorquant/references/reproducibility.md`.
+
 ## Repo map
 
 ```

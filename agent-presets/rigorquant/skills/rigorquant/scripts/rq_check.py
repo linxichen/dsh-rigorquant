@@ -496,6 +496,48 @@ TOLERANCE_RE = re.compile(
     r"([0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)")
 
 
+# ------------------------------------------------------------- close-out gates
+# Core philosophy (references/reproducibility.md): the committed surface is
+# self-contained and junk-free; derived state belongs only under interim/.
+JUNK_DIR_NAMES = {"__pycache__", "venv", ".venv", "uv-cache", ".uv-cache",
+                  ".rigorquant-venv"}
+JUNK_FILE_NAMES = {".DS_Store"}
+JUNK_SUFFIXES = {".pyc"}
+
+
+def check_closeout_junk(study, root: Path, problems):
+    """R2 / minimal-junk gate: PASS is refused while derived state (venvs,
+    package caches, bytecode, OS metadata) sits on the committed surface.
+
+    interim/ and .git are exempt by definition (interim/ is the designated
+    scratch home, gitignored at intake); LaTeX auxiliaries are tolerated
+    (light, gitignored, necessarily present after the compile the validator
+    itself performs). Everything else on the committed surface must be record
+    or code -- venvs/caches are rebuilt by `uv sync --frozen`, bytecode by
+    import, .DS_Store by Finder.
+    """
+    if not claiming_pass(study):
+        return
+    hits = []
+    for p in sorted(root.rglob("*")):
+        if ".git" in p.parts or "interim" in p.parts:
+            continue
+        if p.is_dir():
+            if p.name in JUNK_DIR_NAMES:
+                hits.append(str(p.relative_to(root)))
+        elif p.is_file():
+            if p.name in JUNK_FILE_NAMES or p.suffix.lower() in JUNK_SUFFIXES:
+                hits.append(str(p.relative_to(root)))
+    if hits:
+        problems.add(
+            "evidence.junk",
+            "PASS refused: derived junk on the committed surface: %s. "
+            "Venvs/caches/bytecode/OS metadata are disposable (`uv sync "
+            "--frozen` rebuilds the environment from the pinned lane) and "
+            "belong only under interim/; delete them and re-run "
+            "(references/reproducibility.md)." % ", ".join(hits[:8]))
+
+
 def check_tolerance_reconciliation(study, root: Path, problems):
     """check-battery.md: a tolerance restated in an audit must match study.json."""
     declared = study.get("tolerances") or {}
@@ -783,6 +825,49 @@ def check_overclaim(text: str, study, root: Path, problems):
                 "registry.json carries that evidence level (no-overclaim rule)" % level)
 
 
+REPRO_PATH_RE = re.compile(
+    r"\b(?:code|derivations|audits|literature)/[A-Za-z0-9_.\-/]+\.(?:py|md|json|csv|bib)\b")
+
+
+def check_deliverable_paths(root: Path, problems, slides_req: str):
+    """Core philosophy (references/reproducibility.md R4/R5).
+
+    A deliverable never cites the gitignored scratch tree (interim/), and
+    every file path it prints (code/|derivations/|audits/|literature/...)
+    resolves from the study root -- a reproduction command that works only in
+    the author's checkout documents a file, it does not reproduce a study.
+    """
+    tex_files = [root / "artifacts/paper/main.tex"]
+    if slides_req.startswith("required"):
+        tex_files.append(root / "artifacts/slides/main.tex")
+    for tex in tex_files:
+        if not tex.is_file():
+            continue
+        source = strip_tex_comments(tex.read_text(errors="replace"))
+        rel = tex.relative_to(root)
+        # A FILE citation into the scratch tree is a defect (audience-facing
+        # documents never treat scratch as record). Directory-only scratch
+        # references -- e.g. `export UV_CACHE_DIR="$PWD/interim/tmp/uv-cache"`
+        # -- are tolerated: pointing uv's cache/env at the designated scratch
+        # home is exactly what interim/ is for (references/reproducibility.md).
+        if re.search(r"\binterim/[\w./-]*\.(?:py|md|json|csv|tex|bib)\b", source):
+            problems.add(
+                "deliverables.scratch-refs",
+                "PASS refused: %s cites a file under the gitignored scratch "
+                "tree (interim/). Audience-facing documents never treat "
+                "scratch as record; study-generating code lives in tracked "
+                "code/, record files in audits/|derivations/|literature/ "
+                "(references/reproducibility.md)." % rel)
+        for m in REPRO_PATH_RE.finditer(source):
+            if not (root / m.group(0)).is_file():
+                problems.add(
+                    "deliverables.repro-paths",
+                    "PASS refused: %s references %r which does not exist -- a "
+                    "command a deliverable prints must resolve from the study "
+                    "root (references/reproducibility.md)."
+                    % (rel, m.group(0)))
+
+
 def check_deliverables(study, root: Path, problems):
     d = study.get("deliverables") or {}
     if not isinstance(d, dict) or "paper" not in d:
@@ -820,6 +905,10 @@ def check_deliverables(study, root: Path, problems):
         problems.add("deliverables.audience",
                      "PASS refused: deliverables.audience.slides is missing -- the "
                      "slides' audience spec must be set by the post-research consultation")
+
+    # Core philosophy (references/reproducibility.md R4/R5): deliverables never
+    # cite scratch, and every path they print resolves from the study root.
+    check_deliverable_paths(root, problems, slides_req)
 
     engine = find_tex_engine()
     if engine is None:
@@ -1553,6 +1642,7 @@ def run(study_root: str):
     check_deliverables(study, root, problems)
     check_document_adversary_reports(study, root, problems)
     check_pass_evidence(study, root, problems)
+    check_closeout_junk(study, root, problems)
     check_tolerance_reconciliation(study, root, problems)
     check_declared_hashes(root, problems)
     check_status_verdict_reference(study, root, problems)
