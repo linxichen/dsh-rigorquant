@@ -412,13 +412,74 @@ registry-outputs-exist check. Full statement, operational rules R1-R7, junk
 taxonomy and the close-out sweep protocol:
 `agent-presets/rigorquant/skills/rigorquant/references/reproducibility.md`.
 
+## Decision 23 — the bundle self-installs the preset and the lane
+
+The distribution previously had two doors: `./install.sh` (everything) and
+`dsh plugin add` (a router with nothing to route, because only install.sh
+could land the preset and the lane). The asymmetry was mechanical, not
+stylistic:
+
+- **Presets are outside the patch plane.** Discovery is a filesystem scan of
+  `$DSH_HOME/.agent-presets` (plus configured and shipped roots), and the
+  harness's own profile overlay pins the `agent-presets` row's `roots` to the
+  shipped root after every bundle layer composes — no `cordis.patch.yml` row
+  can point the roster at node_modules.
+- **node_modules cannot host the compute lane.** A venv is derived state with
+  absolute paths; pnpm's virtual store is version-pathed (an upgrade churns
+  every recorded absolute `env_lane` in existing studies' `study.json`) and
+  volatile (`pnpm remove/update` deletes a provisioned environment mid-study).
+
+Decision: ship a second host half, `rq-preset-sync` (`dsh/sync.js`, exported
+as `./sync`, mounted by a bundle row). Once per profile boot it lands files —
+the same work `install.sh` does, executed inside the host process:
+
+```
+agent-presets/rigorquant → $DSH_HOME/.agent-presets/rigorquant
+env/ mcp/ docs/          → $DSH_HOME/share/rigorquant/<same>
+```
+
+Contract, each property pinned by tests:
+
+- **Idempotent byte-compare** — identical trees are left untouched; no mtime
+  churn on files a watcher may be serving.
+- **Replace on install/upgrade** — changed or missing files are copied and
+  target-only entries pruned, EXCEPT derived state (`.venv`, `__pycache__`,
+  `*.pyc`, `.DS_Store`), which is never copied out of a source and never
+  pruned from a target. A lazily provisioned venv at the lane anchor survives
+  every boot and every package update.
+- **Local-edit preservation** — a target stamped with the CURRENT version
+  whose shipped files all still exist is kept (`kept-local`). The preset is
+  meant to be edited in place (the escalation lane enables `mcp-jacobian` by
+  flipping a row in the INSTALLED composition); boot-sync must not revert
+  that. An upgrade moves the stamp and legitimately replaces shipped files —
+  the same contract as re-running `install.sh`.
+- **Soft failure** — a sync error logs a warning; it never blocks the profile
+  or the router sharing this package.
+
+Lifecycle honesty: DSH's plugin CLI has **no uninstall hook** — `dsh plugin
+remove` is pnpm delete plus a manifest reconcile, and code that no longer
+exists cannot run — so "remove the preset when the plugin is removed" is not
+implementable from inside this package. Each install/boot instead REPLACES the
+managed trees wholesale, every managed root carries an ownership marker
+(`.rq-sync.json`: manager + version + syncedAt) so ownership stays
+discoverable after removal, removal stays explicit (`./install.sh
+--uninstall`), and orphaning is benign: the synced preset is self-contained
+(skills travel inside its directory) and merely routes nothing without the
+router.
+
+Tests: `tests/test_preset_sync.py` executes the engine over real directories
+via `tests/preset_sync_probe.cjs` (first sync, quiet rerun, replace-on-bump,
+venv-survival, no venv leakage, kept-local edits, damage restore);
+`test_repo_consistency.py` pins the wiring (row mounted, export resolves,
+exclusions named).
+
 ## Repo map
 
 ```
 agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
   skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
-dsh/                        the rq-model-router plugin (host + client halves)
-cordis.patch.yml            bundle patch: skill layer + model-router row
+dsh/                        host halves: rq-model-router + rq-preset-sync, card
+cordis.patch.yml            bundle patch: skill layer + router + boot-sync rows
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        this record

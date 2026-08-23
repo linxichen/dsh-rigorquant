@@ -9,6 +9,19 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [Unreleased]
 
 ### Added
+- **Self-installing bundle (Decision 23):** a second host half, `rq-preset-sync`
+  (`dsh/sync.js`, exported as `./sync`), lands the agent preset into
+  `$DSH_HOME/.agent-presets/rigorquant` and env/mcp/docs into
+  `$DSH_HOME/share/rigorquant/` once per profile boot — so
+  `dsh plugin --profile <p> add dsh-rigorquant` alone now yields a working
+  distribution. Idempotent byte-compare; derived state (`.venv`, `__pycache__`)
+  never copied or pruned; a same-version target keeps local edits (the
+  escalation lane flips rows in the installed composition); an upgrade
+  replaces shipped files. There is no uninstall hook in DSH's plugin CLI, so
+  removal stays explicit (`./install.sh --uninstall`) and every managed root
+  carries an `.rq-sync.json` ownership marker. Engine executed for real in
+  `tests/test_preset_sync.py` via `tests/preset_sync_probe.cjs`; wiring pinned
+  in `tests/test_repo_consistency.py`.
 - **0.1.1-rc.2 readiness (Decision 21):** the browser half is dual-version —
   `dsh/client.js` resolves the settings draft model from the rc.2
   `settingsSchema` service (the standalone `dsh-client-schema-form` package was

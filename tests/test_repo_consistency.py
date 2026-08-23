@@ -410,6 +410,46 @@ def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
         "the rigorquant skill provider must not scan the default roots")
 
 
+def test_bundle_patch_mounts_the_preset_sync_half():
+    """Decision 23: the bundle self-installs the preset and the compute lane.
+
+    The whole point of the rq-preset-sync row is that `dsh plugin add` alone
+    leaves a WORKING distribution at the next profile boot. If the row is
+    dropped from the patch, plugin-only installs silently regress to a router
+    with nothing to route.
+    """
+    import json as _json
+
+    patch = (REPO / "cordis.patch.yml").read_text()
+    assert "rq-preset-sync" in patch, "cordis.patch.yml no longer mounts the boot-sync half"
+    assert "'dsh-rigorquant/sync'" in patch, (
+        "the sync row must load this package's ./sync export")
+    manifest = _json.loads((REPO / "package.json").read_text())
+    export = manifest["exports"].get("./sync")
+    assert export, "package.json no longer exports ./sync"
+    assert (REPO / export).exists(), "exports./sync points at a missing file"
+
+
+def test_boot_sync_manages_the_preset_and_the_lane_and_never_derived_state():
+    """The engine must land every runtime tree and never touch derived state.
+
+    A venv is provisioned lazily inside the lane anchor by the first
+    `uv run --frozen`; one prune pass that treats it as an extra would delete a
+    provisioned environment mid-study. The behavioral side of this contract is
+    executed for real in tests/test_preset_sync.py; this pins the wiring.
+    """
+    sync = (REPO / "dsh" / "sync.js").read_text()
+    for tree in ("agent-presets/rigorquant", "env", "mcp", "docs"):
+        assert f"'{tree}'" in sync, f"sync.js does not manage {tree}"
+    for derived in (".venv", "__pycache__"):
+        assert f"'{derived}'" in sync, f"sync.js does not exclude {derived}"
+    assert "install.sh --uninstall" in sync or "--uninstall" in sync, (
+        "sync.js must document that removal stays explicit (no uninstall hook)")
+    # And the behavioral suite must exist and name the venv hazard.
+    behavioral = (REPO / "tests" / "test_preset_sync.py").read_text()
+    assert ".venv" in behavioral, "no test executes the venv-survival contract"
+
+
 def test_every_globally_installed_skill_also_ships_in_the_package():
     """install.sh copies skills into $DSH_HOME/skills; the package must have them.
 

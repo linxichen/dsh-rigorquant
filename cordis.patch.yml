@@ -37,3 +37,14 @@
     # other role inherits the session model (root follows the chatbox picker).
     - id: rq-model-router
       name: 'dsh-rigorquant'
+
+    # Self-installing distribution (docs/architecture.md, Decision 23). The
+    # bundle-patch plane cannot express an agent preset — the harness pins the
+    # agent-presets roots to its shipped root — and node_modules cannot host
+    # the uv lane. This host half therefore lands files at boot: the preset
+    # into $DSH_HOME/.agent-presets/rigorquant, env/mcp/docs into
+    # $DSH_HOME/share/rigorquant/. Idempotent byte-compare; derived state
+    # (.venv, __pycache__) never copied or pruned; a same-version target keeps
+    # local edits; removal stays explicit via ./install.sh --uninstall.
+    - id: rq-preset-sync
+      name: 'dsh-rigorquant/sync'

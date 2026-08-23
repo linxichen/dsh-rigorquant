@@ -47,20 +47,29 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 两种安装形态：
 
-**Bundle（技能层 + 模型路由）**——一条命令，让某个 profile 的所有会话都能使用
-`rigorquant` 技能，并挂载 **rq-model-router** 插件；仓库声明了
-`dsh.bundle` manifest，生态的 `dsh plugin add` 安装路径可直接使用：
+**Bundle（一条命令，完整可用）**——仓库声明了 `dsh.bundle` manifest，其中的
+`rq-preset-sync` 行会在 profile 下次启动时，把 agent preset 落盘到
+`$DSH_HOME/.agent-presets/rigorquant`、把计算通道落盘到
+`$DSH_HOME/share/rigorquant/`，因此生态的 `dsh plugin add` 安装路径即可获得
+完整框架（设计记录：docs/architecture.md 决策 23）：
 
 ```sh
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 
-**Preset（完整框架）**——RigorQuant 智能体预设（persona + 编排 + 工具）及内置技能：
+启动同步是幂等的（字节一致的目录不动；`.venv` 等派生状态既不复制也不清除），
+同版本下保留对已安装 preset 的本地修改——升级时替换随包文件，与重跑
+`./install.sh` 一致。DSH 的插件 CLI 没有卸载钩子，因此移除始终是显式操作
+（`./install.sh --uninstall`）；若只移除插件，已同步的 preset 仍可独立运行，
+只是不再有模型路由。
+
+**Preset（完整框架，显式安装）**——RigorQuant 智能体预设（persona + 编排 + 工具）
+及内置技能：
 
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
-./install.sh                    # 安装 preset + 技能 + 计算通道
+./install.sh                    # 安装 preset + 技能 + 计算通道 + 插件
 # ./install.sh --skill-only     # 或只安装技能（rigorquant、arxiv、academic-paper-search）
 # ./install.sh --uninstall      # 移除 preset、技能与共享通道
 ```
@@ -71,11 +80,14 @@ cd dsh-rigorquant
 
 ## 计算通道（一次性）
 
-`install.sh` 会把固定的 uv 计算通道安装到 `$DSH_HOME/share/rigorquant/env`
-（见 [env/README.md](env/README.md)）。jacobian 升级通道默认**关闭**且已
-**固定版本**（`jacobian@0.12.0`）：先启用 `mcp-jacobian` 行，框架在一次性
-配置前会**请求批准**（`npx -y jacobian@0.12.0 upgrade`，或通过技能内的
-`scripts/provision-lean.sh` 安装 Lean 工具链）。详见
+固定的 uv 通道位于 `$DSH_HOME/share/rigorquant/env`，由 `install.sh` 或插件的
+boot-sync 行落盘——两者写入的字节一致，最后运行者持有该锚点（见
+[env/README.md](env/README.md)）。venv 本身**从不随包安装**：它是派生状态，
+由第一次 `uv run --frozen --project <env_lane>` 在锚点内**惰性创建**（后续
+调用即时；`--frozen` 严格遵守已提交的 lockfile）。jacobian 升级通道默认
+**关闭**且已**固定版本**（`jacobian@0.12.0`）：先启用 `mcp-jacobian` 行，
+框架在一次性配置前会**请求批准**（`npx -y jacobian@0.12.0 upgrade`，或通过
+技能内的 `scripts/provision-lean.sh` 安装 Lean 工具链）。详见
 [mcp/jacobian.md](mcp/jacobian.md)。
 
 ## 角色模型路由（rq-model-router）
@@ -100,8 +112,9 @@ preset、workflow 工作进程、fork 子进程）一律不干预。需要 DSH �
 
 ```
 package.json                dsh.bundle manifest（支持 dsh plugin add）
-cordis.patch.yml            bundle patch：技能层 + rq-model-router 行
-dsh/                        rq-model-router 插件（宿主半 + 插件设置卡片）
+cordis.patch.yml            bundle patch：技能层 + rq-model-router + rq-preset-sync 行
+dsh/                        宿主半（rq-model-router 路由 + rq-preset-sync 启动同步）
+                            与插件设置卡片
 agent-presets/rigorquant/   preset 组合 + persona + 内置技能
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   元校验器（唯一正式副本）

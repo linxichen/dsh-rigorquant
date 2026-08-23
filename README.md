@@ -73,15 +73,23 @@ cd dsh-rigorquant
 # ./install.sh --uninstall      # removes everything, plugin included
 ```
 
-**Plugin only** — the router, its card, and the skills, with no preset and no
-compute lane. Useful to add role routing to a profile you drive with your own
-preset; note that the `root` role routes only sessions running the
-`rigorquant` preset, so this form alone leaves the router with nothing to
-route:
+**Plugin only** — the same everything, via the ecosystem's bundle path. The
+package declares a `dsh.bundle` manifest whose rows include a boot-sync half
+(`rq-preset-sync`): on the profile's next start it lands the agent preset into
+`$DSH_HOME/.agent-presets/rigorquant` and the compute lane into
+`$DSH_HOME/share/rigorquant/`, so `dsh plugin add` alone yields a working
+distribution (docs/architecture.md Decision 23):
 
 ```sh
 dsh plugin --profile web add dsh-rigorquant
 ```
+
+The sync is idempotent (a byte-identical tree is left untouched; derived state
+like `.venv` is never copied or pruned) and keeps same-version local edits to
+the installed preset — an upgrade replaces shipped files, exactly like
+re-running `./install.sh`. There is no uninstall hook in DSH's plugin CLI, so
+removal stays explicit (`./install.sh --uninstall`); if you remove only the
+plugin, the synced preset keeps working standalone and simply routes nothing.
 
 Start a new DSH session and pick the **RigorQuant** preset. Then:
 
@@ -90,12 +98,16 @@ Start a new DSH session and pick the **RigorQuant** preset. Then:
 
 ## Compute lane (one-time)
 
-The pinned uv compute lane is installed at `$DSH_HOME/share/rigorquant/env` by
-`install.sh` (see [env/README.md](env/README.md)). The jacobian escalation lane
-ships **disabled** and **pinned** (`jacobian@0.12.0`): enable the `mcp-jacobian`
-row, and the framework asks for approval before any one-time provisioning
-(`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain via the skill's
-`scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian.md).
+The pinned uv lane lives at `$DSH_HOME/share/rigorquant/env`, placed there by
+`install.sh` or by the plugin's boot-sync row — whichever ran last owns the
+anchor, and both land identical bytes (see [env/README.md](env/README.md)).
+The venv itself is **never installed**: it is derived state, provisioned
+lazily inside the anchor by the first `uv run --frozen --project <env_lane>`
+(subsequent runs are instant; `--frozen` honors the committed lockfile). The
+jacobian escalation lane ships **disabled** and **pinned** (`jacobian@0.12.0`):
+enable the `mcp-jacobian` row, and the framework asks for approval before any
+one-time provisioning (`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain
+via the skill's `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian.md).
 
 ## Role-routed models (rq-model-router)
 
@@ -120,8 +132,10 @@ record: [docs/architecture.md](docs/architecture.md) Decision 16.
 
 ```
 package.json                dsh.bundle manifest (dsh plugin add support)
-cordis.patch.yml            bundle patch: skills layer + rq-model-router row
-dsh/                        rq-model-router plugin (host half + Plugins-tab card)
+cordis.patch.yml            bundle patch: skills layer + rq-model-router +
+                            rq-preset-sync rows
+dsh/                        host halves (rq-model-router router + rq-preset-sync
+                            boot-sync) and the Plugins-tab card
 agent-presets/rigorquant/   preset composition + persona + bundled skills
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)

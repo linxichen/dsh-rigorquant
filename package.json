@@ -30,6 +30,7 @@
   "exports": {
     ".": "./dsh/index.js",
     "./client": "./dsh/client.js",
+    "./sync": "./dsh/sync.js",
     "./package.json": "./package.json"
   },
   "dsh": {
