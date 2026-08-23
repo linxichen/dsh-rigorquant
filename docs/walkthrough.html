@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RigorQuant × DeepSeek Harness — a worked research walkthrough · 全流程实证演示</title>
+<style>
+:root{
+  --bg:#f7f6f3; --bg2:#ffffff; --ink:#22252a; --muted:#6b7078; --line:#e3e0d8;
+  --found:#1f5fa8; --found-bg:#eaf2fb; --frame:#6d3fc0; --frame-bg:#f2ecfc;
+  --evid:#1e7a52; --evid-bg:#eaf6ef; --warn:#a33b2e; --warn-bg:#fbeeea;
+  --code-bg:#14161a; --code-ink:#dfe3ea; --accent:#b3541e;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16181d; --bg2:#1d2026; --ink:#e6e4de; --muted:#9aa0a8; --line:#33373f;
+    --found:#7db1ea; --found-bg:#1c2a3c; --frame:#b79aec; --frame-bg:#28203a;
+    --evid:#7fd0a4; --evid-bg:#17291f; --warn:#eb9183; --warn-bg:#341f1b;
+    --code-bg:#101216; --code-ink:#d5dae2; --accent:#e09263;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.65 "Songti SC","Noto Serif SC",Georgia,"Times New Roman",serif;}
+body.zh .en{display:none}
+body:not(.zh) .zh{display:none}
+code,kbd,pre,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  font-size:.86em}
+h1,h2,h3,h4{font-family:"Avenir Next","PingFang SC","Noto Sans SC",-apple-system,"Segoe UI",sans-serif;
+  line-height:1.25}
+a{color:var(--found)}
+p{margin:.55em 0}
+
+/* progress bar */
+#prog{position:fixed;top:0;left:0;height:3px;width:0;background:var(--accent);z-index:60}
+
+/* hero */
+header.hero{max-width:1060px;margin:0 auto;padding:56px 24px 30px}
+.hero h1{font-size:clamp(26px,4vw,40px);margin:.2em 0 .3em}
+.hero .sub{font-size:17px;color:var(--muted);max-width:52em}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.chip{border:1px solid var(--line);background:var(--bg2);border-radius:999px;
+  padding:6px 14px;font-size:13px;color:var(--muted)}
+.chip b{color:var(--ink)}
+#langbtn{position:fixed;top:14px;right:16px;z-index:70;border:1px solid var(--line);
+  background:var(--bg2);color:var(--ink);border-radius:8px;padding:7px 14px;
+  cursor:pointer;font-size:13px;font-family:inherit}
+#langbtn:hover{border-color:var(--accent)}
+
+/* layout */
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px 90px;display:grid;
+  grid-template-columns:210px minmax(0,1fr);gap:38px}
+@media(max-width:1099px){.wrap{grid-template-columns:1fr}.rail{display:none}}
+.rail{position:sticky;top:36px;align-self:start;font-size:12.5px;max-height:calc(100vh - 60px);
+  overflow:auto;padding-right:6px}
+.rail a{display:block;color:var(--muted);text-decoration:none;padding:3.5px 8px;
+  border-left:2px solid transparent;line-height:1.4}
+.rail a.on{color:var(--accent);border-left-color:var(--accent)}
+.rail .grp{margin:12px 0 4px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--muted);font-family:"Avenir Next","PingFang SC",sans-serif;font-size:10.5px}
+
+main section{margin-top:54px;scroll-margin-top:20px}
+.snum{font-family:"Avenir Next","PingFang SC",sans-serif;font-size:12px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--accent)}
+section>h2{font-size:25px;margin:.15em 0 .5em;border-bottom:1px solid var(--line);padding-bottom:.35em}
+h3{font-size:19px;margin:1.4em 0 .4em}
+.step{border:1px solid var(--line);border-radius:14px;background:var(--bg2);
+  padding:22px 26px;margin-top:30px}
+.step>.shead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.step .knum{font-family:"Avenir Next","PingFang SC",sans-serif;font-weight:700;
+  color:var(--accent);font-size:14px;letter-spacing:.06em}
+.step h3{margin:0;font-size:20px}
+.step .tagline{width:100%;color:var(--muted);font-size:14px;margin-top:2px}
+
+.band{border-radius:10px;padding:12px 16px;margin-top:14px;border:1px solid transparent}
+.band .blab{font-family:"Avenir Next","PingFang SC",sans-serif;font-size:10.5px;
+  letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:5px}
+.band.found{background:var(--found-bg);border-color:color-mix(in srgb,var(--found) 25%,transparent)}
+.band.found .blab{color:var(--found)}
+.band.frame{background:var(--frame-bg);border-color:color-mix(in srgb,var(--frame) 25%,transparent)}
+.band.frame .blab{color:var(--frame)}
+.band.evid{background:var(--evid-bg);border-color:color-mix(in srgb,var(--evid) 25%,transparent)}
+.band.evid .blab{color:var(--evid)}
+.band.warn{background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.band.warn .blab{color:var(--warn)}
+.band p:first-child{margin-top:0}.band p:last-child{margin-bottom:0}
+
+pre{background:var(--code-bg);color:var(--code-ink);padding:13px 16px;border-radius:10px;
+  overflow-x:auto;line-height:1.55;font-size:12.5px}
+pre .c{color:#7f8896}
+blockquote{margin:10px 0;padding:8px 16px;border-left:3px solid var(--evid);
+  background:var(--evid-bg);border-radius:0 8px 8px 0;font-size:14.5px}
+blockquote .who{display:block;color:var(--muted);font-size:12px;margin-bottom:3px;
+  font-family:"Avenir Next","PingFang SC",sans-serif;letter-spacing:.05em}
+body.zh p,body.zh li,body.zh th,body.zh td{letter-spacing:.01em}
+body.zh .blab,body.zh .snum,body.zh .rail .grp,body.zh .rail a,body.zh .knum,
+body.zh .step .knum{letter-spacing:.02em}
+body.zh blockquote .who{letter-spacing:.03em}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:"Avenir Next","PingFang SC",sans-serif;font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.inline-code, code.inl{background:color-mix(in srgb,var(--ink) 8%,transparent);
+  border-radius:5px;padding:1px 6px;font-size:.85em}
+details{border:1px solid var(--line);border-radius:10px;background:var(--bg2);
+  margin:12px 0;padding:0}
+summary{cursor:pointer;padding:10px 16px;font-size:14px;color:var(--muted);
+  font-family:"Avenir Next","PingFang SC",sans-serif}
+summary:hover{color:var(--accent)}
+details[open]{padding-bottom:8px}
+details .dbody{padding:0 16px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.two{grid-template-columns:1fr}}
+.layerbox{border:1px solid var(--line);border-radius:12px;background:var(--bg2);
+  padding:16px 18px;margin-top:12px}
+.layerbox h4{margin:.1em 0 .45em;font-size:14.5px}
+.layerbox ul{margin:.3em 0;padding-left:1.2em}
+.layerbox li{margin:.28em 0;font-size:14px}
+.arrowrow{text-align:center;color:var(--muted);font-size:18px;margin:2px 0}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:6px;
+  padding:0 8px;font-size:12px;background:var(--bg2);white-space:nowrap}
+.deny{color:var(--warn)}
+.allow{color:var(--evid)}
+.small{font-size:13px;color:var(--muted)}
+.formula{font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:.9em;
+  background:color-mix(in srgb,var(--ink) 7%,transparent);border-radius:6px;padding:1px 7px}
+footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
+  max-width:1060px;margin-inline:auto;color:var(--muted);font-size:13.5px}
+.kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;
+  font-size:.82em;background:var(--bg2)}
+@media print{
+  #langbtn,#prog,.rail{display:none}
+  .wrap{grid-template-columns:1fr}
+  body{background:#fff}
+  details{page-break-inside:avoid}
+  .step{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+<button id="langbtn" title="Switch language">中文</button>
+
+<header class="hero">
+  <div class="snum">dsh-rigorquant · demo walkthrough · 实证全流程演示</div>
+  <h1>
+    <span class="en">From one question to a certified result:</span>
+    <span class="zh">从一个问题，到一份被认证的结果：</span>
+    <span class="en">how RigorQuant turns a DeepSeek Harness session into a rigorous research lab</span>
+    <span class="zh">RigorQuant 如何把一个 DeepSeek Harness 会话变成严谨的研究实验室</span>
+  </h1>
+  <p class="sub">
+    <span class="en">This page walks the <b>actual process</b>, strictly in execution order — every step shows the
+    harness primitive being exercised (<i>Foundation</i>), the rule the plugin adds on top (<i>Framework</i>),
+    and what verifiably happened in real runs (<i>Evidence</i>). All evidence comes from six real studies in
+    <code class="inl">~/gits/rigorquant_studies</code>; every number below can be opened in those folders.</span>
+    <span class="zh">本页按<b>实际执行顺序</b>逐步讲全流程 —— 每一步都分三层：<i>基座层</i>（用到了 DeepSeek Harness 的哪项基础组件）、<i>框架层</i>（插件在其上增加了什么规则）、<i>证据层</i>（真实运行中实际发生了什么）。全部证据来自 <code class="inl">~/gits/rigorquant_studies</code> 中的六个真实研究，下列每个数字都能在对应目录里打开核对。</span>
+  </p>
+  <div class="chips mono">
+    <span class="chip"><b>6</b>&nbsp;<span class="en">real studies</span><span class="zh">个真实研究</span></span>
+    <span class="chip"><b>22</b>&nbsp;<span class="en">subagents in one round</span><span class="zh">个子代理（单轮最多）</span></span>
+    <span class="chip"><b>21</b>&nbsp;<span class="en">errors caught by mechanism</span><span class="zh">个错误全部被机制捕获</span></span>
+    <span class="chip"><b>0</b>&nbsp;<span class="en">caught by luck</span><span class="zh">个靠运气</span></span>
+    <span class="chip"><b>4,024</b>&nbsp;<span class="en">derivation + audit lines (VaR study)</span><span class="zh">行推导与审计记录（VaR 研究）</span></span>
+  </div>
+</header>
+
+<div class="wrap">
+<nav class="rail" id="rail">
+  <div class="grp en">Orientation</div><div class="grp zh">导读</div>
+  <a href="#s-readme">0 · <span class="en">How to read</span><span class="zh">阅读方式</span></a>
+  <a href="#s-layers">1 · <span class="en">Two layers</span><span class="zh">两层结构</span></a>
+  <a href="#s-cast">2 · <span class="en">The cast</span><span class="zh">角色表</span></a>
+  <div class="grp en">The process</div><div class="grp zh">流程主线</div>
+  <a href="#st1">S1 · <span class="en">Task arrives</span><span class="zh">任务进入</span></a>
+  <a href="#st2">S2 · <span class="en">Intake</span><span class="zh">立项</span></a>
+  <a href="#st3">S3 · <span class="en">Workspace</span><span class="zh">研究工作区</span></a>
+  <a href="#st4">S4 · <span class="en">Compute lane</span><span class="zh">计算通道</span></a>
+  <a href="#st5">S5 · <span class="en">Literature lane</span><span class="zh">文献通道</span></a>
+  <a href="#st6">S6 · <span class="en">Fan-out</span><span class="zh">扇出探索</span></a>
+  <a href="#st7">S7 · <span class="en">Ground truth</span><span class="zh">真值轨道</span></a>
+  <a href="#st8">S8 · <span class="en">Adversary</span><span class="zh">对抗审计</span></a>
+  <a href="#st9">S9 · <span class="en">Synthesis</span><span class="zh">综合与登记</span></a>
+  <a href="#st10">S10 · <span class="en">Stage ladder</span><span class="zh">阶段阶梯</span></a>
+  <a href="#st11">S11 · <span class="en">Deliverables</span><span class="zh">交付物</span></a>
+  <a href="#st12">S12 · <span class="en">Validator + lifecycle</span><span class="zh">校验器与生命周期</span></a>
+  <div class="grp en">Why it works</div><div class="grp zh">为什么有效</div>
+  <a href="#s-ledger">3 · <span class="en">Error ledger</span><span class="zh">错误台账</span></a>
+  <a href="#s-lessons">4 · <span class="en">Hard lessons</span><span class="zh">血泪教训</span></a>
+  <a href="#s-selftest">5 · <span class="en">Tested honesty</span><span class="zh">诚实性自测</span></a>
+  <a href="#s-index">6 · <span class="en">Study index</span><span class="zh">研究索引</span></a>
+  <a href="#s-src">7 · <span class="en">Sources</span><span class="zh">资料来源</span></a>
+</nav>
+
+<main>
+
+<!-- ============================================================ 0 -->
+<section id="s-readme">
+  <div class="snum en">Section 0</div><div class="snum zh">第 0 节</div>
+  <h2><span class="en">How to read this walkthrough</span><span class="zh">本演示的阅读方式</span></h2>
+  <p>
+    <span class="en">Every step of the process is presented the same way, in strict execution order.
+    The three bands answer three different questions:</span>
+    <span class="zh">流程的每一步都以同样的三层结构呈现，并严格按执行顺序排列。三个色带分别回答三个不同的问题：</span>
+  </p>
+  <div class="band found"><span class="blab en">Foundation — what DeepSeek Harness already provides</span><span class="blab zh">基座层 —— DeepSeek Harness 本身提供了什么</span>
+    <p><span class="en">The harness primitive being exercised: a composition row, a tool, a service, an event channel.
+    RigorQuant invents none of these — it mounts and configures them.</span>
+    <span class="zh">本步用到的 Harness 基础组件：某条组合行、某个工具、某个服务、某个事件通道。这些都不是 RigorQuant 发明的 —— 它只是挂载并配置它们。</span></p>
+  </div>
+  <div class="band frame"><span class="blab en">Framework — what the plugin adds on top</span><span class="blab zh">框架层 —— 插件在其上增加了什么</span>
+    <p><span class="en">The rule the persona, the skill, or the validator imposes. This is where rigor lives:
+    separation duties, check batteries, gates, and lifecycle decisions.</span>
+    <span class="zh">人格、技能或校验器强加的规则。严谨性正体现在这里：隔离职责、检验组、各道关卡、生命周期决策。</span></p>
+  </div>
+  <div class="band evid"><span class="blab en">Evidence — what actually happened in a real study</span><span class="blab zh">证据层 —— 真实研究中实际发生了什么</span>
+    <p><span class="en">Real numbers, real files, real failures from <code class="inl">~/gits/rigorquant_studies</code>.
+    Quoted text is verbatim from the records.</span>
+    <span class="zh">来自 <code class="inl">~/gits/rigorquant_studies</code> 的真实数字、真实文件、真实失败。引号内文字均逐字摘自研究记录。</span></p>
+  </div>
+  <p class="small">
+    <span class="en">Naming convention used throughout: <b>VaR study</b> = <code class="inl">studies/20260820_var-expected-return-term</code>,
+    the hardest run, documented start-to-finish in its repo's <code class="inl">EXAMPLE-WORKFLOW.md</code>;
+    <b>DR study</b> = <code class="inl">studies/20260816_diversification-ratio</code>, the cleanest end-to-end run.</span>
+    <span class="zh">全文命名约定：<b>VaR 研究</b> = <code class="inl">studies/20260820_var-expected-return-term</code>（最艰难的一次运行，其仓库的 <code class="inl">EXAMPLE-WORKFLOW.md</code> 从头到尾记录了它）；<b>DR 研究</b> = <code class="inl">studies/20260816_diversification-ratio</code>（最干净的一次端到端运行）。</span>
+  </p>
+</section>
+
+<!-- ============================================================ 1 -->
+<section id="s-layers">
+  <div class="snum en">Section 1</div><div class="snum zh">第 1 节</div>
+  <h2><span class="en">Two layers: what the harness gives, what the preset builds</span>
+      <span class="zh">两层结构：Harness 给了什么，预设在上面建了什么</span></h2>
+  <p>
+    <span class="en">DeepSeek Harness is a Cordis composition: every capability is a plugin row. An <b>agent preset</b>
+    is one such file mounted for a single session. RigorQuant ships exactly that — one preset composition plus a
+    bundled skill tree plus one small host plugin — so the entire research framework below is built from harness
+    primitives, with no fork of the harness itself.</span>
+    <span class="zh">DeepSeek Harness 是一个 Cordis 组合：每种能力都是一条插件行。<b>Agent 预设</b>就是为单个会话挂载的这样一个文件。RigorQuant 发布的正是它 —— 一份预设组合、一棵随附的技能树、一个小型宿主插件 —— 因此下面整个研究框架完全由 Harness 的基础组件搭建，没有 fork Harness 本身。</span>
+  </p>
+
+  <div class="layerbox">
+    <h4><span class="en">Layer 1 — DeepSeek Harness foundation (consumed, never re-implemented)</span>
+        <span class="zh">第 1 层 —— DeepSeek Harness 基座（只消费，不重造）</span></h4>
+    <ul>
+      <li><span class="en"><b>Preset composition rows</b> — persona injection (<code class="inl">@deepseek-ai/dsh-persona</code>),
+        shell/filesystem/search tools, background jobs, plan mode, ask-user, todo, web search + fetch.</span>
+        <span class="zh"><b>预设组合行</b>—— 人格注入（<code class="inl">@deepseek-ai/dsh-persona</code>）、shell／文件系统／搜索工具、后台任务、计划模式、用户问答、联网搜索与抓取。</span></li>
+      <li><span class="en"><b>Skill registry + <code class="inl">skill</code> tool</b> — the preset anchors its own skill root at
+        <code class="inl">baseUrl</code>, so the operating procedure travels with the preset.</span>
+        <span class="zh"><b>技能注册表 + <code class="inl">skill</code> 工具</b>—— 预设把技能根目录锚定在自己的 <code class="inl">baseUrl</code> 上，操作规程随预设一起走。</span></li>
+      <li><span class="en"><b>Per-role delegation</b> — the same row (<code class="inl">@deepseek-ai/dsh-tool-subagent</code>) mounted
+        six times with different personas, <code class="inl">toolFilter.deny</code> lists and <code class="inl">maxDepth</code>;
+        spawned children never see the parent conversation (context isolation is harness-enforced).</span>
+        <span class="zh"><b>按角色委派</b>—— 同一行（<code class="inl">@deepseek-ai/dsh-tool-subagent</code>）以六种不同人格、不同的 <code class="inl">toolFilter.deny</code> 与 <code class="inl">maxDepth</code> 挂载六次；派生的子代理永远看不到父会话（上下文隔离由 Harness 强制）。</span></li>
+      <li><span class="en"><b>Goal loop</b> — one task-level goal relaunches the orchestrator every round inside the live session.</span>
+        <span class="zh"><b>目标循环</b>—— 单个任务级目标在活会话内每轮重新拉起编排者。</span></li>
+      <li><span class="en"><b>Compaction + tool-result pruner</b> — tuned to fire earlier (60% of context window) and retain less
+        (4 KiB per result) because long runs re-send the prefix on every step.</span>
+        <span class="zh"><b>压缩 + 工具结果修剪器</b>—— 调整为更早触发（上下文窗口的 60%）且保留更少（每条结果 4 KiB），因为长运行会在每一步重复发送前缀。</span></li>
+      <li><span class="en"><b>Sandbox + approvals</b> — workspace-write file policy; anything beyond it fails closed or asks.
+        This is not hypothetical: it shaped the compute lane (step S4).</span>
+        <span class="zh"><b>沙箱 + 审批</b>—— 文件策略为 workspace-write；越界操作要么失败关闭、要么请求批准。这不是假设：它直接塑造了计算通道（见步骤 S4）。</span></li>
+      <li><span class="en"><b>MCP client row</b> — one opt-in lane for the Lean escalation verifier, command pinned.</span>
+        <span class="zh"><b>MCP 客户端行</b>—— 一条可选的 Lean 升级验证通道，命令被固定版本。</span></li>
+      <li><span class="en"><b>Host plugins + settings + Slots</b> — the role-model router listens on the <code class="inl">agent/request</code>
+        waterfall; its Settings card renders in the Plugins tab.</span>
+        <span class="zh"><b>宿主插件 + 设置 + 槽位</b>—— 角色模型路由器监听 <code class="inl">agent/request</code> 瀑布流；其设置卡片渲染在插件页签里。</span></li>
+    </ul>
+  </div>
+  <div class="arrowrow">▼ <span class="en">mounted by</span><span class="zh">由以下内容挂载</span> ▼</div>
+  <div class="layerbox">
+    <h4><span class="en">Layer 2 — what dsh-rigorquant adds</span><span class="zh">第 2 层 —— dsh-rigorquant 增加的部分</span></h4>
+    <ul>
+      <li><span class="en"><b>A root-orchestrator persona</b> with four non-negotiable constraints (producer ≠ checker;
+        counterexample-only elimination; seeds always recorded; no handwaved load-bearing claims) and precise,
+        non-marketed definitions of “isolated” and “unattended”.</span>
+        <span class="zh"><b>根编排者人格</b>，含四条不可协商约束（生产者≠检查者；只凭反例淘汰；随机运行必记种子；不许空谈承重命题），并对「隔离」与「无人值守」给出精确、不掺水的定义。</span></li>
+      <li><span class="en"><b>The <code class="inl">rigorquant</code> skill</b> — the operating procedure: Steps 0–2b, the round loop,
+        the stage order, the check battery, escalation triggers, anti-patterns, lifecycle.</span>
+        <span class="zh"><b><code class="inl">rigorquant</code> 技能</b>—— 操作规程：步骤 0–2b、轮循环、阶段顺序、检验组、升级触发条件、反模式清单、生命周期。</span></li>
+      <li><span class="en"><b>Six role tools out of one row</b> — explorer / novel(blind) / oracle(blind) / adversary /
+        lit-line / lit-adversary, each a separate model-facing tool so producer ≠ checker is enforced by
+        <em>which tool runs</em>, not by asking nicely.</span>
+        <span class="zh"><b>一行变六个角色工具</b>—— 探索者／盲态新方法者／盲态真值神谕／对抗者／文献线代理／文献对抗者。每个都是独立的模型可见工具，「生产者≠检查者」因此由<em>调用哪个工具</em>来强制，而不是靠口头请求。</span></li>
+      <li><span class="en"><b>The meta-validator</b> <code class="inl">rq_check.py</code> + JSON Schemas it loads itself
+        (“one validator, one schema”) — the honesty boundary that reads the audit record, never <code class="inl">study.json</code>.</span>
+        <span class="zh"><b>元校验器</b> <code class="inl">rq_check.py</code> 及其自行加载的 JSON Schema（「一份校验器、一份 schema」）—— 这是诚实性边界：只读审计记录，绝不读 <code class="inl">study.json</code> 自证。</span></li>
+      <li><span class="en"><b>The study convention</b> — one self-contained folder layout everywhere, durable deliverables committed,
+        all scratch gitignored under <code class="inl">interim/</code>.</span>
+        <span class="zh"><b>研究目录约定</b>—— 到处一致的独立目录结构：耐久交付物入库提交，全部草稿放进被 gitignore 的 <code class="inl">interim/</code>。</span></li>
+      <li><span class="en"><b>A test suite that includes a forged study</b> which must FAIL — the honesty gate is itself tested.</span>
+        <span class="zh"><b>一套包含「伪造研究必须 FAIL」的测试</b>—— 诚实闸门本身也被测试。</span></li>
+    </ul>
+  </div>
+  <div class="arrowrow">▼ <span class="en">produces</span><span class="zh">产出</span> ▼</div>
+  <div class="layerbox">
+    <h4><span class="en">Layer 3 — the study tree on disk (the deliverable)</span><span class="zh">第 3 层 —— 落盘的研究树（即交付物）</span></h4>
+<pre>$STUDY/
+├── study.json      <span class="c"># identity: statement, sub-problems, seeds, pins, budget, status</span>
+├── STUDY.md  journal.md  registry.json
+├── derivations/    <span class="c"># ground-truth derivations, independent per claim</span>
+├── audits/         <span class="c"># adversary reports + battery results + rq-check.json</span>
+├── artifacts/      <span class="c"># PASS only: paper/ slides/ web/</span>
+├── literature/     <span class="c"># verified-current records, negatives, bibliography membrane</span>
+└── interim/        <span class="c"># ALL scratch — gitignored, never cited</span></pre>
+  </div>
+</section>
+
+<!-- ============================================================ 2 -->
+<section id="s-cast">
+  <div class="snum en">Section 2</div><div class="snum zh">第 2 节</div>
+  <h2><span class="en">The cast: six role tools and a root</span><span class="zh">角色表：六个角色工具加一个根</span></h2>
+  <p>
+    <span class="en">Isolation in this framework is mostly <b>procedural, enforced by tool choice</b>: a blind role is blind
+    because its tool denies the eyes, not because a prompt asked it to pretend. Only context isolation is
+    harness-enforced; the residual holes (bash-curl, cross-lane filesystem reads) are named in the architecture
+    record and audited by the adversary instead of being marketed as walls.</span>
+    <span class="zh">本框架的隔离大多是<b>程序性的，靠工具选择强制</b>：盲态角色之所以盲，是因为它的工具剥夺了眼睛，而不是因为提示词让它装瞎。只有上下文隔离是 Harness 强制的；残余漏洞（bash-curl、跨通道读文件）在架构记录中被点名，由对抗者审计，而不是被包装成铜墙铁壁。</span>
+  </p>
+  <table>
+    <thead><tr>
+      <th><span class="en">Model-facing tool</span><span class="zh">模型可见工具</span></th>
+      <th><span class="en">Job</span><span class="zh">职责</span></th>
+      <th><span class="en">Denied tools</span><span class="zh">被剥夺的工具</span></th>
+      <th><span class="en">Depth</span><span class="zh">深度</span></th>
+      <th><span class="en">Router default</span><span class="zh">路由默认</span></th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="mono">subagent</td>
+        <td><span class="en">Explorer, open method track — lemmas, equations, constructions; status reports rejected</span>
+          <span class="zh">探索者，开放方法轨道 —— 交付引理、方程、构造；拒绝状态汇报式输出</span></td>
+        <td class="allow"><span class="en">nothing (web allowed)</span><span class="zh">无（可联网）</span></td>
+        <td class="mono">1</td><td><span class="en">inherit</span><span class="zh">继承</span></td></tr>
+      <tr><td class="mono">subagent_novel</td>
+        <td><span class="en">Explorer after the novelty toggle — full Jin isolation, works from axioms + computation only</span>
+          <span class="zh">新颖性开关后的探索者 —— 完全金氏隔离，只从公理与计算出发</span></td>
+        <td class="deny mono">web_search, web_fetch, skill,<br>+ <span class="en">all delegation</span><span class="zh">所有委派工具</span></td>
+        <td class="mono">1</td><td><span class="en">inherit</span><span class="zh">继承</span></td></tr>
+      <tr><td class="mono">subagent_ground_truth</td>
+        <td><span class="en">Oracle — re-derives targets from first principles, never sees drafts</span>
+          <span class="zh">真值神谕 —— 从第一性原理重新推导目标，从不看别人的草稿</span></td>
+        <td class="deny mono">web_search, web_fetch, skill,<br>+ <span class="en">all delegation</span><span class="zh">所有委派工具</span></td>
+        <td class="mono">1</td><td class="mono">v4-pro@high<br><span class="en">fallback flash@low</span><span class="zh">回退 flash@low</span></td></tr>
+      <tr><td class="mono">subagent_adversary</td>
+        <td><span class="en">Audit — counterexample-only elimination + check battery; ends in VERDICT: PASS / NEEDS-EDITS</span>
+          <span class="zh">对抗审计 —— 只凭反例淘汰 ＋ 执行检验组；以 VERDICT: PASS / NEEDS-EDITS 收尾</span></td>
+        <td class="allow"><span class="en">nothing — needs full toolbox incl. bash</span><span class="zh">无 —— 需要含 bash 在内的全套工具</span></td>
+        <td class="mono">1</td><td class="mono">v4-pro@high</td></tr>
+      <tr><td class="mono">subagent_lit_line</td>
+        <td><span class="en">Literature line-agent — grad-student citation-graph traversal in its own walled directory</span>
+          <span class="zh">文献线代理 —— 像研究生一样做引文图遍历，被封闭在自己的隔间目录内</span></td>
+        <td class="deny mono"><span class="en">delegation only (keeps web + skills)</span><span class="zh">仅委派工具（保留联网与技能）</span></td>
+        <td class="mono">1</td><td><span class="en">inherit</span><span class="zh">继承</span></td></tr>
+      <tr><td class="mono">subagent_lit_adversary</td>
+        <td><span class="en">Literature adversary — receives the claims list ONLY, re-retrieves every source itself</span>
+          <span class="zh">文献对抗者 —— 只拿主张清单，逐条自行重新检索来源</span></td>
+        <td class="deny mono"><span class="en">delegation only</span><span class="zh">仅委派工具</span></td>
+        <td class="mono">1</td><td><span class="en">inherit</span><span class="zh">继承</span></td></tr>
+      <tr><td class="mono">root (persona)</td>
+        <td><span class="en">Orchestrator — fans out, synthesizes, writes state; may NOT certify its own output</span>
+          <span class="zh">编排者 —— 扇出、综合、写状态；不得认证自己的产出</span></td>
+        <td class="allow">—</td><td class="mono">—</td>
+        <td><span class="en">follows chatbox picker</span><span class="zh">跟随输入框选择器</span></td></tr>
+    </tbody>
+  </table>
+  <p class="small">
+    <span class="en">Mechanical facts worth noticing: every child is tagged <code class="inl">[[rq:role=…]]</code> so the host-side router can
+    route per role without touching untagged agents; every child is <code class="inl">maxDepth: 1</code> — it cannot spawn grandchildren;
+    and since harness 0.1.1-rc.2 adoption, every role delivers its result through the harness <code class="inl">report</code> channel,
+    which wakes the orchestrator (Decision 21). A seventh row, <code class="inl">subagent_fork</code>, exists but procedure bans it for track work
+    — a fork shares the parent conversation, which would destroy independence.</span>
+    <span class="zh">值得注意的机械事实：每个子代理都带 <code class="inl">[[rq:role=…]]</code> 标记，宿主侧路由器据此按角色路由、绝不触碰未标记的代理；每个子代理都是 <code class="inl">maxDepth: 1</code> —— 不能再生孙辈；自采用 harness 0.1.1-rc.2 起，每个角色通过 Harness 的 <code class="inl">report</code> 通道交付结果并唤醒编排者（决策 21）。还有第七行 <code class="inl">subagent_fork</code> 存在但被规程禁止用于轨道工作 —— fork 会共享父会话，从而摧毁独立性。</span>
+  </p>
+</section>
+
+<!-- ============================================================ S1 -->
+<section id="st1">
+  <div class="snum en">The spine · step 1 of 12</div><div class="snum zh">流程主线 · 第 1 步 / 共 12 步</div>
+  <h2><span class="en">The walkthrough</span><span class="zh">全流程推演</span></h2>
+  <div class="step">
+    <div class="shead"><span class="knum">S1</span>
+      <h3><span class="en">A task arrives; the operating procedure loads before any action</span>
+      <span class="zh">任务进入；任何动作之前先装载操作规程</span></h3>
+      <div class="tagline">
+        <span class="en">“rigorquant: derive and validate a method for … , simplified cases first.”</span>
+        <span class="zh">「rigorquant：为……推导并验证一个方法，先从简化情形做起。」</span>
+      </div>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">The <code class="inl">skill</code> tool backed by the preset-local skill registry
+      (<code class="inl">customSkillDirs</code> anchored at the preset's own <code class="inl">baseUrl</code>). Loading a skill injects its
+      full SKILL.md into context; vendored retrieval skills (<code class="inl">arxiv</code>, <code class="inl">academic-paper-search</code>)
+      also install globally for any preset (Decision 15).</span>
+      <span class="zh">由预设本地技能注册表支撑的 <code class="inl">skill</code> 工具（<code class="inl">customSkillDirs</code> 锚定在预设自己的 <code class="inl">baseUrl</code>）。加载技能会把整份 SKILL.md 注入上下文；随附的检索技能（<code class="inl">arxiv</code>、<code class="inl">academic-paper-search</code>）也会全局安装给任意预设使用（决策 15）。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">On the first message of a rigorquant task, load <code class="inl">rigorquant</code> (the SOP) — plus
+      <code class="inl">literature</code> when the task is a review. Historical note told honestly: early runs also loaded the
+      <code class="inl">j-space</code> cognition skill; Decision 18 later unbundled it because the blind roles deny the
+      <code class="inl">skill</code> tool entirely and could never load it — it was pure prompt tax on them.</span>
+      <span class="zh">rigorquant 任务的首条消息先加载 <code class="inl">rigorquant</code>（操作规程）；综述类任务再加载 <code class="inl">literature</code>。一个诚实的史料注记：早期运行还会加载 <code class="inl">j-space</code> 认知技能；决策 18 后来把它拆包移除，因为盲态角色彻底禁用 <code class="inl">skill</code> 工具根本加载不了 —— 对他们来说，这只剩每一步都要付的提示词税。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence</span><span class="blab zh">证据层</span>
+      <p>
+      <span class="en">In the VaR run, the loaded gate classified the task as <b>loop</b>-class (multi-stage, state across turns),
+      which is what opened a ledger refreshed at every seam. Not ceremony — classification decides how much machinery runs.</span>
+      <span class="zh">在 VaR 运行中，加载后的闸门把任务判定为 <b>loop</b> 级（多阶段、跨轮携带状态），这决定了要开一本账、并在每个接缝处刷新。这不是仪式 —— 分级决定启用多少机器。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S2 -->
+<section id="st2">
+  <div class="step">
+    <div class="shead"><span class="knum">S2</span>
+      <h3><span class="en">Step 0 — Intake: promise narrowly, verify everything, pin the rulers</span>
+      <span class="zh">步骤 0 —— 立项：窄承诺、全验证、钉死量尺</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">Filesystem tools write <code class="inl">study.json</code>; <code class="inl">ask_user_question</code> is available but rationed
+      (at most ONE question at intake, none on resume); <code class="inl">bash</code> hashes the schema and validator for intake pins.</span>
+      <span class="zh">文件系统工具写入 <code class="inl">study.json</code>；<code class="inl">ask_user_question</code> 可用但限量（立项至多问一个问题，恢复时零提问）；<code class="inl">bash</code> 为 intake 钉扎计算 schema 与校验器的哈希。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">Intake records: the original question <b>verbatim</b> as <code class="inl">broad_criterion</code> (never re-scoped to whatever
+      turns out provable); sub-problems each with a success criterion; a mandatory <b>coverage gate</b> — at least one
+      <code class="inl">generalization</code> sub-problem carrying the broad claim and at least one <code class="inl">domain-scale</code> sub-problem;
+      hand-checkable simplified cases; seeds and tolerances; <code class="inl">intake_pins</code> (SHA-256 of the schema and validator in effect);
+      declared deliverables. Then the meta-validator runs — and is expected to fail at first.</span>
+      <span class="zh">立项记录：原始问题<b>逐字</b>存为 <code class="inl">broad_criterion</code>（绝不缩水成碰巧可证的那一部分）；每个子问题各带成功判据；强制<b>覆盖闸</b>—— 至少一个承载大主张的 <code class="inl">generalization</code> 子问题、至少一个 <code class="inl">domain-scale</code> 子问题；手算可验的简化情形；种子与容差；<code class="inl">intake_pins</code>（当时生效的 schema 与校验器的 SHA-256）；声明的交付物。然后跑元校验器 —— 并且预期它先失败。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — the user's question enters verbatim (VaR study)</span>
+      <span class="blab zh">证据层 —— 用户的问题逐字进入（VaR 研究）</span>
+      <blockquote><span class="who en">user question, quoted in study.json · study.json 中引用的用户原话</span>
+      “If we have a commercial risk model like Barra giving us covariance matrix … of different speed (how's the
+      half-live setting for MAC-S, MAC-L, MAC-XL?), in Value at Risk our client uses a non-zero expected return.
+      How should we model this expected return term as a function of allocation weights?”</blockquote>
+      <p>
+      <span class="en">It became one study with <b>7 sub-problems</b>, 6 hand-checkable simplified cases, seed <code class="inl">20260820</code>,
+      tolerances deterministic <code class="inl">1e-12</code> / stochastic 3 SE on an N-grid of 10k/100k/1M. And then the validator did
+      exactly what it was designed to do at intake:</span>
+      <span class="zh">它成为一个含 <b>7 个子问题</b>的研究：6 个手算可验的简化情形、种子 <code class="inl">20260820</code>、容差为确定性 <code class="inl">1e-12</code>／随机 3 SE（N 网格 10k/100k/1M）。随后校验器干了它立项时该干的事：</span></p>
+<pre><span class="c"># audits/ — first validator run, designed to fail</span>
+FAIL -- 7 problem(s):
+  - literature gate: sub-problem SP1 is marked 'known' but literature/known-results.json
+    has no verified-current record for it</pre>
+      <p>
+      <span class="en">You may not <em>assert</em> that something is known; you have to go and verify it. Four sub-problems stayed blocked
+      behind that rule until the literature lane produced records.</span>
+      <span class="zh">你不能<em>宣称</em>某事是已知的；你必须去验证它。四个子问题因此被挡在这条规则后面，直到文献通道交出记录为止。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S3 -->
+<section id="st3">
+  <div class="step">
+    <div class="shead"><span class="knum">S3</span>
+      <h3><span class="en">Step 1 — Study workspace: detect first, ask once, never re-ask</span>
+      <span class="zh">步骤 1 —— 研究工作区：先探测、问一次、永不重问</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">The goal tool: the orchestrator creates <b>one task-level goal</b> and the harness's goal-round driver
+      relaunches it every round while the session stays alive. Crossing a session boundary disarms it; one human turn
+      (“continue”) re-arms it. That is the precise meaning of “unattended” here.</span>
+      <span class="zh">目标工具：编排者创建<b>单个任务级目标</b>，Harness 的目标轮驱动器在会话存活期间每轮重新拉起它。跨会话边界会使之解除武装；人类一句「continue」即可重新上膛。这就是本项目「无人值守」的精确含义。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">Study-root resolution is detection-first: walk up looking for <code class="inl">study.json</code> but never past the git root;
+      reject symlinks; <code class="inl">studies/*/study.json</code> roster means multi-study Mode B. A new study asks exactly one question
+      (mode + slug), mints <code class="inl">YYYYMMDD_&lt;topic&gt;</code>, creates the layout, a <code class="inl">.lock</code> naming the live run,
+      and appends-only <code class="inl">journal.md</code> from then on.</span>
+      <span class="zh">研究根目录解析是探测优先：向上找 <code class="inl">study.json</code> 但绝不越过 git 根；拒绝符号链接；存在 <code class="inl">studies/*/study.json</code> 即多研究的 Mode B。新建研究只问一个问题（模式＋slug），铸造 <code class="inl">YYYYMMDD_&lt;topic&gt;</code> 形式的标识，创建目录结构、写上标明活动运行的 <code class="inl">.lock</code>，此后 <code class="inl">journal.md</code> 只增不改。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — DR study, Round 0, journal.md (verbatim excerpt)</span>
+      <span class="blab zh">证据层 —— DR 研究第 0 轮 journal.md（节选原文）</span>
+<pre>## Round 0 — intake (2026-08-16)
+- Study created (Mode B multi-study repo) ... studies/20260816_diversification-ratio
+- Broad claim recorded verbatim in study.json broad_criterion.
+- Subproblems: SP1 (generalization), SP2 (reference-case), SP3 (domain-scale)
+- Seeds: task_seed = 20260816; convention task_seed + run_index.
+- env_lane resolved to /Users/linxi/.dsh/share/rigorquant/env
+- Goal created (goal-c80499ea-04b9-4a49-af47-7d10b2922250), max 5 rounds.
+<span class="c"># ...plus structural observations explicitly marked "to be independently
+#  re-derived, NOT trusted a priori"</span></pre>
+      <p>
+      <span class="en">Even the orchestrator's own early insights are written down as claims-to-verify, not as facts. That posture is
+      the whole framework in miniature.</span>
+      <span class="zh">连编排者自己早期的洞见也被写成「待独立重推」，而非事实。这个姿态就是整个框架的缩影。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S4 -->
+<section id="st4">
+  <div class="step">
+    <div class="shead"><span class="knum">S4</span>
+      <h3><span class="en">Step 2 — Compute lane: a pinned environment the sandbox can live with</span>
+      <span class="zh">步骤 2 —— 计算通道：一个与沙箱和平共处的钉死环境</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">The DSH file sandbox (workspace-write) plus <code class="inl">bash</code>. The sandbox is why the lane exists as it does:
+      <code class="inl">uv</code> wants to write <code class="inl">~/.cache/uv</code> and <code class="inl">&lt;lane&gt;/.venv</code> — both outside the workspace — so the
+      framework redirects them instead of asking for wider permissions.</span>
+      <span class="zh">DSH 文件沙箱（workspace-write）加 <code class="inl">bash</code>。沙箱正是这条通道长成这样的原因：<code class="inl">uv</code> 想写 <code class="inl">~/.cache/uv</code> 和 <code class="inl">&lt;lane&gt;/.venv</code> —— 都在工作区之外 —— 于是框架选择重定向它们，而不是索要更大权限。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">One pinned uv lane at <code class="inl">$DSH_HOME/share/rigorquant/env</code> (sympy/mpmath/cvxpy/hypothesis/…), resolved at
+      intake and recorded in <code class="inl">study.json</code>; subagents run <code class="inl">uv run --frozen --project …</code> and are never allowed to
+      <code class="inl">pip install</code> into the ambient interpreter — reproducibility is gate D of the battery.</span>
+      <span class="zh">唯一钉死的 uv 通道位于 <code class="inl">$DSH_HOME/share/rigorquant/env</code>（sympy/mpmath/cvxpy/hypothesis/…），立项时解析并记入 <code class="inl">study.json</code>；子代理一律 <code class="inl">uv run --frozen --project …</code>，绝不允许向环境解释器 <code class="inl">pip install</code> —— 可复现性本身就是检验组的门 D。</span></p>
+    </div>
+    <div class="band warn"><span class="blab en">Evidence — it broke immediately, and the fix is now canon (VaR study §3)</span>
+      <span class="blab zh">证据层 —— 它立刻坏了，修复方案如今已成标准操作（VaR 研究 §3）</span>
+      <blockquote><span class="who">first explorer, verbatim · 首个探索者，原文</span>
+      “Blocked: I couldn't run the compute lane because uv needs access to ~/.cache/uv, which is outside the
+      current workspace-write scope.”</blockquote>
+<pre><span class="c"># the two-line fix, now part of the playbook</span>
+export UV_CACHE_DIR="$PWD/interim/tmp/uv-cache"
+export UV_PROJECT_ENVIRONMENT="$PWD/interim/venv"
+uv run --frozen --project $DSH_HOME/share/rigorquant/env python &lt;script.py&gt;</pre>
+      <p>
+      <span class="en">Cost of finding it late: one wasted explorer and one wasted ground-truth pass — and it bit twice more later,
+      when a resumed agent lost the variables and then narrated the failure as if it described its own results (§9a below).
+      Environment friction is treated as a first-class research hazard, not noise.</span>
+      <span class="zh">发现太晚的代价：一个探索者和一趟真值推导被浪费 —— 而且后来又咬了两次：某个续跑的代理丢了这两个变量，然后把自己的失败叙述得仿佛是在描述研究结果本身（见下文 §9a）。环境摩擦在这里被当作一等研究风险对待，而不是噪音。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S5 -->
+<section id="st5">
+  <div class="step">
+    <div class="shead"><span class="knum">S5</span>
+      <h3><span class="en">Step 2b — Literature lane: spend retrieval before compute; export only proven impossibilities</span>
+      <span class="zh">步骤 2b —— 文献通道：先花检索再花算力；只出口已被证明的不可能性</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">Parallel continuable subagents, <code class="inl">web_search</code>/<code class="inl">web_fetch</code>, the two vendored retrieval skills,
+      and ordinary <code class="inl">bash</code> — which mid-run became a capability builder (see below). Parallel queries batch since rc.8.</span>
+      <span class="zh">并行可持续子代理、<code class="inl">web_search</code>/<code class="inl">web_fetch</code>、两个随附检索技能，以及普通的 <code class="inl">bash</code> —— 后者在运行途中变成了能力建造工具（见下）。自 rc.8 起并行查询可批量合并。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework — the membrane</span><span class="blab zh">框架层 —— 膜</span>
+      <p>
+      <span class="en">Walled citation-graph traversal per line (backward references, forward citations, related work, surveys) produces
+      dossiers in <code class="inl">interim/lit/</code>. The orchestrator hands the literature adversary a <b>claims list only</b> — never the
+      producing agent's prose — and it must re-retrieve every source itself, certifying validity <em>and</em> freshness
+      (version, venue, retraction, supersession). What crosses to the novel lane is restricted to
+      <b>verified negatives</b>: mathematically proven impossibilities, provenance-stripped. “This is open” never crosses —
+      transmitting openness is a hint. A locked constraint table (C1–C7) and named residual holes back this up in
+      <a href="architecture.md">architecture.md</a> Decision 14.</span>
+      <span class="zh">每条文献线在自己封闭的隔间里做引文图遍历（向后引用、向前被引、相关工作、综述），档案落在 <code class="inl">interim/lit/</code>。编排者只把<b>主张清单</b>交给文献对抗者 —— 绝不交生产者的行文 —— 对抗者必须逐条自行重新检索，同时认证有效性<em>与</em>新鲜度（版本、发表地、撤稿、被取代）。能穿越到新颖通道的只有<b>已验证的否定</b>：被数学确证的不可能性，且剥离出处。「这是开放的」永不过境 —— 传递自身是不是开放，这本身就是一种提示。锁定约束表（C1–C7）与点名的残余漏洞见 <a href="architecture.md">architecture.md</a> 决策 14。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — the VaR literature gate in numbers</span>
+      <span class="blab zh">证据层 —— VaR 文献闸门的数字</span>
+      <p><span class="en">Round 1 fielded 7 walled lines + 2 adversaries. Six lines produced <b>81 load-bearing claims</b> with verbatim
+      evidence quotes; the adversaries adjudicated them:</span>
+      <span class="zh">第 1 轮投入 7 条封闭线 ＋ 2 个对抗者。六条线产出 <b>81 条承重主张</b>（附逐字证据引文），对抗者裁决如下：</span></p>
+      <table>
+        <thead><tr><th><span class="en">Verdict</span><span class="zh">裁决</span></th><th class="num"><span class="en">Claims</span><span class="zh">主张数</span></th>
+          <th><span class="en">Meaning</span><span class="zh">含义</span></th></tr></thead>
+        <tbody>
+          <tr><td>verified-current</td><td class="num">26</td><td><span class="en">citable as-is</span><span class="zh">可直接引用</span></td></tr>
+          <tr><td>verified-stale</td><td class="num">7</td><td><span class="en">true once, superseded</span><span class="zh">曾经为真，已被取代</span></td></tr>
+          <tr><td>unverifiable</td><td class="num">27</td><td><span class="en">abstract-only tier — never load-bearing</span><span class="zh">仅摘要级 —— 永不承重</span></td></tr>
+          <tr><td class="mono"><b>false-claim</b></td><td class="num"><b>14</b></td><td><span class="en">the source does not say that</span><span class="zh">来源根本没这么说</span></td></tr>
+        </tbody>
+      </table>
+      <p><span class="en"><b>Only ~35% survived as citable.</b> Three consequential kills: a scaling result reported
+      <em>backwards</em> (square-root-of-time <b>underestimates</b> tail risk under jump-diffusion, direction depends on a critical drift
+      threshold); a vendor half-life table misread, then misread <em>differently</em> on re-report (digits dropped:
+      <code class="inl">5→25</code>, <code class="inl">252→25</code>, <code class="inl">42/168→2/68</code>); and six claims asserting documents were unretrievable —
+      the adversary retrieved all six. “I could not find it” is a claim like any other, and it can be false.</span>
+      <span class="zh"><b>最终只有约 35% 幸存可引用。</b>三次致命的击杀：一个缩放结论被<em>说反了</em>（跳扩散下，平方根时间法则<b>低估</b>尾风险，方向取决于临界漂移阈值）；一张厂商半衰期表被误读，复述时又以<em>另一种方式</em>误读（数字脱落）；还有六条宣称文档无法获取的主张 —— 对抗者把六份全都找回来了。「我找不到它」也是一种主张，而且可能是假的。</span></p>
+      <details><summary><span class="en">Show: the capability built mid-run, and the primary-text payoff</span><span class="zh">展开：运行中途造出的工具，以及一手文本带来的回报</span></summary>
+        <div class="dbody">
+        <p><span class="en">This runtime had no <code class="inl">web_fetch</code> provider at all, but <code class="inl">bash</code> had network and <code class="inl">pypdf</code> was vendored —
+        so a retrieval tool was written during the run: <code class="inl">.lit-tools/litfetch.py</code>, printing page numbers and a document
+        SHA-256 with every hit. That converted the study's central vendor claim from hearsay into primary text:</span>
+        <span class="zh">当时的运行时根本没有 <code class="inl">web_fetch</code> 提供方，但 <code class="inl">bash</code> 有网络、仓库里又内置了 <code class="inl">pypdf</code> —— 于是一个检索工具在运行途中诞生：<code class="inl">.lit-tools/litfetch.py</code>，每次命中都打印页码和文档 SHA-256。这把研究中最核心的厂商主张从道听途说变成了一手文本：</span></p>
+<pre>Table 4.1  Factor covariance matrix parameters for the USE4 model. All values in trading days.
+Model   Volatility Half-Life  NW Lags  Correlation Half-Life  NW Lags  VRA Half-Life
+USE4S   84                    5        504                    2        42
+USE4L   252                   5        504                    2        168</pre>
+        <p><span class="en">And with it the study's most useful structural finding: <b>the correlation half-life is 504 days in both
+        variants</b> — a vendor “speed” is a <em>volatility</em> speed. Nobody had claimed otherwise; nobody had checked either.</span>
+        <span class="zh">由此得到本研究最有用的结构性发现：<b>两种变体的相关半衰期都是 504 天</b> —— 厂商所说的「速度」其实是 <em>波动率</em>速度。此前无人提出异议，也无人查验过。</span></p>
+        <p><span class="en">Later, acting on a user aside (“save the PDFs in the study folder”), the study discovered its most
+        load-bearing document wasn't on disk at all: a <b>162-byte 404 page</b> from a dead mirror. Re-fetched: 296 pages,
+        hash matched exactly. Also caught: a grep miss caused by a PDF rendering “difficult” with an <code class="inl">fi</code> ligature.
+        Twelve documents ended with a manifest binding sha256 → URL → cited pages.</span>
+        <span class="zh">后来，因用户一句题外话（「PDF 应该存进研究文件夹」），研究发现最承重的那份文档根本不在盘上：从失效镜像存下来的是一封 <b>162 字节的 404 页面</b>。重新获取：296 页，哈希完全吻合。同场还抓到一个 grep 失误：PDF 把「difficult」排成了带 <code class="inl">fi</code> 连字的形式导致漏检。最终十二份文档带着 sha256 → URL → 引用页码的清单一并归档。</span></p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S6 -->
+<section id="st6">
+  <div class="step">
+    <div class="shead"><span class="knum">S6</span>
+      <h3><span class="en">Round loop ① — Fan-out: blank-context explorers, concrete outputs only</span>
+      <span class="zh">轮循环 ① —— 扇出：白纸上下文的探索者，只要具体产出</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">Spawn-provider children start with no parent conversation — context isolation is the harness's, not a promise.
+      Continuable children push findings back through the <code class="inl">report</code> channel, which wakes the orchestrator.</span>
+      <span class="zh">spawn 型子代理不带父会话启动 —— 上下文隔离是 Harness 的保证，不是一句承诺。可持续子代理经 <code class="inl">report</code> 通道回传结果并唤醒编排者。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">Each round = fan-out → ground truth → adversary → synthesize. Explorers diversify deliberately
+      (formulations, invariants, reductions, decompositions, extremal arguments…), the favored approach is withheld from
+      most of them, and briefs demand concrete outputs — lemmas, equations, candidate methods with exact statements.
+      Defaults after the cost review: 1–2 explorers, 3 orchestrator rounds (Decision 17).</span>
+      <span class="zh">每一轮＝扇出 → 真值 → 对抗 → 综合。探索者被有意多样化（重构、不变量、约化、分解、极端论证……），大多数探索者不会被告知偏好的路线；简报要求具体产出 —— 引理、方程、带精确陈述的候选方法。成本复审后的默认值：探索者 1–2 个、编排轮数 3 轮（决策 17）。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — what one round actually launched (VaR round 1)</span>
+      <span class="blab zh">证据层 —— 一轮实际发射了什么（VaR 第 1 轮）</span>
+      <table>
+        <thead><tr><th><span class="en">Tool</span><span class="zh">工具</span></th><th class="num"><span class="en">Count</span><span class="zh">数量</span></th>
+          <th><span class="en">Job</span><span class="zh">职责</span></th></tr></thead>
+        <tbody>
+          <tr><td class="mono">subagent_lit_line</td><td class="num">7</td><td><span class="en">walled literature lines</span><span class="zh">封闭文献线</span></td></tr>
+          <tr><td class="mono">subagent_lit_adversary</td><td class="num">2</td><td><span class="en">re-retrieve every claim from the claims list only</span><span class="zh">只凭主张清单逐条重取来源</span></td></tr>
+          <tr><td class="mono">subagent_ground_truth</td><td class="num">5</td><td><span class="en">derive answers blind to each other and to explorers</span><span class="zh">彼此互盲、对探索者盲态地推导答案</span></td></tr>
+          <tr><td class="mono">subagent <span class="en">(open)</span><span class="zh">（开放）</span></td><td class="num">4</td><td><span class="en">divergent exploration + mechanical assembly</span><span class="zh">发散探索 ＋ 机械装配任务</span></td></tr>
+          <tr><td class="mono">subagent_adversary</td><td class="num">3</td><td><span class="en">counterexample hunts: method, decomposition, spec</span><span class="zh">反例狩猎：方法、分解、规范</span></td></tr>
+          <tr><td class="mono">subagent <span class="en">(repair)</span><span class="zh">（修复）</span></td><td class="num">1</td><td><span class="en">apply an audited repair</span><span class="zh">执行一项已审计的修复</span></td></tr>
+        </tbody>
+      </table>
+      <p><span class="en">And in the DR study, the open explorer delivered the study's key result in round 1 — the deficiency attribution
+      <span class="formula">DR = 1 + Σ<sub>i</sub> (w<sub>i</sub>σ<sub>i</sub>/σ<sub>p</sub>)(1 − ρ<sub>i,p</sub>)</span> —
+      plus companions (1/DR = Σ b<sub>i</sub>ρ<sub>i,p</sub>, benefit Shapley, the TOBAM compact form) <em>and</em> flagged its own likely prior art
+      (Steiner 2025, SSRN 5588193) for verification rather than claiming novelty. Concrete outputs, honest novelty notes.</span>
+      <span class="zh">而在 DR 研究中，开放探索者在第 1 轮就交出了全研究的关键结果 —— 亏缺归因 <span class="formula">DR = 1 + Σ<sub>i</sub> (w<sub>i</sub>σ<sub>i</sub>/σ<sub>p</sub>)(1 − ρ<sub>i,p</sub>)</span> —— 外加伴生恒等式（1/DR = Σ b<sub>i</sub>ρ<sub>i,p</sub>、收益 Shapley、TOBAM 紧凑形式），<em>并且</em>主动标记了自己可能的先行工作（Steiner 2025, SSRN 5588193）以待核证，而不冒领新颖性。具体产出＋诚实的新颖性注记。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S7 -->
+<section id="st7">
+  <div class="step">
+    <div class="shead"><span class="knum">S7</span>
+      <h3><span class="en">Round loop ② — Ground truth: re-derive it twice, by different means, in the dark</span>
+      <span class="zh">轮循环 ② —— 真值轨道：蒙眼重推两遍，用不同手段</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">Blindness is tool-enforced: the oracle's deny list removes <code class="inl">web_search</code>, <code class="inl">web_fetch</code>,
+      <code class="inl">skill</code> and every delegation tool; context isolation keeps it from seeing drafts. Its compute happens through
+      <code class="inl">bash</code> under the pinned lane.</span>
+      <span class="zh">盲态由工具强制：真值神谕的 deny 列表移除了 <code class="inl">web_search</code>、<code class="inl">web_fetch</code>、<code class="inl">skill</code> 和一切委派工具；上下文隔离使它看不到草稿。它的计算经由钉死通道下的 <code class="inl">bash</code> 完成。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">Oracles receive <b>only the problem statement and the simplified case</b>. Load-bearing claims get two independent
+      derivations by genuinely different instruments (symbolic CAS vs numeric-without-CAS) — never one agent doing both
+      “independent” versions. Disagreement is a finding, not an error to smooth over. Derivations land in
+      <code class="inl">derivations/</code>.</span>
+      <span class="zh">真值神谕<b>只拿到问题陈述和简化情形</b>。承重命题必须用真正不同的手段各推一遍（符号代数 vs 禁用 CAS 的纯数值）—— 绝不允许同一个代理扮演两个「独立」推导。分歧是发现，不是需要抹平的误差。推导落入 <code class="inl">derivations/</code>。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — agreement becomes load-bearing (VaR §7)</span>
+      <span class="blab zh">证据层 —— 一致性成为承重结构（VaR §7）</span>
+      <table>
+        <thead><tr><th><span class="en">Quantity</span><span class="zh">量</span></th>
+          <th><span class="en">GT-A (symbolic)</span><span class="zh">GT-A（符号）</span></th>
+          <th><span class="en">GT-B (numerical, no CAS)</span><span class="zh">GT-B（数值，无 CAS）</span></th></tr></thead>
+        <tbody>
+          <tr><td><span class="en">cash-leg Euler residual</span><span class="zh">现金腿欧拉残差</span></td>
+            <td class="mono">r_f <span class="en">exactly</span><span class="zh">（精确）</span></td><td class="mono">0.0150000000000 <span class="en">at</span><span class="zh">于</span> r_f = 0.015</td></tr>
+          <tr><td><span class="en">homogeneity defect</span><span class="zh">齐次性亏差</span></td>
+            <td class="mono">(t−1)·r_f</td><td><span class="en">matches every row of the t-grid</span><span class="zh">与 t 网格逐行吻合</span></td></tr>
+          <tr><td><span class="en">crossover horizon</span><span class="zh">交叉时域</span></td>
+            <td class="mono">h* = z²w′Σw/(w′μ)²</td><td class="mono">16.909646588 (95%), 33.824340194 (99%)</td></tr>
+          <tr><td>Kish ESS <span class="en">at</span><span class="zh">于</span> H=252</td>
+            <td class="mono">(1+λ)/(1−λ)</td><td class="mono">727.1187590387</td></tr>
+        </tbody>
+      </table>
+      <p><span class="en">A third track (GT-C, holding policies) settled a dispute discussion could never settle: buy-and-hold simple return
+      is <b>exactly linear in w</b> at every horizon; the quadratic drag appears only under continuously-rebalanced log returns —
+      the drag is a <em>rebalancing</em> phenomenon, not a <em>compounding</em> one. One derivation ended the argument.</span>
+      <span class="zh">第三条轨道（GT-C，持有策略）终结了一场讨论永远解决不了的争执：买入持有简单收益在每个时域上都<b>严格线性于 w</b>；二次拖累只在连续再平衡的对数收益下出现 —— 拖累是<em>再平衡</em>现象，不是<em>复利</em>现象。一次推导终结争论。</span></p>
+      <div class="band warn" style="margin-top:10px"><span class="blab en">Counter-evidence lesson — agents report states that do not exist (§9a)</span>
+        <span class="blab zh">反面教训 —— 子代理会报告并不存在的状态（§9a）</span>
+        <p><span class="en">On a resumed turn, GT-A lost the compute-lane env vars, hit the sandbox boundary, and reported that its
+        run had <em>failed</em> and its tables were an “unresolved compute gap” — quoting a script hash matching <b>no file in the study</b>.
+        The artifacts on disk were the good ones; the hash was constant across four executions by three parties. Resolved in minutes by
+        one move: <b>compare against the artifact, not the report</b>. Trusting the message would have discarded a correct 45/45 verification.</span>
+        <span class="zh">在一个续跑回合，GT-A 丢失了计算通道的环境变量、撞上沙箱边界，然后报告称自己的运行<em>失败</em>、数值表是「未解决的算力缺口」—— 还引用了一个与研究内<b>任何文件都不匹配</b>的脚本哈希。可盘上的产物才是好的那份；该哈希在三方四次执行中保持一致。一分钟内用一个动作解决：<b>对照产物，而不是对照报告</b>。若信了那条消息，就会丢掉一次正确的 45/45 验证。</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S8 -->
+<section id="st8">
+  <div class="step">
+    <div class="shead"><span class="knum">S8</span>
+      <h3><span class="en">Round loop ③ — Adversary: routes die by counterexample or not at all</span>
+      <span class="zh">轮循环 ③ —— 对抗审计：路线只能死于反例，否则不死</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">A different tool runs the checking role — that is the entire enforcement of producer ≠ checker. The adversary keeps
+      <code class="inl">bash</code> and web on purpose: it re-runs scripts, re-retrieves sources, and verifies hashes itself. Verdicts travel
+      back through the <code class="inl">report</code> channel ending in <code class="inl">VERDICT: PASS</code> / <code class="inl">VERDICT: NEEDS-EDITS</code>;
+      the audited artifact is frozen and the verdict records its SHA-256.</span>
+      <span class="zh">检查角色由另一个工具担任 —— 这就是「生产者≠检查者」的全部强制力。对抗者刻意保留 <code class="inl">bash</code> 与联网：它要重跑脚本、重取来源、亲自验哈希。裁决经 <code class="inl">report</code> 通道返回，以 <code class="inl">VERDICT: PASS</code> / <code class="inl">VERDICT: NEEDS-EDITS</code> 结尾；受审产物冻结，裁决记录其 SHA-256。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">Before auditing, the orchestrator writes an <b>adjudication docket</b> listing concrete disagreements between tracks —
+      places where at most one side can be right — because a docket beats “please review”. Elimination requires a failing case;
+      style, vibes, and “this feels wrong” eliminate nothing. Failed attack families are recorded too: an adversary that only ever
+      finds problems is not calibrated.</span>
+      <span class="zh">审计之前，编排者先写一份<b>裁定案卷</b>（adjudication docket），列出两条轨道间的具体分歧 —— 至多一方可能正确之处 —— 因为案卷胜过一句「请审一下」。淘汰必须有失败案例；风格、感觉、「觉得不对」什么都淘汰不了。失败的攻击族也要记录：只会挑毛病的对抗者是没有校准的对抗者。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — kills and calibration (DR + VaR)</span>
+      <span class="blab zh">证据层 —— 击杀与校准（DR ＋ VaR）</span>
+      <p><span class="en">DR study, one round: negative weights break DR ≥ 1 outright
+      (<span class="formula">DR = 1/√5 ≈ 0.4472</span>); the equality condition for DR ≥ 1 is refined to “pairs with
+      <span class="formula">w<sub>i</sub>w<sub>j</sub> &gt; 0</span>” via an explicit weight vector; Aumann–Shapley marginals of a degree-0 function diverge
+      logarithmically (ratio <span class="mono">2.0000</span>); and the adversary <em>narrowed the disproof's scope</em> — “no marginal/Euler/
+      scale-invariant correlation-factored attribution”, not “no additive attribution exists”.</span>
+      <span class="zh">DR 研究一轮之内：负权重直接击碎 DR ≥ 1（<span class="formula">DR = 1/√5 ≈ 0.4472</span>）；用显式权重向量把等号条件精化为「仅对 <span class="formula">w<sub>i</sub>w<sub>j</sub> &gt; 0</span> 的配对」；零次齐次函数的 Aumann–Shapley 边际对数发散（比值 <span class="mono">2.0000</span>）；对抗者还<em>收窄了否证的适用范围</em> —— 是「不存在边际型／欧拉型／尺度不变的按相关性因子化的归因」，而非「不存在任何加法归因」。</span></p>
+      <p><span class="en">VaR study: two “speed consistency” rules differ by <b>165%</b> in VaR; reverse-optimization perversity confirmed
+      (covariance rising 0.04 → 0.16 drives VaR 0.2 → 0); elliptical subadditivity fails below the median with residual
+      <span class="mono">0.395106948</span> at α = 0.25; and one counterexample killed a recommendation outright — an unshrunk estimated drift
+      degrades a Kupiec statistic from <span class="mono">0.3288</span> to <span class="mono">35688.53</span>. Against that:
+      <b>24 attack families failed</b>. And when a stale docket entry accused GT-A of bad provenance, the adversary hashed the script,
+      re-ran it, matched <code class="inl">923cf1c8…</code>, scored 45/45 PASS — and <b>refuted the orchestrator's own docket</b>.
+      The entry stayed in the audit trail with a correction appended: an audit trail that erases the auditor's errors is not an audit trail.</span>
+      <span class="zh">VaR 研究：两条「速度一致性」规则在 VaR 上相差 <b>165%</b>；确认了逆向优化的反常性（协方差从 0.04 升到 0.16 会把 VaR 从 0.2 压到 0）；椭圆次可加性在中位数以下失效，α = 0.25 时残差 <span class="mono">0.395106948</span>；一个反例直接击毙一条建议 —— 未收缩的估计漂移把 Kupiec 统计量从 <span class="mono">0.3288</span> 恶化到 <span class="mono">35688.53</span>。与之相对：<b>24 个攻击族宣告失败</b>。当案卷里一条过期条目指控 GT-A 出处造假时，对抗者给脚本算了哈希、重新执行、匹配上 <code class="inl">923cf1c8…</code>、拿到 45/45 PASS —— 进而<b>驳倒了编排者自己的案卷</b>。该条目连同更正一并留在审计轨迹里：会抹掉审计者自身错误的审计轨迹，不配称为审计轨迹。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S9 -->
+<section id="st9">
+  <div class="step">
+    <div class="shead"><span class="knum">S9</span>
+      <h3><span class="en">Round loop ④ — Synthesis: state is written from verdicts, never ahead of them</span>
+      <span class="zh">轮循环 ④ —— 综合：状态由裁决书写，绝不能抢跑</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">Plain filesystem writes into <code class="inl">registry.json</code> / <code class="inl">journal.md</code> / <code class="inl">study.json</code> —
+      append-only journal, schema-checked state. Files are the cross-round memory; nothing important lives only in conversation.</span>
+      <span class="zh">对 <code class="inl">registry.json</code>／<code class="inl">journal.md</code>／<code class="inl">study.json</code> 做普通文件写入 —— 日志只增不改，状态受 schema 检查。文件就是跨轮记忆；重要的东西绝不只活在对话里。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">Routes are grouped by mathematical idea into families; BLOCKED routes carry their exact gap. Two rules guard the
+      synthesizer against itself: <b>status is written from verdicts</b> (never before they land), and <b>blocking is keyed on the claim,
+      not the gap</b> — after two consecutive NEEDS-EDITS on the same claim, the next round narrows scope or declares BLOCKED
+      (Decision 19). Orchestrator-produced numbers get a second instrument like any agent's (Decision 20).</span>
+      <span class="zh">路线按数学思想聚成族；BLOCKED 的路线必须写明确切缺口。两条规则保护综合者不自欺：<b>状态由裁决书写</b>（裁决未落地绝不先写）；<b>阻断以命题为单位计数，而不是以缺口为单位</b>—— 同一命题连续两次 NEEDS-EDITS 之后，下一轮要么收窄范围、要么宣布 BLOCKED（决策 19）。编排者自己产出的数字同样要过第二仪器（决策 20）。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — a real registry entry (DR study, registry.json)</span>
+      <span class="blab zh">证据层 —— 一条真实的登记项（DR 研究 registry.json）</span>
+<pre>{ "familyId": "euler-homogeneity",
+  "idea": "DR is homogeneous of degree 0, so Euler's theorem forces the marginal
+           attribution sum_i w_i dDR/dw_i to vanish identically...",
+  "routes": [ { "routeId": "degree-0-disproof", "status": "passed",
+    "mechanism": "...Independently derived by two ground-truth tracks (symbolic sympy
+                  + analytic) and audited by the adversary.",
+    "outputs": ["derivations/gt-analytic.md", "derivations/gt-symbolic.md",
+                "audits/round-1-adversary.md"] } ] }</pre>
+      <p><span class="en">Every passed route names its evidence files. At close, the VaR registry held <b>17 passed routes and 4 dead by
+      counterexample</b> — both outcomes recorded as results.</span>
+      <span class="zh">每条通过的路线都指名其证据文件。收官时 VaR 登记册上有 <b>17 条通过路线与 4 条死于反例的路线</b> —— 两种结局都作为结果记录在案。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S10 -->
+<section id="st10">
+  <div class="step">
+    <div class="shead"><span class="knum">S10</span>
+      <h3><span class="en">The stage ladder: special cases certify the implementation, never the claim</span>
+      <span class="zh">阶段阶梯：特例只认证实现，永远认证不了主张</span></h3>
+    </div>
+    <div class="band frame"><span class="blab en">Framework — five stages, in order, per sub-problem</span>
+      <span class="blab zh">框架层 —— 五个阶段，按序，逐子问题</span>
+      <p>
+      <b>1 · Reference-case gate</b> — <span class="en">the four-part check battery on simplified cases:
+      (A) closed-form equality, (B) exact invariants, (C) analytic bounds, (D) statistical hardening (fixed seed, LLN shrinking
+      ≈ C/√N). Econ studies add temporal splits, leakage, survivorship, multiple-hypothesis, costs, regime sensitivity.</span>
+      <span class="zh">在简化情形上运行的四项检验：(A) 闭式等式、(B) 精确不变量、(C) 解析界、(D) 统计加固（固定种子、LLN 误差按 ≈ C/√N 收缩）。计量金融类研究另加强制的时间切分、泄漏、幸存者偏差、多重假设、成本、regime 敏感性。</span><br>
+      <b>2 · Generalization</b> — <span class="en">lift to the general case with ALL hypotheses stated and every access/data model analyzed concretely.</span>
+      <span class="zh">抬升到一般情形，列全假设，逐一具体分析访问／数据模型。</span><br>
+      <b>3 · Domain-scale certification</b> — <span class="en">full battery on a genuinely non-special instance whose ground truth was derived
+      independently — not another member of the family the reference cases came from.</span>
+      <span class="zh">在一个真正非特殊的实例上把整套检验都跑一遍，其实例真值须独立推导 —— 且不得来自参照情形所在的同一族。</span><br>
+      <b>4 · Audience consultation</b> — <span class="en">research-complete state; an audience spec per deliverable, accepted once by the user;
+      fail closed on no answer.</span><span class="zh">进入 research-complete 状态；每份交付物一份受众规格，由用户一次性确认；无应答则失败关闭。</span><br>
+      <b>5 · Deliverables</b> — <span class="en">assembled from validated records only, never new claims.</span>
+      <span class="zh">只用已验证记录装配，绝不写新主张。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — stage 3 done properly (convex-sampling SP7)</span>
+      <span class="blab zh">证据层 —— 第 3 阶段的正确打开方式（凸采样研究 SP7）</span>
+      <p>
+      <span class="en">Reference cases were box/ball/simplex/ellipsoid — so domain scale used <b>p-balls, p ∈ {3,4}, d ∈ {16,32,64,128}</b>.
+      Frozen battery revision 5: <b>531 PASS / 2 FAIL</b>, the single physical cell adjudicated EXCLUDED-UNTESTABLE in a written
+      adjudication; revision 6: powered grid N ≥ 25·τ_long, 73 rows, 0 FAIL, including a fresh-seed end-to-end cell;
+      <b>8/8 mutations detected</b>. Closed forms independently re-derived; eliminated routes listed by their counterexamples
+      (fixed-sphere proposal, O(d)-ray inradius certification, leaking finite-HR endpoint). Final certified bound shape:
+      <span class="formula">O*(d⁴ log(R/r)) + O*(d³)</span> oracle calls.</span>
+      <span class="zh">参照情形是箱体／球体／单纯形／椭球 —— 所以领域尺度改用 <b>p-球，p ∈ {3,4}，d ∈ {16,32,64,128}</b>。冻结的检验组第 5 版：<b>531 通过 / 2 失败</b>，唯一一个物理格在书面裁定中判为 EXCLUDED-UNTESTABLE；第 6 版：加权网格 N ≥ 25·τ_long，73 行 0 失败，含一颗全新种子的端到端格子；<b>8/8 个变异体全部被检出</b>。闭式由独立轨道重推；被淘汰的路线逐一列出反例（固定球提议、O(d) 射线内径认证、渗漏的有限 HR 端点）。最终认证出的界形态：<span class="formula">O*(d⁴ log(R/r)) + O*(d³)</span> 次神谕调用。</span></p>
+      <p><span class="en">The autocorrelation study's stage-3/5 pair shows the same ladder on stochastic ground: exact AR(1)
+      Var(S_T) closed form (SP2), then domain-scale mixture <span class="mono">Var(S₃₆) = 1.491×</span> iid (SP4), and regime-switching tails
+      <span class="mono">+34%/+41%</span> (vol-clustering) and <span class="mono">+36%/+45%</span> (corr-switching) measured at the TRUE unconditional
+      correlation <span class="mono">0.7563</span> — a correction the adversary forced on the naive conditional reading (SP6).</span>
+      <span class="zh">自相关研究的三／五阶段组合展示了同一架梯子在随机土壤上的样子：AR(1) Var(S_T) 精确闭式（SP2），领域尺度混合过程 <span class="mono">Var(S₃₆) = 1.491×</span> 倍 iid（SP4），以及 regime 切换尾部 <span class="mono">+34%/+41%</span>（波动聚集）与 <span class="mono">+36%/+45%</span>（相关切换）—— 在真实无条件相关 <span class="mono">0.7563</span> 处度量；后者是对抗者逼着纠正的天真条件化读法（SP6）。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S11 -->
+<section id="st11">
+  <div class="step">
+    <div class="shead"><span class="knum">S11</span>
+      <h3><span class="en">Deliverables: assembled, not authored — then attacked again</span>
+      <span class="zh">交付物：装配而成，而非创作 —— 然后再被打一遍</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">A TeX toolchain through <code class="inl">bash</code>; plain file writes for artifacts; the compile gate is just a build
+      whose failure the validator can see. Optional interactive web artifact is a self-contained HTML file.</span>
+      <span class="zh">经 <code class="inl">bash</code> 调用 TeX 工具链；产物就是普通文件写入；编译闸只是一次构建，其失败对校验器可见。可选的交互式网页产物是一份自包含 HTML 文件。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
+      <p>
+      <span class="en">Papers and slides are produced ONLY at PASS, assembled from validated records against the accepted audience specs —
+      writing prose mid-search anchors the method track and burns budget. Every deliverable faces a <b>document adversary</b>
+      (capped at two passes each) checking fidelity to records, notation completeness, and the no-overclaim rule; audience sentences
+      must appear byte-exact.</span>
+      <span class="zh">论文与幻灯只在 PASS 之后生产，依据已确认的受众规格从已验证记录装配 —— 检索中途就动笔会让方法轨道被锚定、烧掉预算。每份交付物都要过一道<b>文档对抗者</b>（每份至多两轮）：核查与记录的一致性、记号完备性、以及禁止过度声称的规则；受众句必须逐字节出现。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — PASS is not frozen death (DR post-PASS chain)</span>
+      <span class="blab zh">证据层 —— PASS 不是冻结的死亡（DR 研究的后 PASS 链条）</span>
+      <p>
+      <span class="en">After PASS, the user supplied Steiner (2025) SSRN 5588193; the study verified its content in-session — it contains the
+      zero-sum marginals and the trivial split but <b>not</b> the deficiency attribution, and conflates beta with correlation in places —
+      updated refs.bib and the Honest Limitations section accordingly, recompiled clean, re-ran the validator green. Then the user asked
+      for an interactive artifact: <code class="inl">deliverables.web</code> flipped optional→required, an audience spec added, a self-contained
+      slider widget built, document-adversary-web returned PASS (8 checks), validator re-run exit 0. Then pairwise attribution of 1/DR²
+      went into paper (Thm 4), slides (+1 frame), and web (+live table) — recompiled 6pp/19pp, validator PASS again. Extension under gates,
+      not despite them.</span>
+      <span class="zh">PASS 之后，用户提供了 Steiner (2025) SSRN 5588193；研究在会话内核实了它的内容 —— 里面确实有零和边际贡献与平凡分解，但<b>没有</b>亏缺归因，且个别地方把 beta 与相关系数混为一谈 —— 于是更新 refs.bib 与 Honest Limitations、干净重编译、校验器复跑绿色。接着用户提出要一个交互产物：<code class="inl">deliverables.web</code> 从 optional 改为 required、补上受众规格、做了一个自包含的滑杆小部件、文档对抗者网页版 PASS（8 项检查）、校验器复跑 exit 0。随后 1/DR² 的成对归因进论文（定理 4）、进幻灯（＋1 帧）也进网页（＋实时表格）—— 重编译 6 页/19 页，校验器再次 PASS。扩展是在闸门之内完成的，而不是绕过闸门。</span></p>
+      <p><span class="en">The VaR study shipped paper (10pp) + slides (22pp) with 0 errors and 0 undefined citations — and its PASS carries a
+      <b>disclosure</b>: fourteen delegated re-audit attempts failed to produce reports, so the final re-verification was performed by the
+      orchestrator itself and that fact is recorded in the verdict files and study status. Honesty about the verification path is part of
+      the deliverable.</span>
+      <span class="zh">VaR 研究交付论文（10 页）＋幻灯（22 页），0 错误 0 未定义引用 —— 其 PASS 附带一则<b>披露</b>：十四次委派复审尝试都没能产出报告，最终复核由编排者亲自完成，这一事实被记录在裁决文件与研究状态里。对验证路径本身的诚实，也是交付物的一部分。</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ S12 -->
+<section id="st12">
+  <div class="step">
+    <div class="shead"><span class="knum">S12</span>
+      <h3><span class="en">The meta-validator and the lifecycle: a study may not vouch for itself</span>
+      <span class="zh">元校验器与生命周期：研究不得为自己作保</span></h3>
+    </div>
+    <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
+      <p>
+      <span class="en">One Python script run through <code class="inl">bash</code>, loading the JSON Schemas from the skill's own
+      <code class="inl">schemas/</code> directory — so schema and checker cannot drift apart; a consistency test enforces “one validator, one schema”
+      across the repo.</span>
+      <span class="zh">一段经 <code class="inl">bash</code> 运行的 Python 脚本，从技能自带的 <code class="inl">schemas/</code> 目录加载 JSON Schema —— schema 与检查器因此无从漂移；仓库一致性测试强制「一份校验器、一份 schema」。</span></p>
+    </div>
+    <div class="band frame"><span class="blab en">Framework — what rq_check.py refuses</span><span class="blab zh">框架层 —— rq_check.py 会拒绝什么</span>
+      <p>
+      <span class="en">Evidence checks read <code class="inl">audits/</code>, <code class="inl">derivations/</code>, <code class="inl">artifacts/</code> —
+      <b>never <code class="inl">study.json</code></b>. Empty stage outputs, an empty <code class="inl">derivations/</code>, a “passed” string that parses to no
+      audit-referenced route, missing seeds/N-grid/failure conditions in the audit record, tolerance mismatches, deliverables that don't
+      compile, scratch references into <code class="inl">interim/</code>, derived junk on the committed surface, a status asserting certification without
+      a verdict file or frozen hash, an edited-after-certification claim digest, an intake-pin mismatch — all refused.
+      Lifecycle: <b>PASS</b> → auto-implement; <b>BLOCKED</b> (same claim, per Decision 19) → strongest derivation + exact gap;
+      <b>BUDGET</b> (3 orchestrator rounds) → checkpoint + report; <b>UNKNOWN</b> recorded honestly.</span>
+      <span class="zh">证据检查读取 <code class="inl">audits/</code>、<code class="inl">derivations/</code>、<code class="inl">artifacts/</code> —— <b>绝不读取 <code class="inl">study.json</code></b>。空的阶段输出、空的 <code class="inl">derivations/</code>、解析不出带审计引用路线的「passed」字样、审计记录里缺种子／N 网格／失败条件、容差不匹配、无法编译的交付物、指进 <code class="inl">interim/</code> 的草稿引用、提交面上残留的派生垃圾、没有裁决文件或冻结哈希却宣称认证的状态、认证后又被改动的主张摘要、intake 钉扎不匹配 —— 一律拒绝。生命周期：<b>PASS</b> → 自动实现并继续；<b>BLOCKED</b>（同一条命题，决策 19）→ 给出最强推导＋确切缺口；<b>BUDGET</b>（3 个编排轮）→ 检查点＋报告；<b>UNKNOWN</b> 被如实地记录下来。</span></p>
+    </div>
+    <div class="band evid"><span class="blab en">Evidence — iterate-to-green, visible as files (implied-expected-returns/audits/)</span>
+      <span class="blab zh">证据层 —— 以文件形式可见的迭代转绿（implied-expected-returns/audits/）</span>
+<pre>rq-check-round2.json  rq-check-round2b.json  rq-check-round2c.json
+rq-check-round2d.json rq-check-round2e.json  rq-check-round3.json
+rq-check-round3b.json rq-check-round3c.json  rq-check-round3d.json
+rq-check-round3e.json rq-check-round4.json   rq-check-round4b.json
+rq-check-round4c.json rq-check-final.json    rq-check-final2.json
+rq-check-final3.json  rq-check-final-r2.json
+<span class="c"># 17 validator runs to reach green on one investigation study —
+#  each round fixing real defects, not validator gaming.</span></pre>
+      <p><span class="en">Its literature round alone: 41 claims → 38 verified-current, 2 false-claim corrected, 1 unverifiable excluded.</span>
+      <span class="zh">仅其文献轮：41 条主张 → 38 条 verified-current、2 条 false-claim 已更正、1 条 unverifiable 剔除。</span></p>
+      <details><summary><span class="en">Show: the dial-back mechanism — a premature “complete” reversed by a ruling (VaR §15)</span>
+        <span class="zh">展开：回拨机制 —— 一次过早的「已完成」被裁决推翻（VaR §15）</span></summary>
+        <div class="dbody">
+        <p><span class="en"><code class="inl">study.json</code> was briefly marked <code class="inl">research-complete</code>. That was premature and was reversed:
+        the SP6 adversary ruled the stage-3 general-validity claim “may not stand” — not because its text was wrong (it was the adversary's own
+        verbatim wording) but because the hypothesis list it points to was incomplete:</span>
+        <span class="zh"><code class="inl">study.json</code> 曾一度标成 <code class="inl">research-complete</code>。这太早了，随后被回拨：SP6 对抗者裁定第 3 阶段的一般有效性主张「不能成立」—— 不是因为文本有错（那段文本正是对抗者的原话），而是它指向的假设清单不完备：</span></p>
+        <blockquote><span class="who">SP6 counterexample, verbatim · SP6 反例，原文</span>
+        M = 2, risky fraction 0.5, per-period risky gross 0.8 or 1.2 equiprobable, same state in both periods.
+        True two-period expected gross: 1.0100000000. The formula gives 1.0000000000.
+        One full percentage point, and the formula is exact only under independence.</blockquote>
+        <p><span class="en">Repairs followed with re-certification: hypotheses H1–H14 stated, §6 regenerated by script so its 36 table cells were
+        computed from the stated formulas, MR restricted to M ≥ 2, D defined where the factor-mediation condition is used; §8 verified
+        byte-identical to the recorded claim; frozen-hash round-4 recertification reproduced 36/36 cells and resolved all four funding
+        killing cases. Status restored only after the verdicts landed. Verified artifacts are not marked stale by a dial-back —
+        invalidation is claim-driven.</span>
+        <span class="zh">随后是带再认证的修复：假设补全为 H1–H14；§6 改由脚本生成，36 个表格单元全部由声明的公式算出；MR 限制到 M ≥ 2；D 在因子中介条件使用处补上定义；§8 经 diff 验证与登记主张逐字节一致；基于冻结哈希的第 4 轮再认证复现 36/36 格、解决全部四个 funding 杀手案例。状态只在裁决落地后才恢复。回拨不会把已验证产物标记为过期 —— 失效按命题逐个驱动。</span></p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 3 ledger -->
+<section id="s-ledger">
+  <div class="snum en">Section 3</div><div class="snum zh">第 3 节</div>
+  <h2><span class="en">Why the machinery earns its cost: the error ledger</span>
+      <span class="zh">这套机器凭什么值回成本：错误台账</span></h2>
+  <p>
+    <span class="en">The VaR run itemized <b>twenty-one substantive errors</b> that reached a written artifact or would have changed a conclusion —
+    ten by producing agents, <b>eleven by the orchestrator itself</b>. All twenty-one were caught by a specific mechanism, none by luck:</span>
+    <span class="zh">VaR 运行逐条清点了 <b>21 个实质性错误</b> —— 都已写进书面产物、或足以改变结论：生产者犯 10 个，<b>编排者自己犯了 11 个</b>。21 个全部由特定机制捕获，无一靠运气：</span>
+  </p>
+  <div class="two">
+    <div class="layerbox">
+      <h4><span class="en">Producing agents — 10 errors (condensed)</span><span class="zh">生产者 —— 10 个错误（节选）</span></h4>
+      <table><tbody>
+        <tr><td><span class="en">scaling direction reported backwards</span><span class="zh">缩放方向报反</span></td><td><span class="en">lit adversary</span><span class="zh">文献对抗者</span></td></tr>
+        <tr><td><span class="en">vendor table misread — twice, differently</span><span class="zh">厂商表格误读 —— 两次且方式不同</span></td><td><span class="en">lit adversary + primary text</span><span class="zh">文献对抗者＋一手文本</span></td></tr>
+        <tr><td><span class="en">wrong cash-leg Euler residuals (×2 explorers)</span><span class="zh">错误的现金腿欧拉残差（两名探索者）</span></td><td><span class="en">method adversary D1 / GT-C</span><span class="zh">方法对抗者 D1／GT-C</span></td></tr>
+        <tr><td><span class="en">six “unretrievable” claims — all retrievable</span><span class="zh">六条「无法获取」主张 —— 全都可获取</span></td><td><span class="en">lit adversary</span><span class="zh">文献对抗者</span></td></tr>
+        <tr><td><span class="en">false failure report citing a nonexistent hash</span><span class="zh">引用不存在哈希的假失败报告</span></td><td><span class="en">hash check + re-run</span><span class="zh">哈希核对＋重跑</span></td></tr>
+        <tr><td><span class="en">closing message describing a repaired-away structure</span><span class="zh">描述已被修复掉结构的收尾消息</span></td><td><span class="en">diff vs study.json</span><span class="zh">与 study.json 做 diff</span></td></tr>
+        <tr><td><span class="en">published instance omitted two constants (≤9.95 SE)</span><span class="zh">公开实例漏了两个常数（≤9.95 SE）</span></td><td><span class="en">decomposition adversary</span><span class="zh">分解对抗者</span></td></tr>
+      </tbody></table>
+    </div>
+    <div class="layerbox">
+      <h4><span class="en">Orchestrator — 11 errors (condensed)</span><span class="zh">编排者 —— 11 个错误（节选）</span></h4>
+      <table><tbody>
+        <tr><td><span class="en">stale docket entry accusing good work</span><span class="zh">指控优秀工作的过期案卷条目</span></td><td><span class="en">adversary re-ran the script</span><span class="zh">对抗者重跑了脚本</span></td></tr>
+        <tr><td><span class="en">“primary text verified” on an unretrievable entry</span><span class="zh">给不可获取条目标注「已验一手文本」</span></td><td><span class="en">machine invariant asserted as code</span><span class="zh">断言成代码的机器不变量</span></td></tr>
+        <tr><td><span class="en">best cell quoted as the result (~1e-10 vs 1e-8–1e-7)</span><span class="zh">把最好的格子当成结果（~1e-10 vs 1e-8–1e-7）</span></td><td><span class="en">method adversary</span><span class="zh">方法对抗者</span></td></tr>
+        <tr><td><span class="en">briefed funding layered onto nonlinear drift — invalid</span><span class="zh">简报让 funding 叠加到非线性漂移上 —— 无效</span></td><td><span class="en">SP6 adversary</span><span class="zh">SP6 对抗者</span></td></tr>
+        <tr><td><span class="en">assumed a repair landed; shipped defective section twice-reported-fixed</span><span class="zh">假设修复已落地；两次宣称修好实则缺陷仍在</span></td><td><span class="en">SP6 adversary, Duty 1.3</span><span class="zh">SP6 对抗者，职责 1.3</span></td></tr>
+        <tr><td><span class="en">“short-horizon drift irrelevant” — 27 of 763 weights refute</span><span class="zh">「短期漂移无关紧要」 —— 763 个权重中 27 个反驳</span></td><td><span class="en">decomposition adversary</span><span class="zh">分解对抗者</span></td></tr>
+        <tr><td><span class="en">“zero drift is worst” — refuted by a row already in the data</span><span class="zh">「零漂移最糟」 —— 被数据里已有的一行反驳</span></td><td><span class="en">decomposition adversary</span><span class="zh">分解对抗者</span></td></tr>
+        <tr><td><span class="en">verified claim text byte-for-byte, not its preconditions</span><span class="zh">逐字节核对了主张文本，却没核对前提</span></td><td><span class="en">SP6 adversary + own reproduction</span><span class="zh">SP6 对抗者＋自查复现</span></td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  <div class="band warn" style="margin-top:16px"><span class="blab en">The uncomfortable distribution</span><span class="blab zh">令人不适的分布</span>
+    <p>
+    <span class="en">More than half the errors were the <b>orchestrator's</b>, and they were mostly not arithmetic slips — they were
+    <b>overbroad conclusions drawn from correct calculations</b> (“drift is irrelevant at short horizons”; “zero drift is the worst choice”).
+    Each was defensible from the cells displayed and false over the wider space an adversary searched. That is the characteristic failure
+    of the synthesizing role, and only an adversary aimed at the synthesis itself catches it. A workflow that only polices its subagents
+    would have caught half of what went wrong and shipped the rest.</span>
+    <span class="zh">超过一半的错误出自<b>编排者</b>，而且多半不是算术失误 —— 而是<b>从正确计算中得出的过度宽泛结论</b>（「短期漂移无关紧要」「零漂移是最差选择」）。每一条都能从眼前展示的格子里找到依据，却在对抗者搜索的更大空间上为假。这是综合角色的典型失败模式，只有瞄准综合行为本身的对抗者才能抓住它。一个只监督子代理的工作流，会漏掉一半错误并发布另一半。</span></p>
+  </div>
+  <h3><span class="en">Nine mechanisms, every one fired at least once</span><span class="zh">九种机制，每一种都至少触发过一次</span></h3>
+  <p class="small">
+    <span class="en">① producer ≠ checker, enforced by tool choice · ② claims lists, not prose, handed to literature adversaries ·
+    ③ hashes as the arbiter · ④ load-bearing text stored in the state file as well as the document · ⑤ counterexample-only elimination ·
+    ⑥ a validator that fails at intake · ⑦ a citation membrane · ⑧ invariants asserted as code · ⑨ a third source for arithmetic when two
+    checkers disagree. <i>A run where none of them fires is not a clean run; it is an unmonitored one.</i></span>
+    <span class="zh">① 生产者≠检查者，由工具选择强制 · ② 文献对抗者只拿主张清单而非行文 · ③ 哈希为仲裁者 · ④ 承重文本同时存于状态文件与文档 · ⑤ 只凭反例淘汰 · ⑥ 校验器在立项时就敢失败 · ⑦ 引文膜 · ⑧ 不变量断言成代码 · ⑨ 两名检查者打架时找第三个算术源。<i>一次什么机制都没触发的运行不是干净的运行，而是无人监视的运行。</i></span>
+  </p>
+</section>
+
+<!-- ============================================================ 4 lessons -->
+<section id="s-lessons">
+  <div class="snum en">Section 4</div><div class="snum zh">第 4 节</div>
+  <h2><span class="en">Hard lessons: the rules the run wrote back into the framework</span>
+      <span class="zh">血泪教训：这次运行动反向写回框架的规则</span></h2>
+  <p>
+    <span class="en">Three structural loops burned the VaR budget (six certification rounds on one claim; verdict data delivered without
+    verdict reports; stale-snapshot re-audits). Budget numbers cap the burn; only procedural rules prevent the loops from starting.
+    Fourteen lessons (L1–L14) are recorded with symptom, root cause, rule, wording, and worked example in
+    <a href="hard-lessons-from-the-var-expected-return-run.md">hard-lessons-from-the-var-expected-return-run.md</a>; the ones now load-bearing:</span>
+    <span class="zh">三股结构性循环烧掉了 VaR 预算（一个命题六轮认证；只交数据不交报告；过期快照反复再审）。预算数字只能封顶消耗；唯有程序性规则能让循环根本不开始。十四条教训（L1–L14）连同症状、根因、规则、措辞与实例记录在 <a href="hard-lessons-from-the-var-expected-return-run.md">hard-lessons-from-the-var-expected-return-run.md</a>；如今承重的几条：</span>
+  </p>
+  <table>
+    <thead><tr><th><span class="en">Lesson</span><span class="zh">教训</span></th><th><span class="en">Symptom in the run</span><span class="zh">运行中的症状</span></th>
+      <th><span class="en">Rule now enforced</span><span class="zh">现已强制执行的规则</span></th></tr></thead>
+    <tbody>
+      <tr><td class="mono">L1 · <span class="en">narrow before patch</span><span class="zh">先收窄再修补</span></td>
+        <td><span class="en">one claim consumed rounds 2–6, each round a new gap</span><span class="zh">一个命题吃掉第 2–6 轮，每轮都有新缺口</span></td>
+        <td><span class="en">after 2 consecutive NEEDS-EDITS on a claim: narrow scope or BLOCKED — never a third re-patch (Decision 19)</span>
+          <span class="zh">同一命题连续两次 NEEDS-EDITS 后：收窄范围或 BLOCKED —— 绝不第三次重补（决策 19）</span></td></tr>
+      <tr><td class="mono">L2 · <span class="en">report-first delegation</span><span class="zh">报告优先委派</span></td>
+        <td><span class="en">agents produced complete verdict JSON, never wrote reports</span><span class="zh">代理交出完整裁决 JSON，却不写报告</span></td>
+        <td><span class="en">the verdict IS the deliverable via the harness <code class="inl">report</code> tool; a run settling without it is a failed run</span>
+          <span class="zh">裁决即交付物，经 Harness <code class="inl">report</code> 工具回传；没有裁决行的收尾就是失败运行</span></td></tr>
+      <tr><td class="mono">L3 · <span class="en">freeze during audit</span><span class="zh">审计期间冻结</span></td>
+        <td><span class="en">concurrent edits invalidated audit hashes; queued messages produced re-audits of dead states</span>
+          <span class="zh">并发编辑作废审计哈希；排队消息产生对已死状态的再审</span></td>
+        <td><span class="en">artifact frozen until verdict; verdict records SHA-256; never message an in-flight/settled agent</span>
+          <span class="zh">裁决前冻结产物；裁决记录 SHA-256；绝不向进行中／已结束代理发消息</span></td></tr>
+      <tr><td class="mono">L4 · <span class="en">status waits for verdicts</span><span class="zh">状态等待裁决</span></td>
+        <td><span class="en">“stage-3 restored” declared before the ruling existed</span><span class="zh">裁决尚不存在就宣布「第 3 阶段已恢复」</span></td>
+        <td><span class="en">status must reference an existing verdict file or frozen hash (<code class="inl">status.verdict-reference</code>)</span>
+          <span class="zh">状态必须引用既存裁决文件或冻结哈希（<code class="inl">status.verdict-reference</code>）</span></td></tr>
+      <tr><td class="mono">L5 · <span class="en">second instrument</span><span class="zh">第二仪器</span></td>
+        <td><span class="en">orchestrator's own generator emitted a wrong table cell, unaudited</span><span class="zh">编排者自己的生成器吐出错误表格格且无人审计</span></td>
+        <td><span class="en">orchestrator-produced numbers audited like agent output; doc-adversary passes capped at two</span>
+          <span class="zh">编排者产出视同代理产出接受审计；文档对抗至多两轮</span></td></tr>
+      <tr><td class="mono">L6 · <span class="en">record is source of truth</span><span class="zh">记录即真相之源</span></td>
+        <td><span class="en">correcting the claim text invalidated every prior byte-comparison</span><span class="zh">修正主张文本令此前一切字节比对作废</span></td>
+        <td><span class="en">claim digest pinned at certification; edit afterwards flags needs-re-certification (<code class="inl">stage3.claim-digest</code>)</span>
+          <span class="zh">认证时钉扎主张摘要；此后编辑即标记需再认证（<code class="inl">stage3.claim-digest</code>）</span></td></tr>
+      <tr><td class="mono">L7 · <span class="en">pin the rulers at intake</span><span class="zh">立项时钉死量尺</span></td>
+        <td><span class="en">mid-run schema reissue broke slugs</span><span class="zh">运行中途换发 schema 打破了 slug</span></td>
+        <td><span class="en"><code class="inl">intake_pins</code>: schema + validator SHA-256; mismatch = re-intake event, not on-the-fly repair</span>
+          <span class="zh"><code class="inl">intake_pins</code>：schema＋校验器 SHA-256；不匹配＝重立项事件，而非现场修补</span></td></tr>
+      <tr><td class="mono">L13/L14 · <span class="en">junk is derived state</span><span class="zh">垃圾即派生态</span></td>
+        <td><span class="en">study tree grew ~729 MB of venvs/caches; reproduction promised but absent on fresh clone</span>
+          <span class="zh">研究树膨胀出约 729 MB 虚拟环境／缓存；承诺可复现但新克隆上一条可用命令都没有</span></td>
+        <td><span class="en">reproducibility is the record: tracked <code class="inl">code/</code>, resolvable cited paths, <code class="inl">uv.lock</code> by declaration; cleanup and repro are one pass (Decision 22)</span>
+          <span class="zh">可复现性即记录本体：入库的 <code class="inl">code/</code>、引用路径必须可解析、<code class="inl">uv.lock</code> 按声明复现环境；清理与复现是同一遍收尾（决策 22）</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================================================ 5 selftest -->
+<section id="s-selftest">
+  <div class="snum en">Section 5</div><div class="snum zh">第 5 节</div>
+  <h2><span class="en">The honesty gate is itself tested</span><span class="zh">诚实闸门本身也在被测试</span></h2>
+  <p>
+    <span class="en">The pivotal incident: a forged study — empty derivations, empty stage outputs, a one-line adversary report, a paper whose
+    body read “This paper says nothing.” — was certified <code class="inl">PASS -- complete evidence</code> by an earlier checker.
+    Three binding rules came out of that (Decision 13): a study may not vouch for itself; parse, never grep; one validator, one schema,
+    both tested. The current test suite's centerpiece is that forged study, and it must FAIL:</span>
+    <span class="zh">关键事故：一份伪造研究 —— 空 derivations、空阶段输出、一行对抗报告、正文写着「This paper says nothing.」的论文 —— 曾被旧版检查器判为 <code class="inl">PASS -- complete evidence</code>。由此立下三条铁律（决策 13）：研究不得自证；解析而非 grep；一份校验器一份 schema 且都被测试。现行测试套件的中心正是这份伪造研究，它必须 FAIL：</span>
+  </p>
+<pre><span class="c"># the centrepiece test, from README.md</span>
+uv sync --frozen --project env
+uv run --frozen --project env python -m pytest tests/ -q
+
+<span class="c"># what the suite guards besides the forgery:</span>
+<span class="c">#   test_repo_consistency.py   one validator, one schema, layout matches FS</span>
+<span class="c">#   test_blind_deny_list.py    blind roles' deny lists live in the composition</span>
+<span class="c">#   test_literature_gate.py    known-marks, negatives-only exports, refs gates</span>
+<span class="c">#   test_procedural_gates.py   verdict-first status, claim digests, intake pins</span>
+<span class="c">#   test_retrieval_boundary.py network boundary marked UNVERIFIED, not passed</span></pre>
+  <p>
+    <span class="en">And the validator's green means less than it looks like: <i>“nothing declared is missing, and the deliverables build.
+    It does not mean the mathematics is right — that stays with the check battery, the independent ground-truth track, and the adversary.”</i></span>
+    <span class="zh">校验器绿色含义比看上去要少：<i>「声明的没有缺席，交付物可以构建。这不代表数学是对的 —— 数学正确仍属于检验组、独立真值轨道与对抗者。」</i></span>
+  </p>
+</section>
+
+<!-- ============================================================ 6 index -->
+<section id="s-index">
+  <div class="snum en">Section 6</div><div class="snum zh">第 6 节</div>
+  <h2><span class="en">Study index: the six runs behind every claim above</span>
+      <span class="zh">研究索引：上述每个论断背后的六次运行</span></h2>
+  <table>
+    <thead><tr>
+      <th><span class="en">Slug</span><span class="zh">标识</span></th>
+      <th><span class="en">Question</span><span class="zh">问题</span></th>
+      <th><span class="en">Outcome</span><span class="zh">结局</span></th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="mono">20260814_<br>convex-sampling</td>
+        <td><span class="en">Efficient sampling of convex sets in high dimensions</span>
+          <span class="zh">高维凸集的高效采样</span></td>
+        <td><b>PASS</b> — <span class="en">SP6 pinned claim audited by two GT tracks + adversary; SP7 domain-scale on p-balls
+          (531-cell battery, 8/8 mutations); three routes eliminated by counterexample. The repo's first full run.</span>
+          <span class="zh">SP6 钉扎主张经两条真值轨道＋对抗者审计；SP7 在 p-球上领域尺度认证（531 项检验、8/8 变异检出）；三条路线死于反例。本仓库第一次完整运行。</span></td></tr>
+      <tr><td class="mono">20260816_<br>autocorr-tail-risk</td>
+        <td><span class="en">Does within-period skewness/kurtosis subsume period-by-period autocorrelation for tail risk?</span>
+          <span class="zh">期内偏度／峰度是否涵盖逐期自相关对尾风险的作用？</span></td>
+        <td><b>PASS</b> — <span class="en">answer: no, it does not subsume; marginal-vs-joint theorem (MA(2)-scoped), AR(1) exact
+          Var(S_T), regime-switching tails +34–45% at true unconditional corr 0.7563 (adversary-corrected); paper 12pp +
+          slides 33pp + web, all compiled and document-audited.</span>
+          <span class="zh">答案：不涵盖。边际对联合定理（MA(2) 范围内）、AR(1) 精确 Var(S_T)、真实无条件相关 0.7563 处的 regime 切换尾部 +34–45%（对抗者纠正）；论文 12 页＋幻灯 33 页＋网页，全部编译并通过文档对抗。</span></td></tr>
+      <tr><td class="mono">20260816_<br>multiasset-diversification</td>
+        <td><span class="en">Single-premium inheritance of scalar diversification measures; within/across decomposition</span>
+          <span class="zh">标量多样化度量的单一溢价继承性；within/across 分解</span></td>
+        <td><span class="en"><b>active, round 0</b> — frame crystallized, 3 walled literature lines + a lemma-attack lane fired.
+          Shown here deliberately: what the framework looks like mid-flight.</span>
+          <span class="zh"><b>active，第 0 轮</b> —— 框架已结晶，三条封闭文献线＋一条引理攻击道已发射。特意收录：框架在飞行中的样子。</span></td></tr>
+      <tr><td class="mono">20260816_<br>diversification-ratio</td>
+        <td><span class="en">Additive attribution of the Diversification Ratio (x-sigma-rho analog)</span>
+          <span class="zh">多样化比率 DR 的加法归因（x-sigma-rho 类比）</span></td>
+        <td><b>PASS</b> — <span class="en">disproved in the marginal/Euler sense (degree-0 ⇒ Euler sum ≡ 0; Aumann–Shapley diverges),
+          derived in the deficiency sense; one-round convergence of 4 tracks; post-PASS extension chain under full gates.</span>
+          <span class="zh">在边际／欧拉意义上被否证（零次齐次 ⇒ 欧拉和恒为零；Aumann–Shapley 发散），在亏缺意义上被推导；四轨道单轮收敛；PASS 后扩展链全程过闸。</span></td></tr>
+      <tr><td class="mono">20260817_<br>implied-expected-returns</td>
+        <td><span class="en">Backing out implied expected returns from observed allocations — state of the art beyond BL reverse optimization</span>
+          <span class="zh">从观察到的持仓反推隐含期望收益 —— Black-Litterman 逆优化的前沿综述</span></td>
+        <td><span class="en"><b>rq_check PASS (0 problems)</b> after 17 validator rounds visible as files; 41 claims adjudicated
+          (38 verified-current / 2 false corrected / 1 excluded); dual GT verification on T4/T5; V2 design delivered.</span>
+          <span class="zh">历经 17 轮校验（以文件形式可见）后 <b>rq_check PASS（0 问题）</b>；41 条主张裁决（38 verified-current／2 条 false 已更正／1 条剔除）；T4/T5 双真值验证；交付 V2 设计。</span></td></tr>
+      <tr><td class="mono">20260820_<br>var-expected-return-term</td>
+        <td><span class="en">Modelling the expected-return term of VaR as a function of weights under a multi-speed covariance model</span>
+          <span class="zh">多速协方差模型下 VaR 期望收益项随配置权重的建模</span></td>
+        <td><b>PASS</b> — <span class="en">the hardest run: 21 errors caught by mechanism, one dial-back, four exact drift forms,
+          funding leg breaking Euler additivity by exactly r_f, accuracy standard Sharpe·√h/z_α; PASS carries its disclosure.</span>
+          <span class="zh">最艰难的一次运行：21 个错误全部被机制捕获、一次回拨、四种精确漂移形式、资金腿恰好以 r_f 破坏欧拉可加性、精度标准 Sharpe·√h/z_α；PASS 附带披露。</span></td></tr>
+    </tbody>
+  </table>
+  <p class="small">
+    <span class="en">Reproduce any of it (from the studies repo):</span>
+    <span class="zh">复现其中任意一步（在研究仓库中）：</span>
+  </p>
+<pre><span class="c"># re-run a ground-truth derivation from the VaR study</span>
+cd studies/20260820_var-expected-return-term
+export UV_CACHE_DIR="$PWD/interim/tmp/uv-cache"
+export UV_PROJECT_ENVIRONMENT="$PWD/interim/venv"
+uv run --frozen --project $DSH_HOME/share/rigorquant/env python interim/gt-scripts/gt-a-symbolic.py
+<span class="c"># -> symbolic checks: 45 all PASS</span>
+
+<span class="c"># validate the study record with the meta-validator</span>
+python3 $DSH_HOME/.agent-presets/rigorquant/skills/rigorquant/scripts/rq_check.py --study .
+<span class="c"># -> OK -- state valid (no PASS claimed)</span></pre>
+</section>
+
+<!-- ============================================================ 7 sources -->
+<section id="s-src">
+  <div class="snum en">Section 7</div><div class="snum zh">第 7 节</div>
+  <h2><span class="en">Sources and further reading</span><span class="zh">资料来源与延伸阅读</span></h2>
+  <ul>
+    <li><a href="architecture.md">docs/architecture.md</a> — <span class="en">the grilled decision record, Decisions 1–22.</span>
+      <span class="zh">经拷问的决策记录，决策 1–22。</span></li>
+    <li><a href="hard-lessons-from-the-var-expected-return-run.md">docs/hard-lessons-from-the-var-expected-return-run.md</a> —
+      L1–L14 <span class="en">with symptom, root cause, rule, wording, worked example.</span>
+      <span class="zh">含症状、根因、规则、措辞与实例。</span></li>
+    <li><code class="inl">~/gits/rigorquant_studies/EXAMPLE-WORKFLOW.md</code> — <span class="en">the complete unedited account of the VaR run
+      quoted throughout this page.</span><span class="zh">本页通篇引用的 VaR 运行完整未经删改记述。</span></li>
+    <li><code class="inl">agent-presets/rigorquant/skills/rigorquant/SKILL.md</code> + <code class="inl">references/*.md</code> —
+      <span class="en">the operating procedure this page walked through.</span><span class="zh">本页走过的操作规程原文。</span></li>
+    <li><span class="en">Design lineage:</span><span class="zh">设计谱系：</span>
+      <span class="en">Shanmu Jin's Crouzeix-conjecture multiagent run (prompt + Lean audit on GitHub) and Terence Tao's
+      blueprint / Equational Theories projects, adapted to numerical work.</span>
+      <span class="zh">金山姆（Shanmu Jin）的 Crouzeix 猜想多智能体运行（GitHub 上的提示词与 Lean 审计）与陶哲轩的 blueprint／等式理论项目，改造后用于数值工作。</span></li>
+  </ul>
+  <p class="small">
+    <span class="en">One honest closing note: “unattended” means unattended <i>within one live session</i>. Crossing a session boundary disarms
+    the goal; one human turn (“continue”) re-arms it. Nothing here claims to continue across restarts — and nothing above was caught by luck.
+    That second fact is the product.</span>
+    <span class="zh">最后一句诚实的话：「无人值守」指<em>单个活会话内</em>无人值守。跨会话边界会解除目标武装；人类一句「continue」即可重新上膛。这里没有任何跨重启自动续跑的声明 —— 而上文的错误没有一个靠运气被发现。后一个事实才是产品本身。</span>
+  </p>
+</section>
+
+</main>
+</div>
+
+<footer>
+  dsh-rigorquant · docs/walkthrough.html · <span class="en">built from real study records in</span><span class="zh">由以下位置的真实研究记录构建：</span>
+  <code class="inl">~/gits/rigorquant_studies</code> · MIT License ·
+  <span class="en">quotes are verbatim from committed artifacts; numbers are as recorded at run time.</span>
+  <span class="zh">引文逐字取自已提交产物；数字均按运行时记录原样呈现。</span>
+</footer>
+
+<script>
+(function(){
+  var btn=document.getElementById('langbtn');
+  function setLang(zh){
+    document.body.classList.toggle('zh',zh);
+    document.documentElement.lang=zh?'zh':'en';
+    btn.textContent=zh?'English':'中文';
+    try{localStorage.setItem('rq-walkthrough-lang',zh?'zh':'en')}catch(e){}
+  }
+  var saved=null;
+  try{saved=localStorage.getItem('rq-walkthrough-lang')}catch(e){}
+  setLang(saved?saved==='zh':false);
+  btn.addEventListener('click',function(){setLang(!document.body.classList.contains('zh'))});
+
+  // scroll progress
+  var prog=document.getElementById('prog');
+  function onScroll(){
+    var h=document.documentElement;
+    var max=h.scrollHeight-h.clientHeight;
+    prog.style.width=(max>0?(h.scrollTop/max*100):0)+'%';
+  }
+  addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+  // scrollspy
+  var links=[].slice.call(document.querySelectorAll('#rail a'));
+  var targets=links.map(function(a){return document.getElementById(a.getAttribute('href').slice(1))}).filter(Boolean);
+  function spy(){
+    var y=window.scrollY+120,best=null;
+    for(var i=0;i<targets.length;i++){if(targets[i].offsetTop<=y)best=targets[i];}
+    links.forEach(function(a){a.classList.toggle('on',!!best&&a.getAttribute('href')==='#'+best.id)});
+  }
+  addEventListener('scroll',spy,{passive:true});spy();
+})();
+</script>
+</body>
+</html>
