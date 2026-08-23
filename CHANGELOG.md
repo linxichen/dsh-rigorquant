@@ -8,6 +8,8 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-22
+
 ### Added
 - **Self-installing bundle (Decision 23):** a second host half, `rq-preset-sync`
   (`dsh/sync.js`, exported as `./sync`), lands the agent preset into
