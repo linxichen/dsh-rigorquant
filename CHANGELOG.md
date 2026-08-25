@@ -25,7 +25,10 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   tag — only a `label`) get their role from the parent's `subagent_*` tool
   call via a per-parent FIFO, with a label-prefix fallback for cold reseed.
   The feed is collapsed to the latest action by default, with an arrow to
-  expand the recent history. Purely observational — no tool, route, or model
+  expand the recent history. A compact role-pipeline graph (columns = stages,
+  nodes = the seven roles, edges = handoffs) renders above the roster with the
+  same dependency-graph aesthetic as dsh-agent-teams, colored by live status
+  (running/idle/pending). Purely observational — no tool, route, or model
   change; webless profiles stay inert (routes register lazily on `webServer`).
   All panel colors are `--dsw-alias` tokens, so it follows the shell's own
   light/dark theme. Design adapted from

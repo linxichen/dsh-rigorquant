@@ -735,6 +735,17 @@ const ACTIVITY_NS = 'rigorquant-activity'
 const ACTIVITY_URL = '/plugins/dsh-rigorquant/activity'
 const POLL_MS = 2000
 
+/** role → display label (mirrors the host ROLE_DEF; the client bundle is standalone). */
+const ROLE_DEF_CLIENT = {
+  root: { label: 'Orchestrator' },
+  explorer: { label: 'Explorer' },
+  novel: { label: 'Explorer' },
+  oracle: { label: 'Oracle' },
+  adversary: { label: 'Adversary' },
+  'lit-line': { label: 'Literature' },
+  'lit-adversary': { label: 'Literature' },
+}
+
 const activityCopy = {
   en: {
     title: 'RigorQuant Activity',
@@ -750,6 +761,7 @@ const activityCopy = {
     now: 'now',
     history: 'history',
     hideHistory: 'hide',
+    pending: 'pending',
   },
   zh: {
     title: 'RigorQuant 活动',
@@ -765,6 +777,7 @@ const activityCopy = {
     now: '刚刚',
     history: '条历史',
     hideHistory: '收起',
+    pending: '待命',
   },
 }
 
@@ -943,6 +956,124 @@ function ActivityRow(props) {
     right)
 }
 
+// ---- role pipeline graph -------------------------------------------------
+// The RigorQuant preset has no durable task DAG (unlike dsh-agent-teams'
+// scheduler), but its seven roles form a fixed handoff pipeline. Render it as
+// the same compact left-to-right dependency graph: columns are stages, nodes
+// are roles colored by live status, edges are the role handoffs.
+
+const RQ_NODE_WIDTH = 68
+const RQ_NODE_HEIGHT = 24
+const RQ_COL_GAP = 16
+const RQ_ROW_GAP = 6
+
+const RQ_PIPELINE = [
+  { role: 'root', col: 0, row: 1 },
+  { role: 'explorer', col: 1, row: 0 },
+  { role: 'novel', col: 1, row: 1 },
+  { role: 'lit-line', col: 1, row: 2 },
+  { role: 'oracle', col: 2, row: 0.5 },
+  { role: 'lit-adversary', col: 2, row: 1.5 },
+  { role: 'adversary', col: 3, row: 1 },
+]
+
+const RQ_PIPELINE_EDGES = [
+  ['root', 'explorer'], ['root', 'novel'], ['root', 'lit-line'],
+  ['explorer', 'oracle'], ['novel', 'oracle'],
+  ['oracle', 'adversary'],
+  ['lit-line', 'lit-adversary'],
+]
+
+/** role → live status: running, idle (present), or pending (not yet spawned). */
+function roleStatusOf(lab, role) {
+  if (role === 'root') return lab.captain?.status === 'running' ? 'running' : 'idle'
+  const members = (lab.members ?? []).filter((member) => member.role === role)
+  if (members.length === 0) return 'pending'
+  return members.some((member) => member.status === 'running') ? 'running' : 'idle'
+}
+
+function RoleGraph(props) {
+  const R = React()
+  const { lab, t } = props
+  const positions = new Map()
+  for (const node of RQ_PIPELINE) {
+    positions.set(node.role, {
+      x: node.col * (RQ_NODE_WIDTH + RQ_COL_GAP),
+      y: node.row * (RQ_NODE_HEIGHT + RQ_ROW_GAP),
+    })
+  }
+  const edges = RQ_PIPELINE_EDGES.map(([from, to]) => {
+    const source = positions.get(from)
+    const target = positions.get(to)
+    if (source === undefined || target === undefined) return null
+    const x1 = source.x + RQ_NODE_WIDTH
+    const y1 = source.y + RQ_NODE_HEIGHT / 2
+    const x2 = target.x
+    const y2 = target.y + RQ_NODE_HEIGHT / 2
+    const curve = x2 - x1 >= 0 ? 14 : -14
+    return R.createElement('path', {
+      key: `${from}:${to}`,
+      d: `M${x1} ${y1}C${x1 + curve} ${y1},${x2 - curve} ${y2},${x2} ${y2}`,
+      fill: 'none', stroke: 'var(--dsw-alias-border-l2)', strokeWidth: 1.5,
+    })
+  }).filter(Boolean)
+
+  const maxCol = 3
+  const maxRow = 2
+  const width = maxCol * RQ_NODE_WIDTH + (maxCol - 1) * RQ_COL_GAP
+  const height = maxRow * RQ_NODE_HEIGHT + (maxRow - 1) * RQ_ROW_GAP
+
+  const nodes = RQ_PIPELINE.map((node) => {
+    const status = roleStatusOf(lab, node.role)
+    const def = ROLE_DEF_CLIENT[node.role]
+    const pos = positions.get(node.role)
+    const tone = status === 'running'
+      ? 'var(--dsw-alias-state-business-primary)'
+      : status === 'idle'
+        ? 'var(--dsw-alias-label-secondary)'
+        : 'var(--dsw-alias-label-tertiary)'
+    return R.createElement('div', {
+      key: node.role,
+      'data-role': node.role,
+      'data-status': status,
+      title: `${def?.label ?? node.role} · ${status === 'running' ? t('working') : status === 'idle' ? t('idle') : t('pending')}`,
+      style: {
+        position: 'absolute', left: pos.x, top: pos.y,
+        width: RQ_NODE_WIDTH, height: RQ_NODE_HEIGHT,
+        boxSizing: 'border-box', borderRadius: 7, padding: '0 7px',
+        display: 'flex', alignItems: 'center', gap: 5,
+        fontSize: 10, fontWeight: 600,
+        border: `1px solid ${status === 'pending' ? 'var(--dsw-alias-border-l2)' : tone}`,
+        background: status === 'pending' ? 'transparent' : 'var(--dsw-alias-bg-layer-2)',
+        color: tone,
+        whiteSpace: 'nowrap', overflow: 'hidden',
+      },
+    },
+      R.createElement('span', {
+        style: {
+          flex: 'none', width: 6, height: 6, borderRadius: 99,
+          background: tone,
+          animation: status === 'running' ? 'rq-pulse 1.6s ease-in-out infinite' : 'none',
+        },
+      }),
+      R.createElement('span', {
+        style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
+      }, def?.label ?? node.role))
+  })
+
+  return R.createElement('div', {
+    style: {
+      position: 'relative', width, height,
+      margin: '6px auto 2px',
+    },
+  },
+    R.createElement('svg', {
+      width, height, style: { position: 'absolute', left: 0, top: 0, overflow: 'visible' },
+      'aria-hidden': true,
+    }, ...edges),
+    ...nodes)
+}
+
 function ActivityPanel(props) {
   const R = React()
   const t = props.t
@@ -1057,6 +1188,11 @@ function ActivityPanel(props) {
             color: 'var(--dsw-alias-label-tertiary)',
           },
         }, `${lab.summary?.working ?? 0} ${t('working')} · ${lab.summary?.idle ?? 0} ${t('idle')}`)),
+      R.createElement(RoleGraph, {
+        key: `${lab.id}:pipeline`,
+        lab,
+        t,
+      }),
       rows,
       R.createElement('div', {
         style: {
