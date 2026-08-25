@@ -748,6 +748,8 @@ const activityCopy = {
     live: 'live',
     credit: 'Design adapted from dsh-agent-teams © NanmiCoder (MIT)',
     now: 'now',
+    history: 'history',
+    hideHistory: 'hide',
   },
   zh: {
     title: 'RigorQuant 活动',
@@ -761,6 +763,8 @@ const activityCopy = {
     live: '实时',
     credit: '设计改编自 dsh-agent-teams © NanmiCoder (MIT)',
     now: '刚刚',
+    history: '条历史',
+    hideHistory: '收起',
   },
 }
 
@@ -768,6 +772,8 @@ const activityCopy = {
 let activityAutoExpanded = false
 /** The user's collapse decision wins until the page reloads. */
 let activityCollapsed = true
+/** Lab ids whose feed history is expanded; default shows only the latest. */
+const activityFeedOpen = new Set()
 let activityStore = null
 
 /** One shared mutable state the store publishes (never handed out raw). */
@@ -1004,7 +1010,10 @@ function ActivityPanel(props) {
         status: member.status,
       }))
     }
-    const feed = (lab.feed ?? []).map((item) => R.createElement('div', {
+    const feedItems = lab.feed ?? []
+    const feedOpen = activityFeedOpen.has(lab.id)
+    const visibleFeed = feedOpen ? feedItems : feedItems.slice(0, 1)
+    const feed = visibleFeed.map((item) => R.createElement('div', {
       key: `${lab.id}:${item.t}:${item.sessionId}:${item.kind}`,
       style: {
         display: 'flex', gap: 6, alignItems: 'baseline',
@@ -1054,7 +1063,30 @@ function ActivityPanel(props) {
           display: 'grid', gap: 3, marginTop: 4, paddingTop: 6,
           borderTop: '1px dashed var(--dsw-alias-border-l2)',
         },
-      }, ...feed))
+      },
+        feedItems.length > 1
+          ? R.createElement('button', {
+            type: 'button',
+            onClick: () => {
+              if (activityFeedOpen.has(lab.id)) activityFeedOpen.delete(lab.id)
+              else activityFeedOpen.add(lab.id)
+              publishActivity()
+            },
+            style: {
+              display: 'inline-flex', alignItems: 'center', gap: 4, justifySelf: 'start',
+              appearance: 'none', border: 'none', background: 'none', cursor: 'pointer',
+              font: 'inherit', fontSize: 10, padding: 0,
+              color: 'var(--dsw-alias-label-tertiary)',
+            },
+          },
+            R.createElement('span', {
+              style: { transition: 'transform .15s ease', transform: feedOpen ? 'rotate(90deg)' : 'none' },
+            }, '▸'),
+            feedOpen
+              ? t('hideHistory')
+              : `${feedItems.length - 1} ${t('history')}`)
+          : null,
+        ...feed))
   })
 
   return R.createElement('div', {

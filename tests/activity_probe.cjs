@@ -102,6 +102,22 @@ async function main() {
       type: 'tool/call', time: 3000,
       data: { name: 'subagent_ground_truth', arguments: '{}' },
     })
+    // One-shot subagent under the promoted lab: the captain's subagent_lit_line
+    // tool call queues the role, then the child arrives with only an opaque
+    // label (no persona tag) — the queue must attach 'lit-line'.
+    emit('session/event', laterLabAgent.session, {
+      type: 'tool/call', time: 2500,
+      data: { name: 'subagent_lit_line', arguments: '{}' },
+    })
+    emit('agent/created', { agent: {
+      id: 'child-shot-1',
+      ctx: {},
+      session: {
+        id: 'child-shot-1',
+        header: { agentPreset: 'rigorquant', parentSession: 'lab-2' },
+        events: [{ type: 'subagent/descriptor', data: { label: 'Draft paper audience spec' } }],
+      },
+    } })
   } catch (error) {
     mountError = `${error.name}: ${error.message}`
   }

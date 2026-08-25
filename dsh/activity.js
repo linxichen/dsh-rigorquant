@@ -49,6 +49,31 @@ export const ROLE_DEF = {
 const FEED_AVATAR_FILES = new Set(Object.values(ROLE_DEF).map((def) => def.avatar))
 const FIG_DIR = fileURLToPath(new URL('../docs/figs/', import.meta.url))
 
+/** tool name → role, reverse of ROLE_DEF for the subagent tools. */
+const TOOL_ROLE = {}
+for (const [role, def] of Object.entries(ROLE_DEF)) {
+  const tool = def?.tool
+  if (typeof tool === 'string' && tool.startsWith('subagent')) TOOL_ROLE[tool] = role
+}
+
+/**
+ * Best-effort role hint from a subagent descriptor label. One-shot spawns
+ * carry no persona, so when the parent's subagent tool call was never
+ * observed (e.g. seeding live agents after a profile restart) the label is
+ * the only signal left. Conservative: only clear prefixes map.
+ */
+function labelRole(label) {
+  if (typeof label !== 'string') return null
+  const l = label.toLowerCase()
+  if (l.includes('lit line') || l.includes('literature line')) return 'lit-line'
+  if (l.includes('lit adversary') || l.includes('lit-adversary')
+    || l.includes('literature adversary') || l.includes('literature verif')) return 'lit-adversary'
+  if (/^gt[- ]/.test(l) || l.includes('ground truth') || l.includes('ground-truth')) return 'oracle'
+  if (l.includes('adversary')) return 'adversary'
+  if (l.includes('explorer')) return 'explorer'
+  return null
+}
+
 const FEED_LIMIT = 16
 const KEEP_DISPOSED_MS = 60 * 60 * 1000
 
@@ -91,6 +116,8 @@ function apply(ctx) {
   const entries = new Map()
   /** lab root id → lab feed (kept after the lab is disposed, briefly). */
   let routesRegistered = false
+  /** parent session id → role FIFO, fed by subagent* tool calls. */
+  const pendingSpawns = new Map()
 
   const entryOf = (id) => {
     let entry = entries.get(id)
@@ -152,7 +179,7 @@ function apply(ctx) {
     for (let i = 0; i < Math.min(events.length, 64); i += 1) {
       const event = events[i]
       if (event?.type === 'subagent/descriptor') {
-        const role = tagRole(event.data?.persona)
+        const role = tagRole(event.data?.persona) ?? labelRole(event.data?.label)
         if (role !== null) return { role, preset }
         break
       }
@@ -172,10 +199,23 @@ function apply(ctx) {
 
   ctx.on('agent/created', ({ agent }) => {
     const { role, preset } = roleOfAgent(agent)
+    const parentId = agent.session?.header?.parentSession
+    let finalRole = role
+    // One-shot subagents carry no persona tag. The parent's subagent* tool
+    // call is the reliable role signal: consume the FIFO hint it queued, but
+    // only when the persona/label scan left the role unresolved.
+    if (parentId !== undefined) {
+      const queue = pendingSpawns.get(parentId)
+      if (queue !== undefined && queue.length > 0) {
+        const hinted = queue.shift()
+        if (finalRole === null && hinted !== undefined) finalRole = hinted
+        if (queue.length === 0) pendingSpawns.delete(parentId)
+      }
+    }
     const entry = entryOf(agent.id)
-    entry.role = role
+    entry.role = finalRole
     entry.preset = preset
-    entry.parentId = agent.session?.header?.parentSession
+    entry.parentId = parentId
   })
 
   ctx.on('agent/status', ({ agent, status }) => {
@@ -192,12 +232,21 @@ function apply(ctx) {
       : (entry.parentId ?? null)
     switch (event.type) {
       case 'subagent/descriptor': {
-        const role = tagRole(event.data?.persona)
+        const role = tagRole(event.data?.persona) ?? labelRole(event.data?.label)
         if (role !== null) entry.role = role
         break
       }
       case 'tool/call': {
         const nameText = String(event.data?.name ?? 'tool')
+        // A subagent* tool call announces the role of the child it is about
+        // to spawn; queue it so agent/created can attach the role when the
+        // child's descriptor carries no persona (one-shot spawns).
+        const spawnRole = TOOL_ROLE[nameText]
+        if (spawnRole !== undefined) {
+          const queue = pendingSpawns.get(session.id) ?? []
+          queue.push(spawnRole)
+          pendingSpawns.set(session.id, queue)
+        }
         entry.toolCount += 1
         let detail = nameText
         try {
