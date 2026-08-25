@@ -4,6 +4,7 @@
 
 <p align="center">
   <img src="docs/figs/edgesworth-box.png" alt="Edgeworth box with contract curve and Pareto optimum" width="70%">
+
 </p>
 <p align="center"><sub>
   <a href="docs/figs/edgesworth-box.png">Edgeworth box</a> — hand-drawn in
@@ -56,28 +57,46 @@ enforced by the composition, so **the producer never checks its own work** — a
 dies only on a concrete counterexample, never on style or vibes.
 
 <img src="docs/figs/avatar-orchestrator.png" align="left" width="200" alt="Orchestrator">
+
 **Orchestrator** · `root persona` — fans out the work, synthesizes, and writes the state. Bound by four rules: producer ≠ checker, counterexample-only elimination, seeds always recorded, no handwaved load-bearing claims.
+
 <br clear="left">
+
 
 <img src="docs/figs/avatar-explorer.png" align="left" width="200" alt="Explorer">
+
 **Explorer** · `subagent` — blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected.
+
 <br clear="left">
+
 
 <img src="docs/figs/avatar-oracle.png" align="left" width="200" alt="Oracle">
+
 **Oracle** · `subagent_ground_truth` — blind (no web, no skills, no delegation, no drafts). Re-derives the load-bearing claims from first principles, twice by different means.
+
 <br clear="left">
+
 
 <img src="docs/figs/avatar-adversary.png" align="left" width="200" alt="Adversary">
+
 **Adversary** · `subagent_adversary` — runs the check group and hunts counterexamples. Ends in a verdict: `PASS` or `NEEDS-EDITS`.
+
 <br clear="left">
+
 
 <img src="docs/figs/avatar-literature.png" align="left" width="200" alt="Literature">
+
 **Literature** · `subagent_lit_line` · `_adversary` — a walled citation-graph sweep, then an independent adversary re-retrieves each claim and certifies it's real **and** current.
+
 <br clear="left">
 
+
 <img src="docs/figs/avatar-validator.png" align="left" width="200" alt="Validator">
+
 **Validator** · `rq_check.py` + schemas — refuses a `PASS` with missing evidence. Reads the audit record, never the study's own claims — a study cannot vouch for itself.
+
 <br clear="left">
+
 
 **The loop, in five moves.** Each round is fan-out → ground truth → adversary → synthesize.
 
