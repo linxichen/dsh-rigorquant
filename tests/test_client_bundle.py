@@ -34,7 +34,12 @@ SERVICE_PROVIDERS = {
     "connection": "@deepseek-ai/dsh-client-connection",
     "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
 }
-# The card registers into the `settings.plugin.item` ring, which this package declares.
+# The card registers into the `settings.plugin.item` ring, which this package
+# declares; the activity floater registers into the root-scoped `shell.overlay`
+# ring declared by ui-layout (both additive seats — a replacement would shadow
+# the shell).
+RINGS = ["settings.plugin.item", "shell.overlay"]
+CARDS = ["rigorquant-models", "rigorquant-activity"]
 RING_OWNER = "@deepseek-ai/dsh-client-ui-settings-plugins"
 
 
@@ -104,12 +109,27 @@ def test_factory_only_requires_platform_modules(verdict):
     assert "factoryError" not in verdict, verdict.get("factoryError")
 
 
-def test_apply_mounts_the_card_into_the_settings_ring(verdict):
-    """Registering is necessary, not sufficient: apply must survive mount."""
+def test_apply_mounts_both_rings(verdict):
+    """Registering is necessary, not sufficient: apply must survive mount.
+
+    The plugin contributes the settings card (settings.plugin.item) AND the
+    live activity floater (shell.overlay). Both are additive list/keyed seats.
+    """
     assert "mountError" not in verdict, verdict.get("mountError")
     assert verdict["mounted"]
-    assert verdict["mountRing"] == "settings.plugin.item"
-    assert verdict["cards"] == ["rigorquant-models"]
+    assert verdict["mountedRings"] == RINGS
+    assert verdict["cards"] == CARDS
+
+
+def test_activity_floater_renders_null_while_no_lab_runs(verdict):
+    """The floater is a second registration; it must mount and render hidden.
+
+    With an empty host snapshot (no RigorQuant session running), the panel
+    renders null — no phantom widget — and must not crash at render time.
+    """
+    assert verdict["overlayRendered"] is True
+    assert "overlayRenderError" not in verdict, verdict.get("overlayRenderError")
+    assert verdict["overlayTree"] is None
 
 
 def test_card_renders_with_framework_composed_props(verdict):
@@ -162,7 +182,7 @@ def test_card_mounts_on_rc2_settings_schema_service(verdict_rc2):
     assert "factoryError" not in verdict_rc2, verdict_rc2.get("factoryError")
     assert "mountError" not in verdict_rc2, verdict_rc2.get("mountError")
     assert verdict_rc2["mounted"]
-    assert verdict_rc2["cards"] == ["rigorquant-models"]
+    assert verdict_rc2["cards"] == CARDS
     assert "@deepseek-ai/dsh-client-schema-form" not in verdict_rc2["required"]
 
 

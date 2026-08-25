@@ -91,16 +91,23 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 ### 团队实时视图——活动面板
 
-<img src="docs/figs/agent-team-hero.svg" width="70%" alt="RigorQuant 实时团队图——队长、神谕、对抗者、校验器与五步任务链">
+本插件带有一个**实时活动面板**（宿主半 `rq-activity` + 浏览器半的
+`shell.overlay` 悬浮件）：RigorQuant 会话运行期间，右下角会出现一个小圆点
+气泡，点开后按「实验室」显示**五步循环所处阶段**、六个角色的执行/空闲
+花名册（含 `docs/figs/` 中的角色头像）、每个角色的最近动作，以及按时间倒序
+的动态流。它纯属观察——只读取核心已发布的事件，并在
+`/plugins/dsh-rigorquant/...` 上提供 JSON 快照与头像，不改变任何工具、
+路由或模型。颜色全部使用 `--dsw-alias` 令牌，因此自动跟随外壳自身的
+明暗主题。
 
 <p align="center">
   <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant 团队活动视图——团队摘要、分段进度、成员花名册与任务依赖图">
 </p>
 
+上图是同款设计的读者友好静态渲染（实时面板只在运行中的 web 会话里可见），
 改绘自
 [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
-的实时活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身六个角色在"扇出"时刻的状态：队长拆解并派发，
-探索者与文献线正在工作，神谕 / 对抗者 / 校验器在各闸门前排队。面板
+的实时活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身六个角色在"扇出"时刻的状态。面板
 SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) 生成。
 
 > **署名。** 活动面板设计改编自
@@ -190,9 +197,11 @@ preset、workflow 工作进程、fork 子进程）一律不干预。需要 DSH �
 
 ```
 package.json                dsh.bundle manifest（支持 dsh plugin add）
-cordis.patch.yml            bundle patch：技能层 + rq-model-router + rq-preset-sync 行
-dsh/                        宿主半（rq-model-router 路由 + rq-preset-sync 启动同步）
-                            与插件设置卡片
+cordis.patch.yml            bundle patch：技能层 + rq-model-router +
+                            rq-activity + rq-preset-sync 行
+dsh/                        宿主半（rq-model-router 路由、rq-activity 监视器、
+                            rq-preset-sync 启动同步）与 web 客户端包
+                            （设置卡片 + 活动悬浮件）
 agent-presets/rigorquant/   preset 组合 + persona + 内置技能
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   元校验器（唯一正式副本）
@@ -201,7 +210,8 @@ agent-presets/rigorquant/   preset 组合 + persona + 内置技能
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
-docs/figs/agent-team-activity.svg  生成的实时活动视图面板
+docs/figs/agent-team-activity.svg  读者友好的活动视图静态图
+docs/figs/agent-team-activity.js   其生成脚本（测试锁定不漂移）
 docs/figs/agent-team-hero.svg       团队图横幅，改自 dsh-agent-teams
                             的 hero 图（见下方署名）
 tests/                      校验器测试套件（见下方"测试"）

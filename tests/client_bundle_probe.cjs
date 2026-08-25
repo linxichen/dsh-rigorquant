@@ -56,6 +56,7 @@ const PLATFORM = new Set([
 ])
 const required = []
 const registrations = []
+const rings = []
 const ops = []
 // Mutable persisted user layer: the ops the card emits land here, so a
 // follow-up edit sees the same layering the real seam would show it.
@@ -173,9 +174,9 @@ if (verdict.applyIsFunction) {
       }),
     },
     slots: {
-      inject: (ring, fn) => { verdict.mountRing = ring; return fn() },
+      inject: (ring, fn) => { rings.push(ring); return fn() },
       register: (descriptor, component) => {
-        cards.push(descriptor.key)
+        cards.push(descriptor.id ?? descriptor.key)
         registrations.push({ descriptor, component })
         return descriptor
       },
@@ -187,6 +188,7 @@ if (verdict.applyIsFunction) {
   try {
     surface.apply(ctx)
     verdict.mounted = true
+    verdict.mountedRings = rings
     verdict.cards = cards
   } catch (error) {
     verdict.mounted = false
@@ -218,6 +220,29 @@ if (verdict.applyIsFunction) {
     } catch (error) {
       verdict.rendered = false
       verdict.renderError = `${error.name}: ${error.message}`
+    }
+  }
+
+  // The activity floater is a second registration (root-scoped shell.overlay).
+  // Its panel must render null while no lab is running — and must not crash.
+  if (registrations.length > 1) {
+    const { descriptor, component } = registrations[1]
+    const face = descriptor.inject()
+    const props = { t: (key) => key }
+    for (const [name, value] of Object.entries(face)) {
+      if (name === 'hooks') continue
+      props[name] = value
+    }
+    for (const [name, source] of Object.entries(face.hooks ?? {})) {
+      props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
+    }
+    try {
+      const overlayTree = component(props)
+      verdict.overlayRendered = true
+      verdict.overlayTree = overlayTree === null ? null : (overlayTree.type ?? 'element')
+    } catch (error) {
+      verdict.overlayRendered = false
+      verdict.overlayRenderError = `${error.name}: ${error.message}`
     }
   }
 }

@@ -99,18 +99,26 @@ dies only on a concrete counterexample, never on style or vibes.
 
 ### The team, live — the activity view
 
-<img src="docs/figs/agent-team-hero.svg" width="70%" alt="RigorQuant live team graph — captain, oracle, adversary, validator, and the five-move task chain">
+The plugin ships a **live activity panel** (the `rq-activity` host half, the
+`shell.overlay` floater in the browser half): while a RigorQuant session runs,
+a pill appears bottom-right, expanding into a panel that shows, per lab, the
+**five-move stage** the run is on, a working/idle roster of the six roles with
+their `docs/figs/` portraits, each role's last action, and a newest-first
+activity feed. It is pure observation — it reads the events the core already
+publishes and serves a JSON snapshot + portraits over
+`/plugins/dsh-rigorquant/...`, and it changes no tool, route, or model. Colors
+are `--dsw-alias` tokens, so it follows the shell's own light/dark theme.
 
 <p align="center">
   <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant agent team activity view — team summary, segmented progress, member roster, and task dependency graph">
 </p>
 
-Reworked from the live activity panel of
-[dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) — the picture
-in [its README](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)
-— here showing RigorQuant's own six roles at a fan-out moment: the captain
-splits and dispatches, the explorers and the literature lane are working, and
-the oracle / adversary / validator are queued on their gates. The panel SVG is
+The picture above is the reader-safe rendering of the same design (the live
+panel is only visible in a running web session) — adapted from the live
+activity panel of [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
+— the picture in
+[its README](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)
+— showing RigorQuant's own six roles at a fan-out moment. The panel SVG is
 generated from [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js).
 
 > **Attribution.** The activity-panel design is adapted from
@@ -216,9 +224,10 @@ record: [docs/architecture.md](docs/architecture.md) Decision 16.
 ```
 package.json                dsh.bundle manifest (dsh plugin add support)
 cordis.patch.yml            bundle patch: skills layer + rq-model-router +
-                            rq-preset-sync rows
-dsh/                        host halves (rq-model-router router + rq-preset-sync
-                            boot-sync) and the Plugins-tab card
+                            rq-activity + rq-preset-sync rows
+dsh/                        host halves (rq-model-router router, rq-activity
+                            monitor, rq-preset-sync boot-sync) and the web
+                            client bundle (settings card + activity floater)
 agent-presets/rigorquant/   preset composition + persona + bundled skills
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)
@@ -227,7 +236,8 @@ agent-presets/rigorquant/   preset composition + persona + bundled skills
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources
-docs/figs/agent-team-activity.svg  generated live activity-view panel
+docs/figs/agent-team-activity.svg  reader-safe activity-view picture
+docs/figs/agent-team-activity.js   its generator (freshness-pinned in tests)
 docs/figs/agent-team-hero.svg       team-graph banner, reworked from the
                              dsh-agent-teams hero graphic (see credit below)
 tests/                      the validator's test suite (see Testing below)

@@ -38,6 +38,17 @@
     - id: rq-model-router
       name: 'dsh-rigorquant'
 
+    # Live team-activity monitor + browser floater (README "The team, live").
+    # Pure observation: it tracks role agents from events the core already
+    # publishes, then serves a JSON snapshot plus the six role portraits to
+    # the browser `shell.overlay` panel over /plugins/dsh-rigorquant/... — the
+    # same surface dsh-agent-teams uses for its activity panel. Webless
+    # profiles never mount webServer, so the routes register lazily via
+    # internal/service; the monitor itself is inert there. Design adapted from
+    # dsh-agent-teams © NanmiCoder (程序员阿江 / Relakkes), MIT License.
+    - id: rq-activity
+      name: 'dsh-rigorquant/activity'
+
     # Self-installing distribution (docs/architecture.md, Decision 23). The
     # bundle-patch plane cannot express an agent preset — the harness pins the
     # agent-presets roots to its shipped root — and node_modules cannot host

@@ -718,6 +718,332 @@ function apply(ctx) {
     },
     (props) => RqModelsCard({ ...props, t: ctx.locale.bind(CARD_KEY) }),
   ))
+  applyActivityOverlay(ctx)
+}
+
+// ---------------------------------------------------------------- activity
+// The team-activity floater (design adapted from dsh-agent-teams — see
+// README "The team, live"). Registered into the root-scoped `shell.overlay`
+// list: a bottom-right pill, expanded into a live panel whenever one or more
+// RigorQuant labs are running. Data comes from the host half (dsh/activity.js)
+// polling /plugins/dsh-rigorquant/activity — a JSON snapshot of role agents,
+// their status and last actions, plus the loop stage. Every color below is a
+// --dsw-alias token, so the panel follows the shell's own theme.
+
+const ACTIVITY_NS = 'rigorquant-activity'
+const ACTIVITY_URL = '/plugins/dsh-rigorquant/activity'
+const POLL_MS = 2000
+
+const activityCopy = {
+  en: {
+    title: 'RigorQuant Activity',
+    collapse: 'Collapse',
+    expand: 'Expand',
+    working: 'working',
+    idle: 'idle',
+    members: 'members',
+    feed: 'activity',
+    empty: 'No RigorQuant session running.',
+    live: 'live',
+    credit: 'Design adapted from dsh-agent-teams © NanmiCoder (MIT)',
+    now: 'now',
+  },
+  zh: {
+    title: 'RigorQuant 活动',
+    collapse: '收起',
+    expand: '展开',
+    working: '执行中',
+    idle: '空闲',
+    members: '成员',
+    feed: '动态',
+    empty: '当前没有 RigorQuant 会话。',
+    live: '实时',
+    credit: '设计改编自 dsh-agent-teams © NanmiCoder (MIT)',
+    now: '刚刚',
+  },
+}
+
+/** Set once when the first live lab appears, so the panel opens itself. */
+let activityAutoExpanded = false
+/** The user's collapse decision wins until the page reloads. */
+let activityCollapsed = true
+let activityStore = null
+
+function snapshotStore() {
+  if (activityStore === null) activityStore = createStore({ status: 'idle', labs: [] })
+  return activityStore
+}
+
+function ago(ms) {
+  if (typeof ms !== 'number' || ms === 0) return ''
+  const delta = Date.now() - ms
+  if (delta < 60_000) return `${Math.max(1, Math.round(delta / 1000))}s`
+  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m`
+  return `${Math.round(delta / 3_600_000)}h`
+}
+
+function startActivityPoller(ctx) {
+  // The web shell, and nothing else: the probe and webless hosts have no
+  // fetch/interval, and the floater is only meaningful in a browser anyway.
+  if (typeof window === 'undefined'
+    || typeof window.fetch !== 'function'
+    || typeof window.setInterval !== 'function') {
+    return
+  }
+  const store = snapshotStore()
+  const tick = async () => {
+    if (document.hidden) return
+    try {
+      const response = await window.fetch(ACTIVITY_URL, { cache: 'no-store' })
+      if (!response.ok) return
+      const next = await response.json()
+      const labs = Array.isArray(next?.labs) ? next.labs : []
+      if (labs.length > 0 && !activityAutoExpanded) {
+        activityAutoExpanded = true
+        activityCollapsed = false
+      }
+      store.set({ status: 'ready', labs })
+    } catch {
+      // Transient: the host route may be absent in a webless profile.
+    }
+  }
+  void tick()
+  const id = window.setInterval(() => { void tick() }, POLL_MS)
+  ctx.effect(() => () => window.clearInterval(id), 'rq-activity: poller')
+}
+
+function ActivityRow(props) {
+  const R = React()
+  const { def, caption } = props
+  const size = def?.avatarWidth ?? 28
+  const img = def?.avatar !== null && def?.avatar !== undefined
+    ? R.createElement('img', {
+      src: `/plugins/dsh-rigorquant/avatar/${def.avatar}`,
+      alt: '',
+      style: {
+        width: size, height: Math.round(size * 0.75),
+        objectFit: 'cover', objectPosition: 'top center',
+        borderRadius: 6, flex: 'none',
+        background: 'var(--dsw-alias-bg-module-platform)',
+      },
+    })
+    : null
+  const right = typeof props.lastAt === 'number' && props.lastAt !== 0
+    ? R.createElement('span', {
+      style: {
+        marginLeft: 'auto', flex: 'none', fontSize: 10,
+        color: 'var(--dsw-alias-label-tertiary)',
+      },
+    }, ago(props.lastAt))
+    : null
+  return R.createElement('div', {
+    style: {
+      display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
+      padding: '3px 0',
+    },
+  },
+    img,
+    R.createElement('span', {
+      style: {
+        width: 6, height: 6, borderRadius: 99, flex: 'none',
+        background: props.status === 'running'
+          ? 'var(--dsw-alias-label-primary)'
+          : 'var(--dsw-alias-label-tertiary)',
+      },
+    }),
+    R.createElement('span', { style: { minWidth: 0, flex: 1 } },
+      R.createElement('span', {
+        style: {
+          display: 'block', fontSize: 11.5, fontWeight: 600, lineHeight: 1.35,
+          color: 'var(--dsw-alias-label-primary)', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis',
+        },
+      }, caption),
+      props.lastText
+        ? R.createElement('span', {
+          style: {
+            display: 'block', fontSize: 10.5, lineHeight: 1.4,
+            color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+          },
+        }, props.lastText)
+        : null),
+    right)
+}
+
+function ActivityPanel(props) {
+  const R = React()
+  const t = props.t
+  const snapshot = props.useRqActivity((value) => value)
+  const labs = snapshot?.labs ?? []
+  if (labs.length === 0) return null
+  if (activityCollapsed) {
+    const working = labs.reduce((total, lab) => total + (lab.summary?.working ?? 0), 0)
+    return R.createElement('button', {
+      type: 'button', 'aria-label': t('expand'),
+      onClick: () => { activityCollapsed = false; snapshotStore().set({ status: 'ready', labs }) },
+      style: {
+        position: 'fixed', right: 16, bottom: 16, zIndex: 9999,
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
+        border: '1px solid var(--dsw-alias-border-l2)',
+        background: 'var(--dsw-alias-bg-layer-2)',
+        color: 'var(--dsw-alias-label-primary)',
+        fontSize: 12, fontWeight: 600,
+        boxShadow: '0 4px 16px rgba(0,0,0,.25)',
+      },
+    },
+      R.createElement('span', {
+        style: {
+          width: 8, height: 8, borderRadius: 99,
+          background: 'var(--dsw-alias-label-primary)',
+          animation: 'rq-pulse 1.6s ease-in-out infinite',
+        },
+      }),
+      t('title'),
+      R.createElement('span', {
+        style: {
+          borderRadius: 99, padding: '0 7px', fontSize: 10.5, lineHeight: '16px',
+          background: 'var(--dsw-alias-bg-module-platform)',
+          color: 'var(--dsw-alias-label-secondary)',
+        },
+      }, `${working} ${t('working')}`))
+  }
+
+  const bodies = labs.map((lab) => {
+    const captain = lab.captain
+    const rows = [R.createElement(ActivityRow, {
+      key: `${lab.id}:captain`,
+      def: { avatar: captain?.avatar, avatarWidth: 34 },
+      caption: `CAPTAIN · ${captain?.label ?? 'Orchestrator'}`,
+      lastText: captain?.lastText ?? '',
+      lastAt: captain?.lastAt ?? 0,
+      status: captain?.status ?? 'idle',
+    })]
+    for (const member of lab.members ?? []) {
+      rows.push(R.createElement(ActivityRow, {
+        key: `${lab.id}:${member.sessionId}`,
+        def: { avatar: member.avatar, avatarWidth: 28 },
+        caption: `${member.label ?? ''} · ${member.tool ?? ''}`,
+        lastText: member.lastText ?? '',
+        lastAt: member.lastAt ?? 0,
+        status: member.status,
+      }))
+    }
+    const feed = (lab.feed ?? []).map((item) => R.createElement('div', {
+      key: `${lab.id}:${item.t}:${item.sessionId}:${item.kind}`,
+      style: {
+        display: 'flex', gap: 6, alignItems: 'baseline',
+        fontSize: 10.5, lineHeight: 1.4, color: 'var(--dsw-alias-label-secondary)',
+      },
+    },
+      R.createElement('span', {
+        style: { flex: 'none', color: 'var(--dsw-alias-label-tertiary)', fontSize: 9.5 },
+      }, ago(item.t)),
+      R.createElement('span', {
+        style: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+      },
+        item.kind === 'tool'
+          ? R.createElement('span', {
+            style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 10 },
+          }, item.text)
+          : item.text)))
+    return R.createElement('div', {
+      key: lab.id,
+      style: { padding: '8px 0', borderTop: '1px solid var(--dsw-alias-border-l2)' },
+    },
+      R.createElement('div', {
+        style: { display: 'flex', alignItems: 'baseline', gap: 8 },
+      },
+        R.createElement('span', {
+          style: {
+            fontSize: 12, fontWeight: 600, color: 'var(--dsw-alias-label-primary)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          },
+        }, lab.title ?? `session ${String(lab.id).slice(0, 8)}`),
+        R.createElement('span', {
+          style: {
+            flex: 'none', borderRadius: 99, padding: '0 7px', fontSize: 10,
+            lineHeight: '15px', background: 'var(--dsw-alias-bg-module-platform)',
+            color: 'var(--dsw-alias-label-secondary)',
+          },
+        }, lab.stage),
+        R.createElement('span', {
+          style: {
+            marginLeft: 'auto', flex: 'none', fontSize: 10,
+            color: 'var(--dsw-alias-label-tertiary)',
+          },
+        }, `${lab.summary?.working ?? 0} ${t('working')} · ${lab.summary?.idle ?? 0} ${t('idle')}`)),
+      rows,
+      R.createElement('div', {
+        style: {
+          display: 'grid', gap: 3, marginTop: 4, paddingTop: 6,
+          borderTop: '1px dashed var(--dsw-alias-border-l2)',
+        },
+      }, ...feed))
+  })
+
+  return R.createElement('div', {
+    style: {
+      position: 'fixed', right: 16, bottom: 16, zIndex: 9999,
+      width: 340, maxHeight: '70vh', display: 'flex', flexDirection: 'column',
+      overflow: 'hidden', borderRadius: 12,
+      border: '1px solid var(--dsw-alias-border-l2)',
+      background: 'var(--dsw-alias-bg-layer-3)',
+      boxShadow: '0 8px 32px rgba(0,0,0,.35)',
+    },
+  },
+    R.createElement('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '9px 12px', borderBottom: '1px solid var(--dsw-alias-border-l2)',
+      },
+    },
+      R.createElement('span', {
+        style: {
+          width: 8, height: 8, borderRadius: 99, flex: 'none',
+          background: 'var(--dsw-alias-label-primary)',
+          animation: 'rq-pulse 1.6s ease-in-out infinite',
+        },
+      }),
+      R.createElement('span', {
+        style: {
+          flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600,
+          color: 'var(--dsw-alias-label-primary)',
+        },
+      }, t('title')),
+      R.createElement('button', {
+        type: 'button', onClick: () => { activityCollapsed = true; snapshotStore().set({ status: 'ready', labs }) },
+        style: {
+          appearance: 'none', border: '1px solid var(--dsw-alias-border-l2)',
+          borderRadius: 8, cursor: 'pointer', font: 'inherit', fontSize: 10.5,
+          padding: '2px 8px', background: 'none',
+          color: 'var(--dsw-alias-label-secondary)',
+        },
+      }, t('collapse'))),
+    R.createElement('div', { style: { padding: '2px 12px 8px', overflowY: 'auto' } }, ...bodies),
+    R.createElement('div', {
+      style: {
+        padding: '6px 12px', borderTop: '1px solid var(--dsw-alias-border-l2)',
+        fontSize: 9.5, color: 'var(--dsw-alias-label-tertiary)',
+      },
+    }, `${t('credit')} · ${t('live')} · ${POLL_MS / 1000}s`))
+}
+
+function applyActivityOverlay(ctx) {
+  ctx.effect(() => ctx.locale.register(ACTIVITY_NS, activityCopy), 'rq-activity: panel dictionaries')
+  startActivityPoller(ctx)
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register(
+    {
+      name: 'shell.overlay',
+      id: 'rigorquant-activity',
+      order: 80,
+      label: 'RigorQuant activity',
+      locale: ACTIVITY_NS,
+      inject: () => ({ hooks: { rqActivity: snapshotStore() } }),
+    },
+    (props) => ActivityPanel({ ...props, t: ctx.locale.bind(ACTIVITY_NS) }),
+  ))
 }
 
 return { apply, inject }

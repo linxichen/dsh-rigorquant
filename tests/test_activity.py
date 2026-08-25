@@ -1,0 +1,104 @@
+"""The live team-activity monitor (dsh/activity.js) — the functional panel.
+
+The README activity view is rendered by a browser floater (`shell.overlay`),
+and the data it shows comes from this host half: role agents observed from the
+events the core already publishes, served as a JSON snapshot plus the six
+docs/figs portraits over /plugins/dsh-rigorquant/... — the same HTTP surface
+dsh-agent-teams uses for its activity panel.
+
+These checks pin the load-bearing properties against a real execution of the
+module (via tests/activity_probe.cjs, not by re-implementing it in Python):
+
+1. it observes without interfering — drive the lifecycle events and read the
+   snapshot: the lab, its working statuses, role members, and feed appear;
+2. the five-move stage heuristic — the latest distinctive tool call names the
+   stage;
+3. the portraits — served from docs/figs with an exact allowlist, so a path
+   traversal attempt 404s;
+4. webless safety — a profile without webServer mounts and just never serves
+   routes.
+
+Design credit: activity-panel concept adapted from dsh-agent-teams
+(NanmiCoder, MIT) — see README "The team, live".
+"""
+
+import json
+import shutil
+import subprocess
+
+import pytest
+
+from conftest import REPO
+
+PROBE = REPO / "tests/activity_probe.cjs"
+
+
+def manifest():
+    return json.loads((REPO / "package.json").read_text())
+
+
+@pytest.fixture(scope="module")
+def probe():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to execute the activity monitor")
+    module = REPO / manifest()["exports"]["./activity"]
+    if not module.exists():
+        pytest.fail(f"package.json exports ./activity but {module} is missing")
+    out = subprocess.run([node, str(PROBE), str(module)],
+                         capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+def test_activity_export_points_at_a_shipped_file():
+    assert (REPO / manifest()["exports"]["./activity"]).is_file()
+
+
+def test_the_monitor_mounts_without_error(probe):
+    assert probe["mountError"] is None, probe.get("mountError")
+
+
+def test_it_registers_both_host_routes(probe):
+    assert "exact:/plugins/dsh-rigorquant/activity" in probe["routes"]
+    assert "prefix:/plugins/dsh-rigorquant/avatar" in probe["routes"]
+
+
+def test_snapshot_reports_the_lab_and_live_roles(probe):
+    """The lab, its working set, and the role members appear in the payload."""
+    labs = probe["snapshot"]["labs"]
+    assert probe["snapshotCode"] == 200
+    assert len(labs) == 1
+    lab = labs[0]
+    assert lab["id"] == "lab-1"
+    assert lab["title"] == "Boundary cases of the VaR estimator"
+    assert lab["stage"] == "ground truth"  # latest distinctive tool call
+    assert lab["summary"] == {"total": 2, "working": 2, "idle": 0}
+    assert lab["captain"]["label"] == "Orchestrator"
+    assert lab["members"][0]["label"] == "Explorer"
+    assert lab["members"][0]["tool"] == "subagent"
+    assert lab["members"][0]["status"] == "running"
+
+
+def test_snapshot_feed_is_newest_first(probe):
+    feed = probe["snapshot"]["labs"][0]["feed"]
+    times = [item["t"] for item in feed]
+    assert times == sorted(times, reverse=True)
+    assert feed[0]["text"].startswith("captain")
+    assert feed[1]["kind"] == "tool"
+    assert "bash" in feed[1]["text"]
+
+
+def test_portraits_come_from_an_allowlist(probe):
+    ok = probe["portraitOk"]
+    assert ok["code"] == 200
+    assert ok["type"] == "image/png"
+    assert ok["isPng"] is True
+    assert probe["portraitBad"]["code"] == 404
+
+
+def test_the_patch_registers_the_monitor_row():
+    """The bundle patch must actually mount dsh/activity.js — a row that
+    exists only in package.json exports never runs."""
+    patch = (REPO / "cordis.patch.yml").read_text()
+    assert "rq-activity" in patch
+    assert "dsh-rigorquant/activity" in patch

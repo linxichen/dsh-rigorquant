@@ -1,0 +1,131 @@
+// Exercises dsh/activity.js the way a host process would, without one.
+//
+// Mounts the plugin against a stub ctx (events, webServer, agents, sessions),
+// drives the RigorQuant lifecycle events through it, then calls the two
+// registered HTTP handlers the way the web shell would. Prints one JSON
+// verdict with: the snapshot body (labs/members/feed/stage/summary), the
+// portrait route responses, and any mount error.
+const { pathToFileURL } = require('node:url')
+
+async function main() {
+  const [, , modulePath] = process.argv
+  const mod = await import(pathToFileURL(modulePath).href)
+
+  // ---- stub ctx ----------------------------------------------------------
+  const listeners = new Map()
+  const effects = []
+  const routes = []
+  const ctx = {
+    logger: { warn: () => {} },
+    on: (name, handler) => {
+      if (!listeners.has(name)) listeners.set(name, [])
+      listeners.get(name).push(handler)
+    },
+    effect: (fn, label) => {
+      effects.push({ fn, label })
+      if (typeof fn === 'function') fn()
+      return () => {}
+    },
+    get: (name) => {
+      if (name === 'webServer') {
+        return {
+          register: (route) => {
+            routes.push(route)
+            return () => {}
+          },
+        }
+      }
+      if (name === 'agents') return { list: () => seedAgents }
+      if (name === 'sessions') return { get: (id) => ({ id }) }
+      if (name === 'sessionTitle') return { get: () => ({ title: 'Boundary cases of the VaR estimator' }) }
+      if (name === 'agentPresets') return { composedPreset: () => undefined }
+      return undefined
+    },
+  }
+
+  const emit = (name, ...args) => {
+    for (const handler of listeners.get(name) ?? []) handler(...args)
+  }
+
+  // ---- the scenario ------------------------------------------------------
+  // Cold start: the lab and one explorer are already live when the plugin
+  // mounts (seedAgents), then more events arrive while the floater polls.
+  const rootAgent = {
+    id: 'lab-1',
+    ctx: {},
+    session: {
+      id: 'lab-1',
+      header: { agentPreset: 'rigorquant', parentSession: undefined },
+      events: [],
+    },
+  }
+  const explorerAgent = {
+    id: 'child-1',
+    ctx: {},
+    session: {
+      id: 'child-1',
+      header: { agentPreset: 'rigorquant', parentSession: 'lab-1' },
+      events: [{
+        type: 'subagent/descriptor',
+        data: { persona: 'you are the explorer [[rq:role=explorer]]' },
+      }],
+    },
+  }
+  const seedAgents = [rootAgent, explorerAgent]
+
+  let mountError = null
+  try {
+    mod.apply(ctx)
+    emit('agent/status', { agent: rootAgent, status: 'running' })
+    emit('agent/status', { agent: explorerAgent, status: 'running' })
+    emit('session/event', rootAgent.session, {
+      type: 'assistant/message', time: 1000,
+      data: { message: { content: [{ type: 'text', text: 'Split the question into sub-problems.' }] } },
+    })
+    emit('session/event', explorerAgent.session, {
+      type: 'tool/call', time: 2000,
+      data: { name: 'bash', arguments: '{"command":"ls studies/"}' },
+    })
+    emit('session/event', rootAgent.session, {
+      type: 'tool/call', time: 3000,
+      data: { name: 'subagent_ground_truth', arguments: '{}' },
+    })
+  } catch (error) {
+    mountError = `${error.name}: ${error.message}`
+  }
+
+  const verdict = { mountError, routes: routes.map((r) => `${r.kind}:${r.path}`) }
+
+  // ---- drive the HTTP surface -------------------------------------------
+  const activityRoute = routes.find((r) => r.path === '/plugins/dsh-rigorquant/activity')
+  const portraitRoute = routes.find((r) => r.path === '/plugins/dsh-rigorquant/avatar')
+
+  const call = async (route, url) => {
+    const captured = { code: null, headers: null, body: null }
+    const res = {
+      writeHead: (code, headers) => { captured.code = code; captured.headers = headers },
+      end: (body) => { captured.body = body },
+    }
+    await route.handler({ url }, res)
+    return captured
+  }
+
+  if (activityRoute !== undefined) {
+    const { code, body } = await call(activityRoute, '/plugins/dsh-rigorquant/activity')
+    verdict.snapshotCode = code
+    verdict.snapshot = JSON.parse(body)
+  }
+  if (portraitRoute !== undefined) {
+    const ok = await call(portraitRoute, '/plugins/dsh-rigorquant/avatar/avatar-orchestrator.png')
+    verdict.portraitOk = { code: ok.code, type: ok.headers?.['content-type'], isPng: Buffer.isBuffer(ok.body) }
+    const bad = await call(portraitRoute, '/plugins/dsh-rigorquant/avatar/../../etc/passwd')
+    verdict.portraitBad = { code: bad.code }
+  }
+
+  process.stdout.write(JSON.stringify(verdict))
+}
+
+main().catch((error) => {
+  process.stderr.write(String(error && error.stack || error))
+  process.exit(1)
+})

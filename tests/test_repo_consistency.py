@@ -165,9 +165,13 @@ def test_every_role_has_a_description_and_frequency_in_both_locales():
     assert match, "dsh/index.js no longer exports its ROLES list"
     roles = re.findall(r"'([a-z-]+)'", match.group(1))
     client = (REPO / "dsh" / "client.js").read_text()
-    # Both locale sections of the card copy live inside the factory closure.
+    # Both locale sections of every copy block live inside the factory
+    # closure: first the settings card (the one that carries role copy), then
+    # the activity floater. Each must be bilingual — a monolingual block is a
+    # language that silently falls back to the other's strings.
     sections = re.findall(r"^\s{2}(en|zh): \{", client, re.MULTILINE)
-    assert sections == ["en", "zh"], "the card copy sections moved; update this test"
+    assert sections[:2] == ["en", "zh"], "the card copy sections moved; update this test"
+    assert sections[2:] == ["en", "zh"], "the activity copy is not bilingual"
     vocabulary = {"en": {"Frequent", "Common", "Rare"}, "zh": {"频繁", "常见", "少见"}}
     for role in roles:
         for locale in ("en", "zh"):
