@@ -15,9 +15,11 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   events — and serves what the lab is doing as a JSON snapshot plus the six
   `docs/figs/` role portraits over `/plugins/dsh-rigorquant/...` (same HTTP
   surface dsh-agent-teams uses). The browser half registers a `shell.overlay`
-  floater: a bottom-left pill (clear of right-docked panels — e.g.
-  dsh-better-sidebar's task view, which auto-opens on subagents at a
-  near-max z-index), expanded into a live panel showing each
+  floater: a pill vertically centered on the active conversation's right edge
+  (measured against `[data-shell-overlay]` + `[data-phase='active']`, the same
+  geometry dsh-agent-teams uses, so it follows the column and stays clear of
+  the workspace rail and right-docked panels like dsh-better-sidebar's task
+  view), expanded into a live panel showing each
   RigorQuant lab's stage (five-move loop), working/idle roster with role
   avatars, and a newest-first activity feed. Purely observational — no tool,
   route, or model change; webless profiles stay inert (routes register lazily

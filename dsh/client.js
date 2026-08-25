@@ -724,10 +724,11 @@ function apply(ctx) {
 // ---------------------------------------------------------------- activity
 // The team-activity floater (design adapted from dsh-agent-teams — see
 // README "The team, live"). Registered into the root-scoped `shell.overlay`
-// list: a bottom-left pill, expanded into a live panel whenever one or more
-// RigorQuant labs are running. Data comes from the host half (dsh/activity.js)
-// polling /plugins/dsh-rigorquant/activity — a JSON snapshot of role agents,
-// their status and last actions, plus the loop stage. Every color below is a
+// list: a pill vertically centered on the main window's right edge, expanded
+// into a live panel whenever one or more RigorQuant labs are running. Data
+// comes from the host half (dsh/activity.js) by polling
+// /plugins/dsh-rigorquant/activity — a JSON snapshot of role agents, their
+// status and last actions, plus the loop stage. Every color below is a
 // --dsw-alias token, so the panel follows the shell's own theme.
 
 const ACTIVITY_NS = 'rigorquant-activity'
@@ -769,9 +770,51 @@ let activityAutoExpanded = false
 let activityCollapsed = true
 let activityStore = null
 
+/** One shared mutable state the store publishes (never handed out raw). */
+const activityState = { status: 'idle', labs: [], anchorRight: null }
+
 function snapshotStore() {
-  if (activityStore === null) activityStore = createStore({ status: 'idle', labs: [] })
+  if (activityStore === null) {
+    activityStore = createStore({ status: activityState.status, labs: [], anchorRight: null })
+  }
   return activityStore
+}
+
+const publishActivity = () => snapshotStore().set({ ...activityState, labs: activityState.labs })
+
+/**
+ * Horizontal dock for the floater: the RIGHT EDGE of the active conversation
+ * column, measured the same way dsh-agent-teams does — against the
+ * `[data-shell-overlay]` layer and the `[data-phase='active']` element that
+ * ui-layout/ui-conversation publish. The left workspace rail and right-docked
+ * panels (dsh-better-sidebar's task view) both stay clear: when such a panel
+ * opens and the conversation column shrinks, the ResizeObserver re-measures
+ * and the pill follows. Best-effort by design: without a measurable column it
+ * falls back to the viewport edge.
+ */
+const PANEL_DOCK_RIGHT = 18
+
+function measureAnchorRight() {
+  try {
+    if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return
+    const overlay = document.querySelector('[data-shell-overlay]')
+    if (overlay === null || overlay === undefined || typeof overlay.getBoundingClientRect !== 'function') return
+    const overlayRect = overlay.getBoundingClientRect()
+    const conversation = document.querySelector("[data-phase='active']")
+    let right = PANEL_DOCK_RIGHT
+    if (conversation !== null && conversation !== undefined
+      && typeof conversation.getBoundingClientRect === 'function') {
+      const conversationRect = conversation.getBoundingClientRect()
+      const anchorRight = Math.min(Math.max(conversationRect.right - overlayRect.left, 0), overlayRect.width)
+      right = Math.round(overlayRect.width - anchorRight + PANEL_DOCK_RIGHT)
+    }
+    if (right !== activityState.anchorRight) {
+      activityState.anchorRight = right
+      publishActivity()
+    }
+  } catch {
+    // Layout probing is best-effort; the viewport fallback still renders.
+  }
 }
 
 function ago(ms) {
@@ -792,6 +835,7 @@ function startActivityPoller(ctx) {
   }
   const store = snapshotStore()
   const tick = async () => {
+    measureAnchorRight()
     if (document.hidden) return
     try {
       const response = await window.fetch(ACTIVITY_URL, { cache: 'no-store' })
@@ -802,14 +846,36 @@ function startActivityPoller(ctx) {
         activityAutoExpanded = true
         activityCollapsed = false
       }
-      store.set({ status: 'ready', labs })
+      activityState.status = 'ready'
+      activityState.labs = labs
+      publishActivity()
     } catch {
       // Transient: the host route may be absent in a webless profile.
     }
   }
   void tick()
+  measureAnchorRight()
   const id = window.setInterval(() => { void tick() }, POLL_MS)
-  ctx.effect(() => () => window.clearInterval(id), 'rq-activity: poller')
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('resize', measureAnchorRight)
+    ctx.effect(() => () => window.removeEventListener('resize', measureAnchorRight),
+      'rq-activity: anchor resize listener')
+  }
+  // Follow the conversation column the instant it resizes (a right dock
+  // opening, the details column, window reflow) instead of waiting a poll.
+  const observer = typeof window.ResizeObserver === 'function'
+    ? new window.ResizeObserver(() => measureAnchorRight())
+    : null
+  if (observer !== null && typeof document !== 'undefined' && typeof document.querySelector === 'function') {
+    const overlay = document.querySelector('[data-shell-overlay]')
+    const conversation = document.querySelector("[data-phase='active']")
+    if (overlay !== null) observer.observe(overlay)
+    if (conversation !== null) observer.observe(conversation)
+  }
+  ctx.effect(() => () => {
+    if (observer !== null) observer.disconnect()
+    window.clearInterval(id)
+  }, 'rq-activity: poller')
 }
 
 function ActivityRow(props) {
@@ -881,12 +947,17 @@ function ActivityPanel(props) {
     const working = labs.reduce((total, lab) => total + (lab.summary?.working ?? 0), 0)
     return R.createElement('button', {
       type: 'button', 'aria-label': t('expand'),
-      onClick: () => { activityCollapsed = false; snapshotStore().set({ status: 'ready', labs }) },
+      onClick: () => { activityCollapsed = false; publishActivity() },
       style: {
-        // Bottom-LEFT on purpose: right-docked panels (dsh-better-sidebar's
-        // task view auto-opens on subagents at z-index ~2^31) own the right
-        // edge; this corner stays clear of them and of the centered composer.
-        position: 'fixed', left: 16, bottom: 16, zIndex: 9999,
+        // Vertically centered on the active conversation's right edge (measured
+        // against the shell overlay + [data-phase='active']), so right-docked
+        // panels and the left workspace rail both stay clear. Absolute — the
+        // entry renders inside the shell's own overlay layer.
+        position: 'absolute',
+        right: typeof snapshot.anchorRight === 'number' ? snapshot.anchorRight : 18,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        zIndex: 9999,
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
         border: '1px solid var(--dsw-alias-border-l2)',
@@ -988,7 +1059,11 @@ function ActivityPanel(props) {
 
   return R.createElement('div', {
     style: {
-      position: 'fixed', left: 16, bottom: 16, zIndex: 9999,
+      position: 'absolute',
+      right: typeof snapshot.anchorRight === 'number' ? snapshot.anchorRight : 18,
+      top: '50%',
+      transform: 'translateY(-50%)',
+      zIndex: 9999,
       width: 340, maxHeight: '70vh', display: 'flex', flexDirection: 'column',
       overflow: 'hidden', borderRadius: 12,
       border: '1px solid var(--dsw-alias-border-l2)',
@@ -1016,7 +1091,7 @@ function ActivityPanel(props) {
         },
       }, t('title')),
       R.createElement('button', {
-        type: 'button', onClick: () => { activityCollapsed = true; snapshotStore().set({ status: 'ready', labs }) },
+        type: 'button', onClick: () => { activityCollapsed = true; publishActivity() },
         style: {
           appearance: 'none', border: '1px solid var(--dsw-alias-border-l2)',
           borderRadius: 8, cursor: 'pointer', font: 'inherit', fontSize: 10.5,
