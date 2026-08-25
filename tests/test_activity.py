@@ -64,10 +64,15 @@ def test_it_registers_both_host_routes(probe):
 
 
 def test_snapshot_reports_the_lab_and_live_roles(probe):
-    """The lab, its working set, and the role members appear in the payload."""
+    """The lab, its working set, and the role members appear in the payload.
+
+    lab-1 was found despite its STALE durable header (agentPreset 'standard'
+    with the real switch in the log) — the exact shape of a RigorQuant session
+    resumed after a restart.
+    """
     labs = probe["snapshot"]["labs"]
     assert probe["snapshotCode"] == 200
-    assert len(labs) == 1
+    assert len(labs) == 2
     lab = labs[0]
     assert lab["id"] == "lab-1"
     assert lab["title"] == "Boundary cases of the VaR estimator"
@@ -77,6 +82,15 @@ def test_snapshot_reports_the_lab_and_live_roles(probe):
     assert lab["members"][0]["label"] == "Explorer"
     assert lab["members"][0]["tool"] == "subagent"
     assert lab["members"][0]["status"] == "running"
+
+
+def test_a_session_switching_to_rigorquant_is_promoted_to_captain(probe):
+    """The picker flow creates `standard`, then switches — a live switch must
+    promote the parentless session into a lab of its own."""
+    labs = probe["snapshot"]["labs"]
+    promoted = next(lab for lab in labs if lab["id"] == "lab-2")
+    assert promoted["captain"]["label"] == "Orchestrator"
+    assert promoted["summary"] == {"total": 1, "working": 0, "idle": 1}
 
 
 def test_snapshot_feed_is_newest_first(probe):

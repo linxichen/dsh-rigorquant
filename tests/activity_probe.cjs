@@ -71,13 +71,25 @@ async function main() {
       }],
     },
   }
-  const seedAgents = [rootAgent, explorerAgent]
+  // A second session created as `standard` that switches after the plugin
+  // mounts — must be promoted by the agent-preset/selected listener.
+  const laterLabAgent = {
+    id: 'lab-2',
+    ctx: {},
+    session: {
+      id: 'lab-2',
+      header: { agentPreset: 'standard', parentSession: undefined },
+      events: [],
+    },
+  }
+  const seedAgents = [rootAgent, explorerAgent, laterLabAgent]
 
   let mountError = null
   try {
     mod.apply(ctx)
     emit('agent/status', { agent: rootAgent, status: 'running' })
     emit('agent/status', { agent: explorerAgent, status: 'running' })
+    emit('agent-preset/selected', 'lab-2', 'rigorquant')
     emit('session/event', rootAgent.session, {
       type: 'assistant/message', time: 1000,
       data: { message: { content: [{ type: 'text', text: 'Split the question into sub-problems.' }] } },

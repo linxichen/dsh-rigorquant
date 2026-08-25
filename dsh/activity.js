@@ -132,12 +132,23 @@ function apply(ctx) {
 
   const roleOfAgent = (agent) => {
     const header = agent.session?.header ?? {}
-    const preset = header.agentPreset
-      ?? ctx.get('agentPresets')?.composedPreset(agent.ctx)
+    const events = agent.session?.events ?? []
+    // A RigorQuant session is created as `standard` and then switched in the
+    // picker: the DURABLE header keeps the creation preset forever. The
+    // preset that counts is therefore the live composition, then the latest
+    // `agent-preset/selected` record in the log, then the creation header.
+    let selectedPreset = null
+    for (let i = 0; i < Math.min(events.length, 128); i += 1) {
+      const event = events[i]
+      if (event?.type === 'agent-preset/selected') selectedPreset = event.data?.agentPreset ?? null
+    }
+    const preset = ctx.get('agentPresets')?.composedPreset(agent.ctx)
+      ?? selectedPreset
+      ?? header.agentPreset
+      ?? null
     if (header.parentSession === undefined && preset === PRESET_ID) {
       return { role: 'root', preset }
     }
-    const events = agent.session?.events ?? []
     for (let i = 0; i < Math.min(events.length, 64); i += 1) {
       const event = events[i]
       if (event?.type === 'subagent/descriptor') {
@@ -245,7 +256,16 @@ function apply(ctx) {
   })
   ctx.on('agent-preset/selected', (sessionId, agentPreset) => {
     const entry = entries.get(sessionId)
-    if (entry !== undefined) entry.preset = agentPreset
+    if (entry === undefined) return
+    entry.preset = agentPreset
+    // The picker flow creates a session as `standard` and switches: promote a
+    // parentless session to captain the moment it becomes a RigorQuant lab,
+    // and demote it if the user switches away.
+    if (agentPreset === PRESET_ID && entry.parentId === undefined && entry.role !== 'root') {
+      entry.role = 'root'
+    } else if (agentPreset !== PRESET_ID && entry.role === 'root') {
+      entry.role = null
+    }
   })
 
   // Prune disposed entries older than an hour (runs on every snapshot).
