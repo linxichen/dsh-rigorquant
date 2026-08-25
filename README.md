@@ -57,12 +57,12 @@ dies only on a concrete counterexample, never on style or vibes.
 
 | | Role | Tool | What it does |
 |---|---|---|---|
-| <img src="docs/figs/avatar-orchestrator.png" width="72" alt="Orchestrator"> | Orchestrator | `root persona` | Fans out the work, synthesizes, and writes the state. Bound by four rules: producer ≠ checker, counterexample-only elimination, seeds always recorded, no handwaved load-bearing claims. |
-| <img src="docs/figs/avatar-explorer.png" width="72" alt="Explorer"> | Explorer | `subagent` | Blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected. |
-| <img src="docs/figs/avatar-oracle.png" width="72" alt="Oracle"> | Oracle | `subagent_ground_truth` | Blind — no web, no skills, no delegation, no drafts. Re-derives the load-bearing claims from first principles, twice by different means. |
-| <img src="docs/figs/avatar-adversary.png" width="72" alt="Adversary"> | Adversary | `subagent_adversary` | Runs the check battery and hunts counterexamples. Ends in a verdict: `PASS` or `NEEDS-EDITS`. |
-| <img src="docs/figs/avatar-literature.png" width="72" alt="Literature"> | Literature | `subagent_lit_line` · `_adversary` | A walled citation-graph sweep, then an independent adversary re-retrieves each claim and certifies it's real **and** current. |
-| <img src="docs/figs/avatar-validator.png" width="72" alt="Validator"> | Validator | `rq_check.py` + schemas | Refuses a `PASS` with missing evidence. Reads the audit record, never the study's own claims — a study cannot vouch for itself. |
+| <img src="docs/figs/avatar-orchestrator.png" width="140" alt="Orchestrator"> | Orchestrator | `root persona` | Fans out the work, synthesizes, and writes the state. Bound by four rules: producer ≠ checker, counterexample-only elimination, seeds always recorded, no handwaved load-bearing claims. |
+| <img src="docs/figs/avatar-explorer.png" width="140" alt="Explorer"> | Explorer | `subagent` | Blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected. |
+| <img src="docs/figs/avatar-oracle.png" width="140" alt="Oracle"> | Oracle | `subagent_ground_truth` | Blind — no web, no skills, no delegation, no drafts. Re-derives the load-bearing claims from first principles, twice by different means. |
+| <img src="docs/figs/avatar-adversary.png" width="140" alt="Adversary"> | Adversary | `subagent_adversary` | Runs the check battery and hunts counterexamples. Ends in a verdict: `PASS` or `NEEDS-EDITS`. |
+| <img src="docs/figs/avatar-literature.png" width="140" alt="Literature"> | Literature | `subagent_lit_line` · `_adversary` | A walled citation-graph sweep, then an independent adversary re-retrieves each claim and certifies it's real **and** current. |
+| <img src="docs/figs/avatar-validator.png" width="140" alt="Validator"> | Validator | `rq_check.py` + schemas | Refuses a `PASS` with missing evidence. Reads the audit record, never the study's own claims — a study cannot vouch for itself. |
 
 **The loop, in five moves.** Each round is fan-out → ground truth → adversary → synthesize.
 
