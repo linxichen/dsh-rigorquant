@@ -49,6 +49,33 @@ Full design record: [docs/architecture.md](docs/architecture.md).
 session. Crossing a session boundary disarms the goal; one human turn
 ("continue") re-arms it. It does not continue autonomously across restarts.
 
+## The research team — and how it works
+
+Six roles, each a separate tool with its own powers and limits. The separation is
+enforced by the composition, so **the producer never checks its own work** — an idea
+dies only on a concrete counterexample, never on style or vibes.
+
+| | Role | Tool | What it does |
+|---|---|---|---|
+| <img src="docs/figs/avatar-orchestrator.png" width="72" alt="Orchestrator"> | Orchestrator | `root persona` | Fans out the work, synthesizes, and writes the state. Bound by four rules: producer ≠ checker, counterexample-only elimination, seeds always recorded, no handwaved load-bearing claims. |
+| <img src="docs/figs/avatar-explorer.png" width="72" alt="Explorer"> | Explorer | `subagent` | Blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected. |
+| <img src="docs/figs/avatar-oracle.png" width="72" alt="Oracle"> | Oracle | `subagent_ground_truth` | Blind — no web, no skills, no delegation, no drafts. Re-derives the load-bearing claims from first principles, twice by different means. |
+| <img src="docs/figs/avatar-adversary.png" width="72" alt="Adversary"> | Adversary | `subagent_adversary` | Runs the check battery and hunts counterexamples. Ends in a verdict: `PASS` or `NEEDS-EDITS`. |
+| <img src="docs/figs/avatar-literature.png" width="72" alt="Literature"> | Literature | `subagent_lit_line` · `_adversary` | A walled citation-graph sweep, then an independent adversary re-retrieves each claim and certifies it's real **and** current. |
+| <img src="docs/figs/avatar-validator.png" width="72" alt="Validator"> | Validator | `rq_check.py` + schemas | Refuses a `PASS` with missing evidence. Reads the audit record, never the study's own claims — a study cannot vouch for itself. |
+
+**The loop, in five moves.** Each round is fan-out → ground truth → adversary → synthesize.
+
+1. **Promise** — record the original question verbatim, split it into sub-problems with crisp criteria, pick hand-checkable simplified cases, and pin seeds, tolerances and the schema/validator digests.
+2. **Fan out** — blank-context explorers and literature lines run in parallel; most are never told the favored approach.
+3. **Ground-truth it** — blind oracles re-derive the load-bearing claims without seeing anyone's draft; two independent derivations for anything the study rests on.
+4. **Attack it** — the adversary runs the four-gate battery, then hunts counterexamples; divergent tracks are lined up as an adjudication docket.
+5. **Certify & ship** — the validator checks nothing is missing; the paper and slides are assembled from validated records, never written fresh.
+
+**The check battery**, run before any numerical implementation: **A** closed-form equality · **B** exact invariants · **C** analytic bounds · **D** statistical hardening (fixed seed + LLN shrinking ≈ C/√N).
+
+**With receipts:** in one hard run, 21 errors were caught by a specific mechanism and none by luck (11 of them the orchestrator's own); only 35% of 81 literature claims survived independent verification; and the honesty gate is itself tested — a forged study *must* fail.
+
 ## Install
 
 Requires DSH ≥ 0.1.0-rc.7.
