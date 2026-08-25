@@ -47,14 +47,29 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 六个角色，每个都是独立的工具，各有能力边界。这种分离由组合本身强制，因此**生产者绝不自查自己的成果**——一个想法只会死于具体反例，绝不因风格或感觉而死。
 
-| | 角色 | 工具 | 职责 |
-|---|---|---|---|
-| <img src="docs/figs/avatar-orchestrator.png" width="140" alt="Orchestrator"> | 编排者 | `root persona` | 扇出工作、综合结果并写状态。受四条铁律约束：生产者≠检查者、只凭反例淘汰、随机运行必记种子、承重命题不许空谈。 |
-| <img src="docs/figs/avatar-explorer.png" width="140" alt="Explorer"> | 探索者 | `subagent` | 白纸上下文、刻意发散。给出引理、方程、构造与带精确陈述的候选方法；拒绝状态汇报式输出。 |
-| <img src="docs/figs/avatar-oracle.png" width="140" alt="Oracle"> | 神谕 | `subagent_ground_truth` | 盲态——无联网、无技能、无委派、无草稿。从第一性原理把关键命题重推两遍，方法各异。 |
-| <img src="docs/figs/avatar-adversary.png" width="140" alt="Adversary"> | 对抗者 | `subagent_adversary` | 执行检验组、专找反例。以裁决收尾：`PASS` 或 `NEEDS-EDITS`。 |
-| <img src="docs/figs/avatar-literature.png" width="140" alt="Literature"> | 文献线 | `subagent_lit_line` · `_adversary` | 封闭式引文图遍历，再由独立对抗者重取每条主张，确认其真实**且**不过时。 |
-| <img src="docs/figs/avatar-validator.png" width="140" alt="Validator"> | 校验器 | `rq_check.py` + schemas | 证据缺失即拒绝 `PASS`。只读审计记录，绝不读研究自称的主张——研究无法为自己作保。 |
+<img src="docs/figs/avatar-orchestrator.png" align="left" width="200" alt="Orchestrator">
+**编排者** · `root persona`——扇出工作、综合结果并写状态。受四条铁律约束：生产者≠检查者、只凭反例淘汰、随机运行必记种子、承重命题不许空谈。
+<br clear="left">
+
+<img src="docs/figs/avatar-explorer.png" align="left" width="200" alt="Explorer">
+**探索者** · `subagent`——白纸上下文、刻意发散。给出引理、方程、构造与带精确陈述的候选方法；拒绝状态汇报式输出。
+<br clear="left">
+
+<img src="docs/figs/avatar-oracle.png" align="left" width="200" alt="Oracle">
+**神谕** · `subagent_ground_truth`——盲态（无联网、无技能、无委派、无草稿）。从第一性原理把关键命题重推两遍，方法各异。
+<br clear="left">
+
+<img src="docs/figs/avatar-adversary.png" align="left" width="200" alt="Adversary">
+**对抗者** · `subagent_adversary`——执行检验组、专找反例。以裁决收尾：`PASS` 或 `NEEDS-EDITS`。
+<br clear="left">
+
+<img src="docs/figs/avatar-literature.png" align="left" width="200" alt="Literature">
+**文献线** · `subagent_lit_line` · `_adversary`——封闭式引文图遍历，再由独立对抗者重取每条主张，确认其真实**且**不过时。
+<br clear="left">
+
+<img src="docs/figs/avatar-validator.png" align="left" width="200" alt="Validator">
+**校验器** · `rq_check.py` + schemas——证据缺失即拒绝 `PASS`。只读审计记录，绝不读研究自称的主张——研究无法为自己作保。
+<br clear="left">
 
 **五步循环。** 每轮＝扇出 → 求真 → 对抗 → 综合。
 
