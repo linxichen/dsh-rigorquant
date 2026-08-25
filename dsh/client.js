@@ -790,11 +790,11 @@ const activityFeedOpen = new Set()
 let activityStore = null
 
 /** One shared mutable state the store publishes (never handed out raw). */
-const activityState = { status: 'idle', labs: [], anchorRight: null }
+const activityState = { status: 'idle', labs: [], anchorRight: null, currentSessionId: null }
 
 function snapshotStore() {
   if (activityStore === null) {
-    activityStore = createStore({ status: activityState.status, labs: [], anchorRight: null })
+    activityStore = createStore({ status: activityState.status, labs: [], anchorRight: null, currentSessionId: null })
   }
   return activityStore
 }
@@ -875,6 +875,29 @@ function startActivityPoller(ctx) {
   void tick()
   measureAnchorRight()
   const id = window.setInterval(() => { void tick() }, POLL_MS)
+  // The floater follows the CURRENT session (same as dsh-agent-teams): only
+  // the lab owned by the session open in the conversation view is shown, and
+  // only while that session is a RigorQuant one (labs exist only for those).
+  const sessions = ctx.get('sessions')
+  const sessionList = sessions?.list
+  const syncCurrentSession = () => {
+    try {
+      const next = typeof sessionList?.getSnapshot === 'function'
+        ? sessionList.getSnapshot().current
+        : null
+      if (next !== activityState.currentSessionId) {
+        activityState.currentSessionId = next ?? null
+        publishActivity()
+      }
+    } catch {
+      // The sessions feed is a best-effort scope, not a hard dependency.
+    }
+  }
+  if (sessionList !== undefined && typeof sessionList.subscribe === 'function') {
+    syncCurrentSession()
+    const unsubscribe = sessionList.subscribe(syncCurrentSession)
+    ctx.effect(() => unsubscribe, 'rq-activity: current-session listener')
+  }
   if (typeof window.addEventListener === 'function') {
     window.addEventListener('resize', measureAnchorRight)
     ctx.effect(() => () => window.removeEventListener('resize', measureAnchorRight),
@@ -1078,7 +1101,22 @@ function ActivityPanel(props) {
   const R = React()
   const t = props.t
   const snapshot = props.useRqActivity((value) => value)
-  const labs = snapshot?.labs ?? []
+  const currentSessionId = snapshot?.currentSessionId ?? null
+  const allLabs = snapshot?.labs ?? []
+  // Only the lab relevant to the current session (its own captain session, or
+  // one of its subagent transcripts) is shown — never other sessions' labs,
+  // and only while the current session is a RigorQuant one (labs exist only
+  // for those). Mirrors dsh-agent-teams' captain-session scoping.
+  const labs = (() => {
+    if (currentSessionId === null || currentSessionId === undefined) return []
+    const labBySession = new Map()
+    for (const lab of allLabs) {
+      labBySession.set(lab.id, lab.id)
+      for (const member of lab.members ?? []) labBySession.set(member.sessionId, lab.id)
+    }
+    const relevant = labBySession.get(currentSessionId)
+    return relevant === undefined ? [] : allLabs.filter((lab) => lab.id === relevant)
+  })()
   if (labs.length === 0) return null
   if (activityCollapsed) {
     const working = labs.reduce((total, lab) => total + (lab.summary?.working ?? 0), 0)

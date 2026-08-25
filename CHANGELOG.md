@@ -28,8 +28,12 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   expand the recent history. A compact role-pipeline graph (columns = stages,
   nodes = the seven roles, edges = handoffs) renders above the roster with the
   same dependency-graph aesthetic as dsh-agent-teams, colored by live status
-  (running/idle/pending). Purely observational — no tool, route, or model
-  change; webless profiles stay inert (routes register lazily on `webServer`).
+  (running/idle/pending). The floater is scoped to the current session: it
+  shows only the lab owned by the conversation open in the view (its captain
+  session or one of its subagent transcripts), never other sessions' labs, and
+  only while that session is a RigorQuant one. Purely observational — no tool,
+  route, or model change; webless profiles stay inert (routes register lazily
+  on `webServer`).
   All panel colors are `--dsw-alias` tokens, so it follows the shell's own
   light/dark theme. Design adapted from
   [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) (NanmiCoder,

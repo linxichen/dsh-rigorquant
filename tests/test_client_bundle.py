@@ -132,6 +132,16 @@ def test_activity_floater_renders_null_while_no_lab_runs(verdict):
     assert verdict["overlayTree"] is None
 
 
+def test_activity_floater_scopes_to_the_current_session(verdict):
+    """The floater follows the current session, never other sessions' labs.
+
+    With two labs in the store but a current session that is not one of them,
+    the panel renders null; when the current session is a lab, it renders.
+    """
+    assert verdict["scopeMismatchNull"] is True
+    assert verdict["scopeMatchRendered"] is True
+
+
 def test_card_renders_with_framework_composed_props(verdict):
     """Mounting is not rendering: the `hooks` compartment is reserved.
 

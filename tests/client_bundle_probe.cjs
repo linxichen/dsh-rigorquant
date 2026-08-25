@@ -244,6 +244,31 @@ if (verdict.applyIsFunction) {
       verdict.overlayRendered = false
       verdict.overlayRenderError = `${error.name}: ${error.message}`
     }
+
+    // Current-session scoping: the floater appears only while the current
+    // session is a lab (its captain session or one of its subagents). Two labs
+    // in the store, but a non-lab current session must render null; a matching
+    // current session must render (the collapsed pill).
+    const scopeStore = face.hooks.rqActivity
+    const mkLab = (id) => ({
+      id, title: id, stage: 'fan out',
+      summary: { total: 1, working: 0, idle: 1 },
+      captain: { label: 'Orchestrator', status: 'idle' },
+      members: [], feed: [],
+    })
+    const scopedRender = () => {
+      try { return component(props) } catch { return null }
+    }
+    scopeStore.set({
+      status: 'ready', anchorRight: null, currentSessionId: 'unrelated',
+      labs: [mkLab('lab-current'), mkLab('lab-other')],
+    })
+    verdict.scopeMismatchNull = scopedRender() === null
+    scopeStore.set({
+      status: 'ready', anchorRight: null, currentSessionId: 'lab-current',
+      labs: [mkLab('lab-current'), mkLab('lab-other')],
+    })
+    verdict.scopeMatchRendered = scopedRender() !== null
   }
 }
 

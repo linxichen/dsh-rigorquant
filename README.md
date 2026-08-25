@@ -103,8 +103,11 @@ The plugin ships a **live activity panel** (the `rq-activity` host half, the
 `shell.overlay` floater in the browser half): while a RigorQuant session runs,
 a pill appears vertically centered on the main window's right edge (it follows
 the conversation column, so the workspace rail and right-docked panels stay
-clear), expanding into a panel that shows, per lab, the
-**five-move stage** the run is on, a working/idle roster of the six roles with
+clear), expanding into a panel that shows, for the **current session's lab
+only** (never other sessions, and only while the current session is a
+RigorQuant one), the
+**five-move stage** the run is on, a compact role-pipeline graph, a
+working/idle roster of the six roles with
 their `docs/figs/` portraits, each role's last action, and a newest-first
 activity feed. It is pure observation — it reads the events the core already
 publishes and serves a JSON snapshot + portraits over
