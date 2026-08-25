@@ -724,7 +724,7 @@ function apply(ctx) {
 // ---------------------------------------------------------------- activity
 // The team-activity floater (design adapted from dsh-agent-teams — see
 // README "The team, live"). Registered into the root-scoped `shell.overlay`
-// list: a bottom-right pill, expanded into a live panel whenever one or more
+// list: a bottom-left pill, expanded into a live panel whenever one or more
 // RigorQuant labs are running. Data comes from the host half (dsh/activity.js)
 // polling /plugins/dsh-rigorquant/activity — a JSON snapshot of role agents,
 // their status and last actions, plus the loop stage. Every color below is a
@@ -883,7 +883,10 @@ function ActivityPanel(props) {
       type: 'button', 'aria-label': t('expand'),
       onClick: () => { activityCollapsed = false; snapshotStore().set({ status: 'ready', labs }) },
       style: {
-        position: 'fixed', right: 16, bottom: 16, zIndex: 9999,
+        // Bottom-LEFT on purpose: right-docked panels (dsh-better-sidebar's
+        // task view auto-opens on subagents at z-index ~2^31) own the right
+        // edge; this corner stays clear of them and of the centered composer.
+        position: 'fixed', left: 16, bottom: 16, zIndex: 9999,
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
         border: '1px solid var(--dsw-alias-border-l2)',
@@ -985,7 +988,7 @@ function ActivityPanel(props) {
 
   return R.createElement('div', {
     style: {
-      position: 'fixed', right: 16, bottom: 16, zIndex: 9999,
+      position: 'fixed', left: 16, bottom: 16, zIndex: 9999,
       width: 340, maxHeight: '70vh', display: 'flex', flexDirection: 'column',
       overflow: 'hidden', borderRadius: 12,
       border: '1px solid var(--dsw-alias-border-l2)',

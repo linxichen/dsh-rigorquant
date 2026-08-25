@@ -101,7 +101,8 @@ dies only on a concrete counterexample, never on style or vibes.
 
 The plugin ships a **live activity panel** (the `rq-activity` host half, the
 `shell.overlay` floater in the browser half): while a RigorQuant session runs,
-a pill appears bottom-right, expanding into a panel that shows, per lab, the
+a pill appears bottom-left (clear of right-docked panels), expanding into a
+panel that shows, per lab, the
 **five-move stage** the run is on, a working/idle roster of the six roles with
 their `docs/figs/` portraits, each role's last action, and a newest-first
 activity feed. It is pure observation — it reads the events the core already
