@@ -97,6 +97,28 @@ dies only on a concrete counterexample, never on style or vibes.
 
 <br clear="left">
 
+### The team, live — the activity view
+
+<img src="docs/figs/agent-team-hero.svg" width="70%" alt="RigorQuant live team graph — captain, oracle, adversary, validator, and the five-move task chain">
+
+<p align="center">
+  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant agent team activity view — team summary, segmented progress, member roster, and task dependency graph">
+</p>
+
+Reworked from the live activity panel of
+[dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) — the picture
+in [its README](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)
+— here showing RigorQuant's own six roles at a fan-out moment: the captain
+splits and dispatches, the explorers and the literature lane are working, and
+the oracle / adversary / validator are queued on their gates. The panel SVG is
+generated from [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js).
+
+> **Attribution.** The activity-panel design is adapted from
+> [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) by
+> [NanmiCoder](https://github.com/NanmiCoder) (程序员阿江 / Relakkes) —
+> Copyright (c) 2026, MIT License. The role portraits are this repo's own
+> `docs/figs/` assets. The header banner is likewise reworked from the
+> upstream hero graphic.
 
 **The loop, in five moves.** Each round is fan-out → ground truth → adversary → synthesize.
 
@@ -205,6 +227,9 @@ agent-presets/rigorquant/   preset composition + persona + bundled skills
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources
+docs/figs/agent-team-activity.svg  generated live activity-view panel
+docs/figs/agent-team-hero.svg       team-graph banner, reworked from the
+                             dsh-agent-teams hero graphic (see credit below)
 tests/                      the validator's test suite (see Testing below)
 studies/                    one study folder per task (Mode B; a checkout's own
                             live studies — not shipped in the npm bundle)

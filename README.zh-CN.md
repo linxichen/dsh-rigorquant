@@ -89,6 +89,25 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 <br clear="left">
 
+### 团队实时视图——活动面板
+
+<img src="docs/figs/agent-team-hero.svg" width="70%" alt="RigorQuant 实时团队图——队长、神谕、对抗者、校验器与五步任务链">
+
+<p align="center">
+  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant 团队活动视图——团队摘要、分段进度、成员花名册与任务依赖图">
+</p>
+
+改绘自
+[dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
+的实时活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身六个角色在"扇出"时刻的状态：队长拆解并派发，
+探索者与文献线正在工作，神谕 / 对抗者 / 校验器在各闸门前排队。面板
+SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) 生成。
+
+> **署名。** 活动面板设计改编自
+> [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)，作者
+> [NanmiCoder](https://github.com/NanmiCoder)（程序员阿江 / Relakkes）——
+> Copyright (c) 2026，MIT 许可证。角色头像为本仓库 `docs/figs/` 自有资源；
+> 顶部横幅同样改自上游 hero 图。
 
 **五步循环。** 每轮＝扇出 → 求真 → 对抗 → 综合。
 
@@ -182,6 +201,9 @@ agent-presets/rigorquant/   preset 组合 + persona + 内置技能
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
+docs/figs/agent-team-activity.svg  生成的实时活动视图面板
+docs/figs/agent-team-hero.svg       团队图横幅，改自 dsh-agent-teams
+                            的 hero 图（见下方署名）
 tests/                      校验器测试套件（见下方"测试"）
 studies/                    每个任务一个研究文件夹（Mode B；各 checkout 自己的
                             活跃研究，不随 bundle 发布）

@@ -9,7 +9,10 @@ those checks.
 import json
 import os
 import re
+import shutil
 import subprocess
+
+import pytest
 
 from conftest import REPO, SKILL_DIR
 
@@ -498,3 +501,28 @@ def test_a_fetched_copy_installs_the_published_version():
     assert 'if [ -d "$HERE/.git" ]' in script, "install.sh no longer distinguishes checkout from fetched copy"
     assert 'spec="dsh-rigorquant@${VERSION:-latest}"' in script, (
         "the fetched-copy path must install the published version by name")
+
+
+def test_agent_team_activity_svg_is_fresh():
+    """The committed panel SVG must be exactly what the generator emits.
+
+    The activity view is generated (docs/figs/agent-team-activity.js embeds
+    the role portraits as data URIs); a hand-edited SVG is the drift class
+    this suite exists to catch -- and an edit here would silently stop
+    matching the README's credited source.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to regenerate the activity SVG")
+    svg = REPO / "docs/figs/agent-team-activity.svg"
+    generator = REPO / "docs/figs/agent-team-activity.js"
+    before = svg.read_bytes()
+    after = before
+    try:
+        subprocess.run([node, str(generator)], cwd=REPO, check=True, capture_output=True)
+        after = svg.read_bytes()
+    finally:
+        if after != before:
+            svg.write_bytes(before)
+    assert after == before, (
+        "docs/figs/agent-team-activity.svg is stale; run `node docs/figs/agent-team-activity.js`")
