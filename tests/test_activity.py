@@ -90,7 +90,7 @@ def test_a_session_switching_to_rigorquant_is_promoted_to_captain(probe):
     labs = probe["snapshot"]["labs"]
     promoted = next(lab for lab in labs if lab["id"] == "lab-2")
     assert promoted["captain"]["label"] == "Orchestrator"
-    assert promoted["summary"] == {"total": 2, "working": 1, "idle": 1}
+    assert promoted["summary"] == {"total": 3, "working": 2, "idle": 1}
 
 
 def test_a_oneshot_subagent_gets_its_role_and_status_from_the_parents_tool_call(probe):
@@ -106,6 +106,16 @@ def test_a_oneshot_subagent_gets_its_role_and_status_from_the_parents_tool_call(
     assert member["status"] == "running"
 
 
+def test_a_subagent_with_recent_activity_lights_up_without_a_running_status(probe):
+    """A subagent that never surfaces a running agent status still lights its
+    role when it emitted session activity within the recent-active window."""
+    labs = probe["snapshot"]["labs"]
+    promoted = next(lab for lab in labs if lab["id"] == "lab-2")
+    member = next(m for m in promoted["members"] if m["sessionId"] == "child-shot-2")
+    assert member["role"] == "oracle"
+    assert member["status"] == "running"
+
+
 def test_a_disposed_subagent_stays_in_the_roster_but_drops_from_the_live_summary(probe):
     """A finished (disposed) one-shot subagent must remain in the roster as
     idle so the pipeline graph keeps its role, while the live-team summary
@@ -115,7 +125,7 @@ def test_a_disposed_subagent_stays_in_the_roster_but_drops_from_the_live_summary
     member = next(m for m in promoted["members"] if m["sessionId"] == "child-shot-1")
     assert member["disposed"] is True
     assert member["status"] == "idle"
-    assert promoted["summary"] == {"total": 1, "working": 0, "idle": 1}
+    assert promoted["summary"] == {"total": 2, "working": 1, "idle": 1}
 
 
 def test_snapshot_feed_is_newest_first(probe):

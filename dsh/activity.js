@@ -76,6 +76,10 @@ function labelRole(label) {
 
 const FEED_LIMIT = 16
 const KEEP_DISPOSED_MS = 60 * 60 * 1000
+// A role is shown as actively working if it emitted session events within this
+// window, even when their agent status never surfaced as 'running' (one-shot
+// subagents finish faster than the client's poll).
+const RECENT_ACTIVE_MS = 30 * 1000
 
 function tagRole(text) {
   const match = typeof text === 'string' ? TAG.exec(text) : null
@@ -132,6 +136,7 @@ function apply(ctx) {
         disposed: false,
         startedAt: Date.now(),
         lastAt: 0,
+        lastActiveAt: 0,
         lastKind: null,
         lastText: null,
         toolCount: 0,
@@ -147,6 +152,7 @@ function apply(ctx) {
     entry.lastAt = at
     entry.lastKind = kind
     entry.lastText = text
+    if (kind === 'tool' || kind === 'message') entry.lastActiveAt = at
   }
 
   const pushFeed = (labId, entry, item) => {
@@ -285,10 +291,13 @@ function apply(ctx) {
         break
       }
       case 'turn/start':
-      case 'turn/end':
       case 'step/start':
+        entry.lastActiveAt = at
+        touch(entry, 'turn', event.type, at)
+        break
+      case 'turn/end':
       case 'step/end':
-        touch(entry, 'turn', event.type)
+        touch(entry, 'turn', event.type, at)
         break
       default:
         if (at > entry.lastAt) touch(entry, 'event', event.type, at)
@@ -337,10 +346,15 @@ function apply(ctx) {
       label: def?.label ?? entry.role ?? 'agent',
       tool: def?.tool ?? null,
       avatar: def?.avatar ?? null,
-      // A disposed agent is no longer working: report it as idle so a finished
-      // one-shot subagent does not keep a role lit up forever, but stays in the
-      // roster so the graph does not go empty the moment it completes.
-      status: entry.disposed ? 'idle' : entry.status,
+      // A disposed agent is no longer working (idle). Otherwise a role is
+      // 'running' while its agent status says so, OR while it emitted session
+      // activity within RECENT_ACTIVE_MS — this lights one-shot subagents that
+      // finish faster than the poller sees their `running` transition.
+      status: (() => {
+        if (entry.disposed) return 'idle'
+        if (entry.status === 'running') return 'running'
+        return entry.lastActiveAt > 0 && Date.now() - entry.lastActiveAt < RECENT_ACTIVE_MS ? 'running' : 'idle'
+      })(),
       disposed: entry.disposed,
       lastKind: entry.lastKind,
       lastText: entry.lastText,

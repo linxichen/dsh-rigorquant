@@ -123,6 +123,23 @@ async function main() {
     })
     emit('agent/created', { agent: oneShotChild })
     emit('agent/status', { agent: oneShotChild, status: 'running' })
+    // A second one-shot subagent that NEVER surfaces a running agent status:
+    // its role (oracle, from the descriptor label) must still light up because
+    // it emitted session activity just now (the RECENT_ACTIVE_MS fallback).
+    const shot2 = {
+      id: 'child-shot-2',
+      ctx: {},
+      session: {
+        id: 'child-shot-2',
+        header: { agentPreset: 'rigorquant', parentSession: 'lab-2' },
+        events: [{ type: 'subagent/descriptor', data: { label: 'GT-A symbolic derivation' } }],
+      },
+    }
+    emit('agent/created', { agent: shot2 })
+    emit('session/event', shot2.session, {
+      type: 'tool/call', time: Date.now() - 1000,
+      data: { name: 'bash', arguments: '{}' },
+    })
   } catch (error) {
     mountError = `${error.name}: ${error.message}`
   }
