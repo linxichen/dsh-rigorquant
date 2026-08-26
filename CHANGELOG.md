@@ -33,7 +33,9 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   agent status straight from the registry (`ctx.agents.get(id).status` — the
   same memberActivity signal dsh-agent-teams uses), falling back to recent
   session activity, so a one-shot subagent that finishes before a poll still
-  flashes its role. Subagents that finish stay in the
+  flashes its role. Each pipeline node carries its role's `docs/figs/`
+  portrait, so working roles are recognizable at a glance. Subagents that
+  finish stay in the
   roster as idle for
   a while (the graph keeps their role rather than going empty), while the
   live-team summary counts only still-present agents. The panel is a

@@ -737,13 +737,13 @@ const POLL_MS = 2000
 
 /** role → display label (mirrors the host ROLE_DEF; the client bundle is standalone). */
 const ROLE_DEF_CLIENT = {
-  root: { label: 'Orchestrator' },
-  explorer: { label: 'Explorer' },
-  novel: { label: 'Explorer' },
-  oracle: { label: 'Oracle' },
-  adversary: { label: 'Adversary' },
-  'lit-line': { label: 'Literature' },
-  'lit-adversary': { label: 'Literature' },
+  root: { label: 'Orchestrator', avatar: 'avatar-orchestrator.png' },
+  explorer: { label: 'Explorer', avatar: 'avatar-explorer.png' },
+  novel: { label: 'Explorer', avatar: 'avatar-explorer.png' },
+  oracle: { label: 'Oracle', avatar: 'avatar-oracle.png' },
+  adversary: { label: 'Adversary', avatar: 'avatar-adversary.png' },
+  'lit-line': { label: 'Literature', avatar: 'avatar-literature.png' },
+  'lit-adversary': { label: 'Literature', avatar: 'avatar-literature.png' },
 }
 
 const activityCopy = {
@@ -1291,11 +1291,15 @@ function RoleGraph(props) {
         whiteSpace: 'nowrap', overflow: 'hidden',
       },
     },
-      R.createElement('span', {
+      // The role's docs/figs portrait, so working roles are recognizable.
+      R.createElement('img', {
+        src: `/plugins/dsh-rigorquant/avatar/${def?.avatar}`,
+        alt: '',
         style: {
-          flex: 'none', width: 6, height: 6, borderRadius: 99,
-          background: tone,
-          animation: status === 'running' ? 'rq-pulse 1.6s ease-in-out infinite' : 'none',
+          flex: 'none', width: 16, height: 16, borderRadius: 4,
+          objectFit: 'cover', objectPosition: 'top center',
+          background: 'var(--dsw-alias-bg-module-platform)',
+          opacity: status === 'pending' ? 0.45 : 1,
         },
       }),
       R.createElement('span', {
