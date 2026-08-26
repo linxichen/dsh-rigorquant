@@ -25,13 +25,18 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   tag — only a `label`) get their role from the parent's `subagent_*` tool
   call via a per-parent FIFO, with a label-prefix fallback for cold reseed.
   The feed is collapsed to the latest action by default, with an arrow to
-  expand the recent history. A compact role-pipeline graph (columns = stages,
-  nodes = the seven roles, edges = handoffs) renders above the roster with the
+  expand the recent history. A role-pipeline graph (stages stacked
+  VERTICALLY, nodes = the seven roles, edges = handoffs) renders above the
+  roster with the
   same dependency-graph aesthetic as dsh-agent-teams, colored by live status
   (running/idle/pending). Subagents that finish stay in the roster as idle for
   a while (the graph keeps their role rather than going empty), while the
-  live-team summary counts only still-present agents. The graph's box is sized
-  to its deepest node so nodes and edges never overflow into the roster rows.
+  live-team summary counts only still-present agents. The panel is a
+  docked/floating surface (ported from dsh-agent-teams panel-geometry): drag
+  the header to float it, drag its left/bottom/corner edge to resize, and it
+  persists its layout between sessions. While docked-open the active
+  conversation column yields width (`data-rq-panel-open` + `--rq-panel-shift`
+  padding), so the panel never covers the text.
   The floater is scoped to the current session: it
   shows only the lab owned by the conversation open in the view (its captain
   session or one of its subagent transcripts), never other sessions' labs, and

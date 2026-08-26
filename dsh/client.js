@@ -762,6 +762,8 @@ const activityCopy = {
     history: 'history',
     hideHistory: 'hide',
     pending: 'pending',
+    float: 'float',
+    dock: 'dock',
   },
   zh: {
     title: 'RigorQuant 活动',
@@ -778,6 +780,8 @@ const activityCopy = {
     history: '条历史',
     hideHistory: '收起',
     pending: '待命',
+    float: '浮动',
+    dock: '停靠',
   },
 }
 
@@ -790,11 +794,17 @@ const activityFeedOpen = new Set()
 let activityStore = null
 
 /** One shared mutable state the store publishes (never handed out raw). */
-const activityState = { status: 'idle', labs: [], anchorRight: null, currentSessionId: null }
+const activityState = {
+  status: 'idle', labs: [], anchorRight: null, currentSessionId: null,
+  panelLayout: null, panelBounds: null,
+}
 
 function snapshotStore() {
   if (activityStore === null) {
-    activityStore = createStore({ status: activityState.status, labs: [], anchorRight: null, currentSessionId: null })
+    activityStore = createStore({
+      status: activityState.status, labs: [], anchorRight: null, currentSessionId: null,
+      panelLayout: null, panelBounds: null,
+    })
   }
   return activityStore
 }
@@ -813,6 +823,14 @@ const publishActivity = () => snapshotStore().set({ ...activityState, labs: acti
  */
 const PANEL_DOCK_RIGHT = 18
 
+function sameBounds(left, right) {
+  if (left === null || right === null) return left === right
+  return left.width === right.width && left.height === right.height && left.anchorRight === right.anchorRight
+}
+
+/** Measure the shell-overlay box and the active conversation's right edge,
+ * publishing both the pill's `right` offset and the dock/floating bounds the
+ * panel geometry resolves against. Best-effort: falls back to the viewport. */
 function measureAnchorRight() {
   try {
     if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return
@@ -821,19 +839,89 @@ function measureAnchorRight() {
     const overlayRect = overlay.getBoundingClientRect()
     const conversation = document.querySelector("[data-phase='active']")
     let right = PANEL_DOCK_RIGHT
+    let anchorRight = overlayRect.width
     if (conversation !== null && conversation !== undefined
       && typeof conversation.getBoundingClientRect === 'function') {
       const conversationRect = conversation.getBoundingClientRect()
-      const anchorRight = Math.min(Math.max(conversationRect.right - overlayRect.left, 0), overlayRect.width)
+      anchorRight = Math.min(Math.max(conversationRect.right - overlayRect.left, 0), overlayRect.width)
       right = Math.round(overlayRect.width - anchorRight + PANEL_DOCK_RIGHT)
     }
-    if (right !== activityState.anchorRight) {
-      activityState.anchorRight = right
-      publishActivity()
-    }
+    const bounds = { width: overlayRect.width, height: overlayRect.height, anchorRight }
+    let changed = false
+    if (right !== activityState.anchorRight) { activityState.anchorRight = right; changed = true }
+    if (!sameBounds(activityState.panelBounds, bounds)) { activityState.panelBounds = bounds; changed = true }
+    if (changed) publishActivity()
   } catch {
     // Layout probing is best-effort; the viewport fallback still renders.
   }
+}
+
+function persistPanelLayout(layout) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(PANEL_LAYOUT_STORAGE_KEY, JSON.stringify(layout))
+    }
+  } catch {
+    // Storage may be unavailable (private mode, strict sandbox).
+  }
+}
+
+function applyPanelLayout(layout) {
+  activityState.panelLayout = layout
+  publishActivity()
+  updatePanelShift()
+}
+
+/** Dodge the main text area: while the expanded panel is docked-open, make
+ * the active conversation column yield width so the panel never covers text. */
+function updatePanelShift() {
+  try {
+    const root = typeof document !== 'undefined' ? document.documentElement : null
+    if (root === null) return
+    const compact = (activityState.panelBounds?.width ?? window.innerWidth ?? Infinity) <= PANEL_COMPACT_BREAKPOINT
+    const expanded = !activityCollapsed
+    const docked = activityState.panelLayout?.mode === 'docked'
+    if (expanded && docked && !compact) {
+      const width = activityState.panelLayout?.width ?? PANEL_DEFAULT_WIDTH
+      root.setAttribute(PANEL_OPEN_ATTRIBUTE, '')
+      root.style.setProperty(PANEL_SHIFT_PROPERTY, `${width + PANEL_CONVERSATION_GAP + 18}px`)
+    } else {
+      root.removeAttribute(PANEL_OPEN_ATTRIBUTE)
+      root.style.removeProperty(PANEL_SHIFT_PROPERTY)
+    }
+  } catch {
+    // Best-effort: if the root is unavailable there is nothing to shift.
+  }
+}
+
+function setActivityCollapsed(collapsed) {
+  activityCollapsed = collapsed
+  publishActivity()
+  updatePanelShift()
+}
+
+/** Walk the headers/resize handles: bound the gesture to the current layout. */
+function beginPanelGesture(kind, edge, event, layout, bounds) {
+  if (typeof window === 'undefined') return
+  const startX = event.clientX
+  const startY = event.clientY
+  const onMove = (moveEvent) => {
+    const dx = moveEvent.clientX - startX
+    const dy = moveEvent.clientY - startY
+    applyPanelLayout(kind === 'move'
+      ? movePanelLayout(layout, dx, dy, bounds)
+      : resizePanelLayout(layout, edge, dx, dy, bounds))
+  }
+  const end = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', end)
+    window.removeEventListener('pointercancel', end)
+    persistPanelLayout(activityState.panelLayout)
+    updatePanelShift()
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', end, { once: true })
+  window.addEventListener('pointercancel', end, { once: true })
 }
 
 function ago(ms) {
@@ -853,6 +941,27 @@ function startActivityPoller(ctx) {
     return
   }
   const store = snapshotStore()
+  // Restore the persisted panel layout, then inject the rules that make the
+  // conversation column yield width while the panel is docked-open (the dodge).
+  try {
+    if (activityState.panelLayout === null) {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(PANEL_LAYOUT_STORAGE_KEY) : null
+      activityState.panelLayout = parsePanelLayout(raw)
+    }
+  } catch {
+    activityState.panelLayout = DEFAULT_PANEL_LAYOUT
+  }
+  if (typeof document !== 'undefined' && typeof document.head !== 'undefined') {
+    const shiftCss = document.createElement('style')
+    shiftCss.setAttribute('data-rq-panel-shift', '')
+    shiftCss.textContent = `html[${PANEL_OPEN_ATTRIBUTE}] [data-phase='active']{padding-right:var(${PANEL_SHIFT_PROPERTY});}`
+    document.head.appendChild(shiftCss)
+    ctx.effect(() => {
+      const parent = shiftCss.parentNode
+      if (parent !== null && parent !== undefined && typeof parent.removeChild === 'function') parent.removeChild(shiftCss)
+    }, 'rq-activity: dodge css')
+  }
+  updatePanelShift()
   const tick = async () => {
     measureAnchorRight()
     if (document.hidden) return
@@ -985,19 +1094,19 @@ function ActivityRow(props) {
 // the same compact left-to-right dependency graph: columns are stages, nodes
 // are roles colored by live status, edges are the role handoffs.
 
-const RQ_NODE_WIDTH = 66
-const RQ_NODE_HEIGHT = 24
-const RQ_COL_GAP = 12
-const RQ_ROW_GAP = 6
+const RQ_NODE_WIDTH = 96
+const RQ_NODE_HEIGHT = 28
+const RQ_H_GAP = 10
+const RQ_LVL_GAP = 44
 
-const RQ_PIPELINE = [
-  { role: 'root', col: 0, row: 1 },
-  { role: 'explorer', col: 1, row: 0 },
-  { role: 'novel', col: 1, row: 1 },
-  { role: 'lit-line', col: 1, row: 2 },
-  { role: 'oracle', col: 2, row: 0.5 },
-  { role: 'lit-adversary', col: 2, row: 1.5 },
-  { role: 'adversary', col: 3, row: 1 },
+// Vertical topology: stages stack top-to-bottom (more room vertically than
+// horizontally in the panel), each stage spreads its simultaneous roles
+// across the width. Nodes are roles; edges are the handoff flow downward.
+const RQ_LEVELS = [
+  ['root'],
+  ['explorer', 'novel', 'lit-line'],
+  ['oracle', 'lit-adversary'],
+  ['adversary'],
 ]
 
 const RQ_PIPELINE_EDGES = [
@@ -1006,6 +1115,115 @@ const RQ_PIPELINE_EDGES = [
   ['oracle', 'adversary'],
   ['lit-line', 'lit-adversary'],
 ]
+
+// ---- panel geometry ------------------------------------------------------
+// Ported from dsh-agent-teams panel-geometry.ts: a docked/floating panel that
+// ignores its own size and is resized by dragging its edges, persisted between
+// browser sessions. Purely functions of a layout + shell bounds.
+const PANEL_DEFAULT_WIDTH = 340
+const PANEL_DEFAULT_HEIGHT = 640
+const PANEL_MIN_WIDTH = 320
+const PANEL_MAX_WIDTH = 640
+const PANEL_MIN_HEIGHT = 360
+const PANEL_DOCK_TOP = 64
+const PANEL_DOCK_BOTTOM = 40
+const PANEL_FLOAT_MARGIN = 12
+const PANEL_COMPACT_BREAKPOINT = 960
+const PANEL_CONVERSATION_GAP = 14
+const PANEL_LAYOUT_STORAGE_KEY = 'dsh-rigorquant:panel:v1'
+const PANEL_OPEN_ATTRIBUTE = 'data-rq-panel-open'
+const PANEL_SHIFT_PROPERTY = '--rq-panel-shift'
+
+const DEFAULT_PANEL_LAYOUT = Object.freeze({
+  mode: 'docked', x: 0, y: PANEL_DOCK_TOP,
+  width: PANEL_DEFAULT_WIDTH, height: PANEL_DEFAULT_HEIGHT, heightMode: 'auto',
+})
+
+const clampValue = (value, minimum, maximum) => Math.min(Math.max(value, minimum), maximum)
+const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value)
+
+function parsePanelLayout(value) {
+  if (value === null || value === undefined) return DEFAULT_PANEL_LAYOUT
+  try {
+    const parsed = JSON.parse(value)
+    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_PANEL_LAYOUT
+    if ((parsed.mode !== 'docked' && parsed.mode !== 'floating')
+      || !isFiniteNumber(parsed.x) || !isFiniteNumber(parsed.y)
+      || !isFiniteNumber(parsed.width) || !isFiniteNumber(parsed.height)) {
+      return DEFAULT_PANEL_LAYOUT
+    }
+    return {
+      mode: parsed.mode, x: parsed.x, y: parsed.y, width: parsed.width, height: parsed.height,
+      heightMode: parsed.mode === 'floating' && parsed.heightMode === 'manual' ? 'manual' : 'auto',
+    }
+  } catch {
+    return DEFAULT_PANEL_LAYOUT
+  }
+}
+
+const compactPanelForBounds = (bounds) => bounds.width <= PANEL_COMPACT_BREAKPOINT
+const panelUsesAutoHeight = (layout, bounds) => compactPanelForBounds(bounds) || layout.mode === 'docked' || layout.heightMode === 'auto'
+
+function resolvePanelGeometry(layout, bounds) {
+  const boundsWidth = Math.max(1, bounds.width)
+  const boundsHeight = Math.max(1, bounds.height)
+  if (compactPanelForBounds(bounds)) {
+    return {
+      ...layout, x: PANEL_FLOAT_MARGIN, y: PANEL_FLOAT_MARGIN,
+      width: Math.max(1, boundsWidth - PANEL_FLOAT_MARGIN * 2),
+      height: Math.max(1, boundsHeight - PANEL_FLOAT_MARGIN * 2),
+    }
+  }
+  const maximumWidth = Math.max(1, Math.min(PANEL_MAX_WIDTH, boundsWidth - PANEL_FLOAT_MARGIN * 2))
+  const minimumWidth = Math.min(PANEL_MIN_WIDTH, maximumWidth)
+  const width = clampValue(layout.width, minimumWidth, maximumWidth)
+  const maximumHeight = Math.max(1, boundsHeight - PANEL_FLOAT_MARGIN * 2)
+  const minimumHeight = Math.min(PANEL_MIN_HEIGHT, maximumHeight)
+  if (layout.mode === 'docked') {
+    const y = clampValue(PANEL_DOCK_TOP, PANEL_FLOAT_MARGIN, Math.max(PANEL_FLOAT_MARGIN, boundsHeight - minimumHeight - PANEL_FLOAT_MARGIN))
+    const availableHeight = Math.max(1, boundsHeight - y - PANEL_DOCK_BOTTOM)
+    const height = clampValue(availableHeight, Math.min(minimumHeight, availableHeight), maximumHeight)
+    const anchorRight = clampValue(bounds.anchorRight, 0, boundsWidth)
+    const maximumX = Math.max(PANEL_FLOAT_MARGIN, boundsWidth - width - PANEL_FLOAT_MARGIN)
+    const x = clampValue(anchorRight - PANEL_DOCK_RIGHT - width, PANEL_FLOAT_MARGIN, maximumX)
+    return { mode: 'docked', x, y, width, height, heightMode: layout.heightMode }
+  }
+  const height = clampValue(layout.height, minimumHeight, maximumHeight)
+  return {
+    mode: 'floating', x: clampValue(layout.x, PANEL_FLOAT_MARGIN, Math.max(PANEL_FLOAT_MARGIN, boundsWidth - width - PANEL_FLOAT_MARGIN)),
+    y: clampValue(layout.y, PANEL_FLOAT_MARGIN, Math.max(PANEL_FLOAT_MARGIN, boundsHeight - height - PANEL_FLOAT_MARGIN)),
+    width, height, heightMode: layout.heightMode,
+  }
+}
+
+const floatPanelLayout = (geometry, bounds) => resolvePanelGeometry({ ...geometry, mode: 'floating' }, bounds)
+const dockPanelLayout = (layout, bounds) => resolvePanelGeometry({ ...layout, mode: 'docked', heightMode: 'auto' }, bounds)
+
+function movePanelLayout(start, dx, dy, bounds) {
+  return resolvePanelGeometry({ ...start, mode: 'floating', x: start.x + dx, y: start.y + dy }, bounds)
+}
+
+function resizePanelLayout(start, edge, dx, dy, bounds) {
+  if (start.mode === 'docked') {
+    if (edge !== 'left') return resolvePanelGeometry(start, bounds)
+    return resolvePanelGeometry({ ...start, width: start.width - dx }, bounds)
+  }
+  const resolved = resolvePanelGeometry(start, bounds)
+  const minimumWidth = Math.min(PANEL_MIN_WIDTH, resolved.x + resolved.width - PANEL_FLOAT_MARGIN)
+  const minimumHeight = Math.min(PANEL_MIN_HEIGHT, bounds.height - resolved.y - PANEL_FLOAT_MARGIN)
+  if (edge === 'left') {
+    const right = resolved.x + resolved.width
+    const maximumWidth = Math.max(1, Math.min(PANEL_MAX_WIDTH, right - PANEL_FLOAT_MARGIN))
+    const width = clampValue(resolved.width - dx, Math.min(minimumWidth, maximumWidth), maximumWidth)
+    return { ...resolved, x: right - width, width }
+  }
+  const maximumHeight = Math.max(1, bounds.height - resolved.y - PANEL_FLOAT_MARGIN)
+  const height = clampValue(resolved.height + dy, Math.min(minimumHeight, maximumHeight), maximumHeight)
+  if (edge === 'bottom') return { ...resolved, height, heightMode: 'manual' }
+  const maximumWidth = Math.max(1, Math.min(PANEL_MAX_WIDTH, bounds.width - resolved.x - PANEL_FLOAT_MARGIN))
+  const width = clampValue(resolved.width + dx, Math.min(minimumWidth, maximumWidth), maximumWidth)
+  return { ...resolved, width, height, heightMode: 'manual' }
+}
 
 /** role → live status: running, idle (present), or pending (not yet spawned). */
 function roleStatusOf(lab, role) {
@@ -1018,52 +1236,49 @@ function roleStatusOf(lab, role) {
 function RoleGraph(props) {
   const R = React()
   const { lab, t } = props
+  const maxLevelNodes = Math.max(...RQ_LEVELS.map((level) => level.length))
+  const graphWidth = maxLevelNodes * RQ_NODE_WIDTH + (maxLevelNodes - 1) * RQ_H_GAP
+  const graphHeight = (RQ_LEVELS.length - 1) * (RQ_NODE_HEIGHT + RQ_LVL_GAP) + RQ_NODE_HEIGHT
   const positions = new Map()
-  for (const node of RQ_PIPELINE) {
-    positions.set(node.role, {
-      x: node.col * (RQ_NODE_WIDTH + RQ_COL_GAP),
-      y: node.row * (RQ_NODE_HEIGHT + RQ_ROW_GAP),
-    })
+  for (let levelIndex = 0; levelIndex < RQ_LEVELS.length; levelIndex += 1) {
+    const roles = RQ_LEVELS[levelIndex]
+    const groupWidth = roles.length * RQ_NODE_WIDTH + (roles.length - 1) * RQ_H_GAP
+    const startX = (graphWidth - groupWidth) / 2
+    const y = levelIndex * (RQ_NODE_HEIGHT + RQ_LVL_GAP)
+    for (let i = 0; i < roles.length; i += 1) {
+      positions.set(roles[i], { x: startX + i * (RQ_NODE_WIDTH + RQ_H_GAP), y })
+    }
   }
   const edges = RQ_PIPELINE_EDGES.map(([from, to]) => {
     const source = positions.get(from)
     const target = positions.get(to)
     if (source === undefined || target === undefined) return null
-    const x1 = source.x + RQ_NODE_WIDTH
-    const y1 = source.y + RQ_NODE_HEIGHT / 2
-    const x2 = target.x
-    const y2 = target.y + RQ_NODE_HEIGHT / 2
-    const curve = (x2 - x1 >= 0 ? 1 : -1) * Math.min(14, RQ_COL_GAP - 2)
+    const x1 = source.x + RQ_NODE_WIDTH / 2
+    const y1 = source.y + RQ_NODE_HEIGHT
+    const x2 = target.x + RQ_NODE_WIDTH / 2
+    const y2 = target.y
+    const bend = Math.max(10, (y2 - y1) / 2)
     return R.createElement('path', {
       key: `${from}:${to}`,
-      d: `M${x1} ${y1}C${x1 + curve} ${y1},${x2 - curve} ${y2},${x2} ${y2}`,
+      d: `M${x1} ${y1}C${x1} ${y1 + bend},${x2} ${y2 - bend},${x2} ${y2}`,
       fill: 'none', stroke: 'var(--dsw-alias-border-l2)', strokeWidth: 1.5,
     })
   }).filter(Boolean)
 
-  // The container must be as large as the deepest/most-anchored node, or the
-  // nodes and edges overflow the box and paint over the roster below. A node
-  // at column C sits at C*(W+GAP), so the extent is C*(W+GAP)+W — not the
-  // (C-1)-gap formula that under-sizes the box.
-  const maxCol = Math.max(...RQ_PIPELINE.map((node) => node.col))
-  const maxRow = Math.max(...RQ_PIPELINE.map((node) => node.row))
-  const width = maxCol * (RQ_NODE_WIDTH + RQ_COL_GAP) + RQ_NODE_WIDTH
-  const height = maxRow * (RQ_NODE_HEIGHT + RQ_ROW_GAP) + RQ_NODE_HEIGHT
-
-  const nodes = RQ_PIPELINE.map((node) => {
-    const status = roleStatusOf(lab, node.role)
-    const def = ROLE_DEF_CLIENT[node.role]
-    const pos = positions.get(node.role)
+  const nodes = RQ_LEVELS.flat().map((role) => {
+    const status = roleStatusOf(lab, role)
+    const def = ROLE_DEF_CLIENT[role]
+    const pos = positions.get(role)
     const tone = status === 'running'
       ? 'var(--dsw-alias-state-business-primary)'
       : status === 'idle'
         ? 'var(--dsw-alias-label-secondary)'
         : 'var(--dsw-alias-label-tertiary)'
     return R.createElement('div', {
-      key: node.role,
-      'data-role': node.role,
+      key: role,
+      'data-role': role,
       'data-status': status,
-      title: `${def?.label ?? node.role} · ${status === 'running' ? t('working') : status === 'idle' ? t('idle') : t('pending')}`,
+      title: `${def?.label ?? role} · ${status === 'running' ? t('working') : status === 'idle' ? t('idle') : t('pending')}`,
       style: {
         position: 'absolute', left: pos.x, top: pos.y,
         width: RQ_NODE_WIDTH, height: RQ_NODE_HEIGHT,
@@ -1085,17 +1300,17 @@ function RoleGraph(props) {
       }),
       R.createElement('span', {
         style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
-      }, def?.label ?? node.role))
+      }, def?.label ?? role))
   })
 
   return R.createElement('div', {
     style: {
-      position: 'relative', width, height,
+      position: 'relative', width: graphWidth, height: graphHeight,
       margin: '6px auto 2px',
     },
   },
     R.createElement('svg', {
-      width, height, style: { position: 'absolute', left: 0, top: 0, overflow: 'visible' },
+      width: graphWidth, height: graphHeight, style: { position: 'absolute', left: 0, top: 0, overflow: 'visible' },
       'aria-hidden': true,
     }, ...edges),
     ...nodes)
@@ -1126,7 +1341,7 @@ function ActivityPanel(props) {
     const working = labs.reduce((total, lab) => total + (lab.summary?.working ?? 0), 0)
     return R.createElement('button', {
       type: 'button', 'aria-label': t('expand'),
-      onClick: () => { activityCollapsed = false; publishActivity() },
+      onClick: () => setActivityCollapsed(false),
       style: {
         // Vertically centered on the active conversation's right edge (measured
         // against the shell overlay + [data-phase='active']), so right-docked
@@ -1270,24 +1485,43 @@ function ActivityPanel(props) {
         ...feed))
   })
 
+  const layout = snapshot?.panelLayout ?? DEFAULT_PANEL_LAYOUT
+  const bounds = snapshot?.panelBounds ?? null
+  const resolved = bounds !== null
+    ? resolvePanelGeometry(layout, bounds)
+    : { ...layout, mode: layout.mode }
+  const floating = resolved.mode === 'floating'
+  const autoHeight = bounds !== null ? panelUsesAutoHeight(layout, bounds) : true
+  const onHeaderDown = (event) => {
+    // No move when the pointer lands on the collapse button.
+    if (typeof event?.target?.closest === 'function' && event.target.closest('button') !== null) return
+    const gestureBounds = bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }
+    beginPanelGesture('move', undefined, event, resolved, gestureBounds)
+  }
+
   return R.createElement('div', {
     style: {
-      position: 'absolute',
-      right: typeof snapshot.anchorRight === 'number' ? snapshot.anchorRight : 18,
-      top: '50%',
-      transform: 'translateY(-50%)',
+      position: 'absolute', left: resolved.x, top: resolved.y,
+      width: resolved.width,
+      height: autoHeight ? undefined : resolved.height,
+      maxHeight: resolved.height,
       zIndex: 9999,
-      width: 340, maxHeight: '70vh', display: 'flex', flexDirection: 'column',
+      display: 'flex', flexDirection: 'column',
       overflow: 'hidden', borderRadius: 12,
       border: '1px solid var(--dsw-alias-border-l2)',
       background: 'var(--dsw-alias-bg-layer-3)',
       boxShadow: '0 8px 32px rgba(0,0,0,.35)',
     },
+    'data-rq-panel': '',
+    'data-mode': resolved.mode,
   },
+    // Drag handle / header.
     R.createElement('div', {
+      onPointerDown: onHeaderDown,
       style: {
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '9px 12px', borderBottom: '1px solid var(--dsw-alias-border-l2)',
+        cursor: floating ? 'grab' : 'grab',
       },
     },
       R.createElement('span', {
@@ -1304,7 +1538,26 @@ function ActivityPanel(props) {
         },
       }, t('title')),
       R.createElement('button', {
-        type: 'button', onClick: () => { activityCollapsed = true; publishActivity() },
+        type: 'button',
+        onPointerDown: (event) => { if (typeof event.stopPropagation === 'function') event.stopPropagation() },
+        onClick: () => {
+          if (floating) {
+            if (bounds !== null) applyPanelLayout(dockPanelLayout(resolved, bounds))
+          } else {
+            applyPanelLayout(floatPanelLayout(resolved, bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }))
+          }
+        },
+        style: {
+          appearance: 'none', border: '1px solid var(--dsw-alias-border-l2)',
+          borderRadius: 8, cursor: 'pointer', font: 'inherit', fontSize: 10.5,
+          padding: '2px 8px', background: 'none',
+          color: 'var(--dsw-alias-label-secondary)',
+        },
+      }, floating ? t('dock') : t('float')),
+      R.createElement('button', {
+        type: 'button',
+        onPointerDown: (event) => { if (typeof event.stopPropagation === 'function') event.stopPropagation() },
+        onClick: () => setActivityCollapsed(true),
         style: {
           appearance: 'none', border: '1px solid var(--dsw-alias-border-l2)',
           borderRadius: 8, cursor: 'pointer', font: 'inherit', fontSize: 10.5,
@@ -1318,7 +1571,41 @@ function ActivityPanel(props) {
         padding: '6px 12px', borderTop: '1px solid var(--dsw-alias-border-l2)',
         fontSize: 9.5, color: 'var(--dsw-alias-label-tertiary)',
       },
-    }, `${t('credit')} · ${t('live')} · ${POLL_MS / 1000}s`))
+    }, `${t('credit')} · ${t('live')} · ${POLL_MS / 1000}s`),
+    // Resize handles for edge dragging.
+    R.createElement('div', {
+      'data-resize-edge': 'left',
+      onPointerDown: (event) => {
+        const gestureBounds = bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }
+        beginPanelGesture('resize', 'left', event, resolved, gestureBounds)
+      },
+      style: {
+        position: 'absolute', left: 0, top: 0, bottom: 0, width: 6,
+        cursor: 'ew-resize', touchAction: 'none', opacity: 0,
+      },
+    }),
+    R.createElement('div', {
+      'data-resize-edge': 'bottom',
+      onPointerDown: (event) => {
+        const gestureBounds = bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }
+        beginPanelGesture('resize', 'bottom', event, resolved, gestureBounds)
+      },
+      style: {
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: 6,
+        cursor: 'ns-resize', touchAction: 'none', opacity: 0,
+      },
+    }),
+    R.createElement('div', {
+      'data-resize-edge': 'corner',
+      onPointerDown: (event) => {
+        const gestureBounds = bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }
+        beginPanelGesture('resize', 'corner', event, resolved, gestureBounds)
+      },
+      style: {
+        position: 'absolute', right: 0, bottom: 0, width: 14, height: 14,
+        cursor: 'nwse-resize', touchAction: 'none', opacity: 0,
+      },
+    }))
 }
 
 function applyActivityOverlay(ctx) {
