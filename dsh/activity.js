@@ -346,14 +346,21 @@ function apply(ctx) {
       label: def?.label ?? entry.role ?? 'agent',
       tool: def?.tool ?? null,
       avatar: def?.avatar ?? null,
-      // A disposed agent is no longer working (idle). Otherwise a role is
-      // 'running' while its agent status says so, OR while it emitted session
-      // activity within RECENT_ACTIVE_MS — this lights one-shot subagents that
-      // finish faster than the poller sees their `running` transition.
+      // Authoritative live activity: read the member's current agent status
+      // straight from the registry (the same memberActivity signal
+      // dsh-agent-teams uses), not from accumulated status events. Fall back to
+      // the last recorded status, then to recent session activity, so a role
+      // lights while its agent is running and fades after it goes idle. A
+      // disposed agent is gone from the registry and is simply idle.
       status: (() => {
         if (entry.disposed) return 'idle'
-        if (entry.status === 'running') return 'running'
-        return entry.lastActiveAt > 0 && Date.now() - entry.lastActiveAt < RECENT_ACTIVE_MS ? 'running' : 'idle'
+        const live = ctx.get('agents')?.get(entry.id)
+        const liveStatus = live !== undefined && (live.status === 'running' || live.status === 'idle')
+          ? live.status
+          : entry.status
+        if (liveStatus === 'running') return 'running'
+        if (entry.lastActiveAt > 0 && Date.now() - entry.lastActiveAt < RECENT_ACTIVE_MS) return 'running'
+        return 'idle'
       })(),
       disposed: entry.disposed,
       lastKind: entry.lastKind,

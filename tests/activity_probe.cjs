@@ -35,7 +35,12 @@ async function main() {
           },
         }
       }
-      if (name === 'agents') return { list: () => seedAgents }
+      if (name === 'agents') {
+        return {
+          list: () => seedAgents,
+          get: (id) => seedAgents.find((agent) => agent.id === id),
+        }
+      }
       if (name === 'sessions') return { get: (id) => ({ id }) }
       if (name === 'sessionTitle') return { get: () => ({ title: 'Boundary cases of the VaR estimator' }) }
       if (name === 'agentPresets') return { composedPreset: () => undefined }
@@ -53,6 +58,7 @@ async function main() {
   const rootAgent = {
     id: 'lab-1',
     ctx: {},
+    status: 'running',
     session: {
       id: 'lab-1',
       header: { agentPreset: 'rigorquant', parentSession: undefined },
@@ -62,6 +68,7 @@ async function main() {
   const explorerAgent = {
     id: 'child-1',
     ctx: {},
+    status: 'running',
     session: {
       id: 'child-1',
       header: { agentPreset: 'rigorquant', parentSession: 'lab-1' },
