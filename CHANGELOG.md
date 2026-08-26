@@ -28,7 +28,11 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   expand the recent history. A compact role-pipeline graph (columns = stages,
   nodes = the seven roles, edges = handoffs) renders above the roster with the
   same dependency-graph aesthetic as dsh-agent-teams, colored by live status
-  (running/idle/pending). The floater is scoped to the current session: it
+  (running/idle/pending). Subagents that finish stay in the roster as idle for
+  a while (the graph keeps their role rather than going empty), while the
+  live-team summary counts only still-present agents. The graph's box is sized
+  to its deepest node so nodes and edges never overflow into the roster rows.
+  The floater is scoped to the current session: it
   shows only the lab owned by the conversation open in the view (its captain
   session or one of its subagent transcripts), never other sessions' labs, and
   only while that session is a RigorQuant one. Purely observational — no tool,

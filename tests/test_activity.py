@@ -90,18 +90,32 @@ def test_a_session_switching_to_rigorquant_is_promoted_to_captain(probe):
     labs = probe["snapshot"]["labs"]
     promoted = next(lab for lab in labs if lab["id"] == "lab-2")
     assert promoted["captain"]["label"] == "Orchestrator"
-    assert promoted["summary"] == {"total": 2, "working": 0, "idle": 2}
+    assert promoted["summary"] == {"total": 2, "working": 1, "idle": 1}
 
 
-def test_a_oneshot_subagent_gets_its_role_from_the_parents_tool_call(probe):
+def test_a_oneshot_subagent_gets_its_role_and_status_from_the_parents_tool_call(probe):
     """One-shot subagents carry only a label (no persona tag). The parent's
-    subagent_lit_line tool call must attach the lit-line role to the child."""
+    subagent_lit_line tool call must attach the lit-line role to the child,
+    and its agent/status must light it up as running."""
     labs = probe["snapshot"]["labs"]
     promoted = next(lab for lab in labs if lab["id"] == "lab-2")
     member = next(m for m in promoted["members"] if m["sessionId"] == "child-shot-1")
     assert member["role"] == "lit-line"
     assert member["label"] == "Literature"
     assert member["tool"] == "subagent_lit_line"
+    assert member["status"] == "running"
+
+
+def test_a_disposed_subagent_stays_in_the_roster_but_drops_from_the_live_summary(probe):
+    """A finished (disposed) one-shot subagent must remain in the roster as
+    idle so the pipeline graph keeps its role, while the live-team summary
+    counts only still-present agents."""
+    disposed = probe["snapshotDisposed"]
+    promoted = next(lab for lab in disposed["labs"] if lab["id"] == "lab-2")
+    member = next(m for m in promoted["members"] if m["sessionId"] == "child-shot-1")
+    assert member["disposed"] is True
+    assert member["status"] == "idle"
+    assert promoted["summary"] == {"total": 1, "working": 0, "idle": 1}
 
 
 def test_snapshot_feed_is_newest_first(probe):

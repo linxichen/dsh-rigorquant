@@ -985,9 +985,9 @@ function ActivityRow(props) {
 // the same compact left-to-right dependency graph: columns are stages, nodes
 // are roles colored by live status, edges are the role handoffs.
 
-const RQ_NODE_WIDTH = 68
+const RQ_NODE_WIDTH = 66
 const RQ_NODE_HEIGHT = 24
-const RQ_COL_GAP = 16
+const RQ_COL_GAP = 12
 const RQ_ROW_GAP = 6
 
 const RQ_PIPELINE = [
@@ -1033,7 +1033,7 @@ function RoleGraph(props) {
     const y1 = source.y + RQ_NODE_HEIGHT / 2
     const x2 = target.x
     const y2 = target.y + RQ_NODE_HEIGHT / 2
-    const curve = x2 - x1 >= 0 ? 14 : -14
+    const curve = (x2 - x1 >= 0 ? 1 : -1) * Math.min(14, RQ_COL_GAP - 2)
     return R.createElement('path', {
       key: `${from}:${to}`,
       d: `M${x1} ${y1}C${x1 + curve} ${y1},${x2 - curve} ${y2},${x2} ${y2}`,
@@ -1041,10 +1041,14 @@ function RoleGraph(props) {
     })
   }).filter(Boolean)
 
-  const maxCol = 3
-  const maxRow = 2
-  const width = maxCol * RQ_NODE_WIDTH + (maxCol - 1) * RQ_COL_GAP
-  const height = maxRow * RQ_NODE_HEIGHT + (maxRow - 1) * RQ_ROW_GAP
+  // The container must be as large as the deepest/most-anchored node, or the
+  // nodes and edges overflow the box and paint over the roster below. A node
+  // at column C sits at C*(W+GAP), so the extent is C*(W+GAP)+W — not the
+  // (C-1)-gap formula that under-sizes the box.
+  const maxCol = Math.max(...RQ_PIPELINE.map((node) => node.col))
+  const maxRow = Math.max(...RQ_PIPELINE.map((node) => node.row))
+  const width = maxCol * (RQ_NODE_WIDTH + RQ_COL_GAP) + RQ_NODE_WIDTH
+  const height = maxRow * (RQ_NODE_HEIGHT + RQ_ROW_GAP) + RQ_NODE_HEIGHT
 
   const nodes = RQ_PIPELINE.map((node) => {
     const status = roleStatusOf(lab, node.role)
@@ -1170,6 +1174,9 @@ function ActivityPanel(props) {
       status: captain?.status ?? 'idle',
     })]
     for (const member of lab.members ?? []) {
+      // Roster rows show only live agents; the graph (below) paints the full
+      // role pipeline from the same roster including just-completed ones.
+      if (member.disposed) continue
       rows.push(R.createElement(ActivityRow, {
         key: `${lab.id}:${member.sessionId}`,
         def: { avatar: member.avatar, avatarWidth: 28 },

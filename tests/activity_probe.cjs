@@ -82,6 +82,18 @@ async function main() {
       events: [],
     },
   }
+  // The one-shot subagent (opaque label, no persona) — tests the queue role
+  // fallback, then the running→disposed lifecycle (lights up, then stays in
+  // the roster as idle while the live-team summary counts only live agents).
+  const oneShotChild = {
+    id: 'child-shot-1',
+    ctx: {},
+    session: {
+      id: 'child-shot-1',
+      header: { agentPreset: 'rigorquant', parentSession: 'lab-2' },
+      events: [{ type: 'subagent/descriptor', data: { label: 'Draft paper audience spec' } }],
+    },
+  }
   const seedAgents = [rootAgent, explorerAgent, laterLabAgent]
 
   let mountError = null
@@ -109,15 +121,8 @@ async function main() {
       type: 'tool/call', time: 2500,
       data: { name: 'subagent_lit_line', arguments: '{}' },
     })
-    emit('agent/created', { agent: {
-      id: 'child-shot-1',
-      ctx: {},
-      session: {
-        id: 'child-shot-1',
-        header: { agentPreset: 'rigorquant', parentSession: 'lab-2' },
-        events: [{ type: 'subagent/descriptor', data: { label: 'Draft paper audience spec' } }],
-      },
-    } })
+    emit('agent/created', { agent: oneShotChild })
+    emit('agent/status', { agent: oneShotChild, status: 'running' })
   } catch (error) {
     mountError = `${error.name}: ${error.message}`
   }
@@ -142,6 +147,14 @@ async function main() {
     const { code, body } = await call(activityRoute, '/plugins/dsh-rigorquant/activity')
     verdict.snapshotCode = code
     verdict.snapshot = JSON.parse(body)
+  }
+  // Dispose the one-shot subagent, then re-read: it must stay in the roster as
+  // idle (so the pipeline graph keeps the role) while the live-team summary
+  // counts only the still-present agents.
+  emit('agent/disposed', { agent: oneShotChild })
+  if (activityRoute !== undefined) {
+    const { body } = await call(activityRoute, '/plugins/dsh-rigorquant/activity')
+    verdict.snapshotDisposed = JSON.parse(body)
   }
   if (portraitRoute !== undefined) {
     const ok = await call(portraitRoute, '/plugins/dsh-rigorquant/avatar/avatar-orchestrator.png')

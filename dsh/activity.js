@@ -317,11 +317,15 @@ function apply(ctx) {
     }
   })
 
-  // Prune disposed entries older than an hour (runs on every snapshot).
+  // Prune disposed entries older than an hour (runs on every snapshot). Clock
+  // from the later of last activity and creation, so a subagent disposed with
+  // no timed event yet (lastAt 0) is not deleted the instant it ends.
   const prune = () => {
     const now = Date.now()
     for (const [id, entry] of entries) {
-      if (entry.disposed && now - entry.lastAt > KEEP_DISPOSED_MS) entries.delete(id)
+      if (entry.disposed && now - Math.max(entry.lastAt, entry.startedAt) > KEEP_DISPOSED_MS) {
+        entries.delete(id)
+      }
     }
   }
 
@@ -333,7 +337,11 @@ function apply(ctx) {
       label: def?.label ?? entry.role ?? 'agent',
       tool: def?.tool ?? null,
       avatar: def?.avatar ?? null,
-      status: entry.status,
+      // A disposed agent is no longer working: report it as idle so a finished
+      // one-shot subagent does not keep a role lit up forever, but stays in the
+      // roster so the graph does not go empty the moment it completes.
+      status: entry.disposed ? 'idle' : entry.status,
+      disposed: entry.disposed,
       lastKind: entry.lastKind,
       lastText: entry.lastText,
       lastAt: entry.lastAt,
@@ -348,9 +356,15 @@ function apply(ctx) {
     for (const entry of entries.values()) {
       if (entry.role !== 'root' || entry.preset !== PRESET_ID || entry.disposed) continue
       const members = []
+      const liveMembers = []
       for (const other of entries.values()) {
-        if (other.parentId === entry.id && other.role !== null && other.role !== 'root' && !other.disposed) {
-          members.push(memberRow(other))
+        // Disposed members stay in the roster (pruned after KEEP_DISPOSED_MS)
+        // so the graph shows every role that ran rather than going empty; the
+        // live-team summary and roster rows count only agents still around.
+        if (other.parentId === entry.id && other.role !== null && other.role !== 'root') {
+          const row = memberRow(other)
+          members.push(row)
+          if (!other.disposed) liveMembers.push(row)
         }
       }
       const feed = (Array.isArray(entry.feed) ? entry.feed : []).slice()
@@ -359,8 +373,9 @@ function apply(ctx) {
       }
       feed.sort((a, b) => b.t - a.t)
       const ordered = feed.slice(0, FEED_LIMIT)
-      const working = members.filter((m) => m.status === 'running').length
+      const working = liveMembers.filter((m) => m.status === 'running').length
         + (entry.status === 'running' ? 1 : 0)
+      const total = liveMembers.length + 1
       labs.push({
         id: entry.id,
         title: titleOf(entry.id),
@@ -368,9 +383,9 @@ function apply(ctx) {
         lastAt: entry.lastAt,
         stage: stageOf(entry.tools),
         summary: {
-          total: members.length + 1,
+          total,
           working,
-          idle: members.length + 1 - working,
+          idle: total - working,
         },
         captain: memberRow(entry),
         members,
