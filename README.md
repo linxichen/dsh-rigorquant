@@ -97,6 +97,13 @@ dies only on a concrete counterexample, never on style or vibes.
 
 <br clear="left">
 
+
+<img src="docs/figs/avatar-document-adversary.png" align="left" width="200" alt="Document adversary">
+
+**Document adversary** · `subagent_document_adversary` — an independent agent that audits each finished deliverable for **self-completeness** (the thing 90% of AI-generated writing drops): every jargon term, symbol, and abbreviation the document uses must be defined in the artifact itself or the audience spec's symbol registry. Returns `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`; a `NEEDS-EDITS` is a blocking gap the validator refuses a `PASS` without.
+
+<br clear="left">
+
 ### The team, live — the activity view
 
 The plugin ships a **live activity panel** (the `rq-activity` host half, the

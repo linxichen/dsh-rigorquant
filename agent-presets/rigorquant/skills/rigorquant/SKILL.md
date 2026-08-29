@@ -270,11 +270,17 @@ Each orchestrator round = fan-out → ground truth → adversary → synthesize.
    `artifacts/paper/main.tex`, Beamer slides `artifacts/slides/main.tex`, and
    `artifacts/web/index.html` when required) by ASSEMBLING the validated
    records (registry, derivations, audits, battery results) and writing them
-   against the confirmed audience specs — never by writing new claims.
+   against the confirmed audience specs — never by writing new claims. Then
+   dispatch `subagent_document_adversary` (one call per deliverable) to audit
+   each artifact for SELF-COMPLETENESS — every jargon term, symbol, and
+   abbreviation it uses is defined — and commit its verdict as
+   `audits/document-adversary-<name>.md` (name in `paper`, `slides`, `web`); a
+   NEEDS-EDITS verdict is a blocking gap, capped at two passes per deliverable.
    Structure, the no-overclaim rule, bibliography, and the document-adversary
    gate: [references/deliverables.md](references/deliverables.md).
-   `rq_check.py` verifies existence, structure, compilation, references, and
-   that the paper does not overclaim the recorded evidence levels.
+   `rq_check.py` verifies existence, structure, compilation, references,
+   definition of used symbols, and that the paper does not overclaim the
+   recorded evidence levels.
 
 A study declares PASS only when the broad criterion is satisfied by stages
 1–3 together, the audience consultation is answered, and the declared

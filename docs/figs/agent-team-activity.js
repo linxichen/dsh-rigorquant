@@ -3,7 +3,7 @@
 // https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png),
 // adapted to the RigorQuant research team.
 //
-// The six role portraits from docs/figs/ are embedded as base64 data URIs so
+// The role portraits from docs/figs/ are embedded as base64 data URIs so
 // the one SVG file renders anywhere (GitHub, local browser) with no external
 // references. To regenerate:
 //
@@ -109,6 +109,7 @@ const MEMBERS = [
   { png: 'avatar-literature.png', name: 'Literature', tool: 'subagent_lit_line', status: 'working · t2 — citation-graph sweep, both ways', tag: 't2', busy: true },
   { png: 'avatar-oracle.png', name: 'Oracle', tool: 'subagent_ground_truth', status: 'on standby · t3 — blind re-derivation, two ways', tag: 't3', busy: false },
   { png: 'avatar-adversary.png', name: 'Adversary', tool: 'subagent_adversary', status: 'on standby · t4 — battery + counterexamples', tag: 't4', busy: false },
+  { png: 'avatar-document-adversary.png', name: 'Document', tool: 'subagent_document_adversary', status: 'on standby · t5 — self-completeness audit', tag: 't5', busy: false },
   { png: 'avatar-validator.png', name: 'Validator', tool: 'rq_check.py', status: 'on standby · t5 — evidence gate / PASS', tag: 't5', busy: false },
 ]
 
@@ -154,12 +155,12 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.
 
   <!-- team card -->
   <text x="16" y="${HEADER_H + 26}" font-family="${C.sans}" font-size="16" font-weight="700" fill="${C.text}">rigorquant research lab</text>
-  <text x="414" y="${HEADER_H + 25}" text-anchor="end" font-family="${C.sans}" font-size="11.5" fill="${C.text3}">6 members · 0/5 phases · 0 messages</text>
+  <text x="414" y="${HEADER_H + 25}" text-anchor="end" font-family="${C.sans}" font-size="11.5" fill="${C.text3}">7 members · 0/5 phases · 0 messages</text>
   <g>
     ${avatar('cap', 16, HEADER_H + 40, 76, 56, 10, PNG('avatar-orchestrator.png'))}
     <circle cx="106" cy="${HEADER_H + 48}" r="3" fill="${C.blue}"/>
     <text x="115" y="${HEADER_H + 52}" font-family="${C.sans}" font-size="13" font-weight="600" fill="${C.text}">CAPTAIN · Orchestrator</text>
-    <text x="106" y="${HEADER_H + 71}" font-family="${C.sans}" font-size="11" fill="${C.text3}">root persona — dispatched 5 rounds to 6 members</text>
+    <text x="106" y="${HEADER_H + 71}" font-family="${C.sans}" font-size="11" fill="${C.text3}">root persona — dispatched 5 rounds to 7 members</text>
     <rect x="336" y="${HEADER_H + 38}" width="78" height="21" rx="10.5" fill="${C.pill}" stroke="${C.pillBorder}"/>
     <text x="375" y="${HEADER_H + 52}" text-anchor="middle" font-family="${C.sans}" font-size="11" font-weight="600" fill="${C.pillText}">2 in progress</text>
   </g>

@@ -202,8 +202,12 @@ load-bearing claim (claim-driven invalidation via the existing
   every `avoid` key is absent from the text outside the block; the artifact
   compiles/renders. `consultation_pending: true` or a missing audience spec
   refuses the PASS.
-- *Soft (document adversary):* a subagent reads the artifact and its spec and
-  returns PASS or needs-edits with concrete reasons (proof depth,
+- *Soft (document adversary):* an **independent role agent**
+  (`subagent_document_adversary`, role `doc-adversary`) reads the artifact and
+  its spec and audits it for **self-completeness** — every jargon term, symbol,
+  and abbreviation the document uses must be defined in the artifact itself or
+  the audience spec's symbol registry — then returns PASS or needs-edits with
+  concrete reasons (undefined term/symbol and where it appears, proof depth,
   motivation, worked examples, appropriateness for the level). needs-edits is
   a blocking gap. The report is committed as
   `audits/document-adversary-<name>.md` (name in `paper`, `slides`, `web`) and

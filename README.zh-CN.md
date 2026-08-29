@@ -89,6 +89,13 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 <br clear="left">
 
+
+<img src="docs/figs/avatar-document-adversary.png" align="left" width="200" alt="Document adversary">
+
+**文档对抗** · `subagent_document_adversary`——一个独立智能体，逐一审计每份交付物的**自足性**（约九成 AI 生成内容恰恰会省略这点）：文档用到的每个专业术语、符号与缩写，都必须在文档自身或受众规范的符号表中有定义。返回 `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`；`NEEDS-EDITS` 是阻塞性缺陷，校验器在缺失时会拒绝 `PASS`。
+
+<br clear="left">
+
 ### 团队实时视图——活动面板
 
 本插件带有一个**实时活动面板**（宿主半 `rq-activity` + 浏览器半的

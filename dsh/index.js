@@ -39,7 +39,7 @@ const TAG = /\[\[rq:role=([a-z-]+)\]\]/
 /** The persona slot's reserved section name (dsh-system-prompt contract). */
 const PERSONA_SECTION = 'deployment:persona'
 /** Every routable role, in card order. */
-export const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary']
+export const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 /** Tool row → role, for the repo-consistency test and the docs to stay honest. */
 export const ROLE_TOOLS = {
   explorer: 'subagent',
@@ -48,6 +48,7 @@ export const ROLE_TOOLS = {
   adversary: 'subagent_adversary',
   'lit-line': 'subagent_lit_line',
   'lit-adversary': 'subagent_lit_adversary',
+  'doc-adversary': 'subagent_document_adversary',
 }
 
 const choiceSchema = z.object({

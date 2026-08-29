@@ -32,7 +32,7 @@ const PRESET_ID = 'rigorquant'
 
 /** Persona tag the preset stamps into every role persona (same as the router). */
 const TAG = /\[\[rq:role=([a-z-]+)\]\]/
-const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary']
+const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 
 /** role → display name, tool name, and docs/figs portrait file. */
 export const ROLE_DEF = {
@@ -42,7 +42,8 @@ export const ROLE_DEF = {
   oracle:    { label: 'Oracle',       tool: 'subagent_ground_truth',   avatar: 'avatar-oracle.png' },
   adversary: { label: 'Adversary',    tool: 'subagent_adversary',      avatar: 'avatar-adversary.png' },
   'lit-line':     { label: 'Literature', tool: 'subagent_lit_line',    avatar: 'avatar-literature.png' },
-  'lit-adversary': { label: 'Literature', tool: 'subagent_lit_adversary', avatar: 'avatar-literature.png' },
+  'lit-adversary': { label: 'Literature', tool: 'subagent_lit_adversary', avatar: 'avatar-literature-adversary.png' },
+  'doc-adversary': { label: 'Document',  tool: 'subagent_document_adversary', avatar: 'avatar-document-adversary.png' },
   validator: { label: 'Validator',    tool: 'rq_check.py',             avatar: 'avatar-validator.png' },
 }
 
@@ -104,6 +105,7 @@ function stageOf(tools) {
   for (const tool of tools) {
     if (/subagent_ground_truth/.test(tool)) stage = 'ground truth'
     else if (/subagent_adversary/.test(tool)) stage = 'attack'
+    else if (/subagent_document_adversary/.test(tool)) stage = 'certify'
     else if (/subagent/.test(tool)) stage = 'fan out'
     else if (/rq_check/.test(tool)) stage = 'certify'
   }

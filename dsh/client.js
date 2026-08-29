@@ -27,7 +27,7 @@
 window.__ModuleLoader__.load({ id: 'dsh-rigorquant', factory: (require) => {
 
 const CARD_KEY = 'rigorquant-models'
-const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary']
+const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 const SLOTS = ['Primary', 'Fallback']
 const EFFORTS = ['off', 'high', 'max']
 // Invocation frequency per role: the badge tone follows the level, the label
@@ -35,6 +35,7 @@ const EFFORTS = ['off', 'high', 'max']
 const ROLE_FREQ = {
   root: 'high', explorer: 'high', novel: 'low', oracle: 'medium',
   adversary: 'medium', 'lit-line': 'low', 'lit-adversary': 'low',
+  'doc-adversary': 'low',
 }
 
 let react = null
@@ -117,6 +118,7 @@ const copy = {
     'role.adversary': 'Adversary',
     'role.lit-line': 'Literature line',
     'role.lit-adversary': 'Literature adversary',
+    'role.doc-adversary': 'Document adversary',
     'roleDesc.root': 'Runs the whole study: plans, delegates to every role, checkpoints, and synthesizes.',
     'roleDesc.explorer': 'Proposes candidate methods and routes with exact statements; spawned in parallel batches at each proposal stage.',
     'roleDesc.novel': 'Derives from the problem statement only — no prior context, no web. The novelty-isolation lane for critical routes.',
@@ -124,6 +126,7 @@ const copy = {
     'roleDesc.adversary': 'Audits candidate methods and the checks themselves; eliminates routes only by concrete counterexample.',
     'roleDesc.lit-line': 'Traverses one research line (backward/forward citations) and writes a bounded dossier.',
     'roleDesc.lit-adversary': 'Independently re-retrieves and verifies load-bearing literature claims (validity and freshness).',
+    'roleDesc.doc-adversary': 'Audits finished deliverables for self-completeness: every jargon term, symbol, and abbreviation used is defined.',
     'roleFreq.root': 'Frequent',
     'roleFreq.explorer': 'Frequent',
     'roleFreq.novel': 'Rare',
@@ -131,6 +134,7 @@ const copy = {
     'roleFreq.adversary': 'Common',
     'roleFreq.lit-line': 'Rare',
     'roleFreq.lit-adversary': 'Rare',
+    'roleFreq.doc-adversary': 'Rare',
   },
   zh: {
     title: 'RigorQuant 角色模型路由',
@@ -157,6 +161,7 @@ const copy = {
     'role.adversary': '对抗审计',
     'role.lit-line': '文献主线',
     'role.lit-adversary': '文献对抗',
+    'role.doc-adversary': '文档对抗',
     'roleDesc.root': '运行整个研究：规划、向各角色派发、检查点与综合。',
     'roleDesc.explorer': '提出候选方法与路径（含精确陈述），在每个提案阶段以并行批次派出。',
     'roleDesc.novel': '仅基于问题陈述推导——无前序上下文、无网络。关键路径的新颖性隔离通道。',
@@ -164,6 +169,7 @@ const copy = {
     'roleDesc.adversary': '审计候选方法与检查本身；仅以具体反例消除路径。',
     'roleDesc.lit-line': '遍历一条研究线（前向/后向引用）并产出有界档案。',
     'roleDesc.lit-adversary': '独立重新检索并核验关键文献论断（有效性与时效性）。',
+    'roleDesc.doc-adversary': '审计最终交付物的自足性：所用的每个专业术语、符号与缩写都应有定义。',
     'roleFreq.root': '频繁',
     'roleFreq.explorer': '频繁',
     'roleFreq.novel': '少见',
@@ -171,6 +177,7 @@ const copy = {
     'roleFreq.adversary': '常见',
     'roleFreq.lit-line': '少见',
     'roleFreq.lit-adversary': '少见',
+    'roleFreq.doc-adversary': '少见',
   },
 }
 
@@ -743,7 +750,8 @@ const ROLE_DEF_CLIENT = {
   oracle: { label: 'Oracle', avatar: 'avatar-oracle.png' },
   adversary: { label: 'Adversary', avatar: 'avatar-adversary.png' },
   'lit-line': { label: 'Literature', avatar: 'avatar-literature.png' },
-  'lit-adversary': { label: 'Literature', avatar: 'avatar-literature.png' },
+  'lit-adversary': { label: 'Literature', avatar: 'avatar-literature-adversary.png' },
+  'doc-adversary': { label: 'Document', avatar: 'avatar-document-adversary.png' },
 }
 
 const activityCopy = {
@@ -1090,9 +1098,9 @@ function ActivityRow(props) {
 
 // ---- role pipeline graph -------------------------------------------------
 // The RigorQuant preset has no durable task DAG (unlike dsh-agent-teams'
-// scheduler), but its seven roles form a fixed handoff pipeline. Render it as
-// the same compact left-to-right dependency graph: columns are stages, nodes
-// are roles colored by live status, edges are the role handoffs.
+// scheduler), but its eight roles form a fixed handoff pipeline. Render it as
+// the same compact dependency graph: columns are stages, nodes are roles
+// colored by live status, edges are the role handoffs.
 
 const RQ_NODE_WIDTH = 96
 const RQ_NODE_HEIGHT = 28
@@ -1107,6 +1115,7 @@ const RQ_LEVELS = [
   ['explorer', 'novel', 'lit-line'],
   ['oracle', 'lit-adversary'],
   ['adversary'],
+  ['doc-adversary'],
 ]
 
 const RQ_PIPELINE_EDGES = [
@@ -1114,6 +1123,7 @@ const RQ_PIPELINE_EDGES = [
   ['explorer', 'oracle'], ['novel', 'oracle'],
   ['oracle', 'adversary'],
   ['lit-line', 'lit-adversary'],
+  ['adversary', 'doc-adversary'],
 ]
 
 // ---- panel geometry ------------------------------------------------------
