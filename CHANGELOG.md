@@ -8,7 +8,22 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-29
+
 ### Added
+- **Document-adversary role** (`subagent_document_adversary`). An independent
+  agent that audits each finished deliverable for **self-completeness**: every
+  jargon term, symbol, and abbreviation used in the artifact must be defined in
+  the artifact itself or the audience spec's symbol registry. Returns
+  `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`; a `NEEDS-EDITS` is a blocking gap
+  the validator refuses a `PASS` without. Wired end-to-end: routable as a model
+  role (`dsh/index.js` `ROLES`/`ROLE_TOOLS`), one role row in the
+  `rigorquant-models` Settings card (`dsh/client.js`, en/zh copy + its own
+  `docs/figs/avatar-document-adversary.png` portrait), a stage + pipeline node
+  in the live activity view (`dsh/activity.js`, `dsh/client.js`, its own
+  portrait), and a README (en/zh) team entry. Adds
+  `docs/figs/avatar-literature-adversary.png` so the literature adversary gets
+  its own portrait instead of sharing the literature-line one.
 - **Upgrade study for DSH v0.1.2-alpha.1** (`docs/upgrade-0.1.2.md`). Audited
   every Host event / service, Client slot / service, and settings seam this
   repo calls against the `dsh-v0.1.2-alpha.1` tag: no breaking incompatibility
@@ -37,7 +52,7 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   call via a per-parent FIFO, with a label-prefix fallback for cold reseed.
   The feed is collapsed to the latest action by default, with an arrow to
   expand the recent history. A role-pipeline graph (stages stacked
-  VERTICALLY, nodes = the seven roles, edges = handoffs) renders above the
+  VERTICALLY, nodes = the eight roles, edges = handoffs) renders above the
   roster with the
   same dependency-graph aesthetic as dsh-agent-teams, colored by live status
   (running/idle/pending). A role lights up by reading its member's current

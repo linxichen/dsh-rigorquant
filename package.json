@@ -1,6 +1,6 @@
 {
   "name": "dsh-rigorquant",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "RigorQuant for DeepSeek Harness: session-scoped unattended, context-isolated multi-agent research for empirical/computational mathematics with a four-part pre-implementation check battery and a jacobian/Lean escalation lane.",
   "license": "MIT",
   "bin": {
