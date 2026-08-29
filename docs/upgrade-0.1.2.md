@@ -58,28 +58,38 @@ Everything below still exists in 0.1.2 with the same contract the code relies on
 
 ## 2. New builtin features to utilize (stop reinventing the wheel)
 
-### 2.1 ★ Subagent model selection — the big one
+### 2.1 ★ Subagent model selection
 
-`@deepseek-ai/dsh-tool-subagent` in 0.1.2 grew a native model-selection layer
-(`packages/subagent/tool-subagent/src/model-selection.ts`,
-`model-selection-settings.ts`):
+> Correction to an earlier reading: `agentOptions` is **not** new in 0.1.2. The
+> runtime we already run (0.1.1-rc.2) has `@deepseek-ai/dsh-tool-subagent`
+> `agentOptions: { provider, model, maxTokens }`, and it already flows to the
+> child (`packages/subagent/tool-subagent/src/index.ts:390` passes it into
+> `ctx.subagents.start`). The per-role "which model" default was **already
+> builtin** — this repo's `agent/request` rewrite + full Settings card reinvent
+> it. 0.1.2 *extends* that builtin, it does not introduce it.
 
-- **Per-tool `agentOptions: { provider, model, reasoningEffort, maxTokens }`**
-  — a static default applied to every child the tool spawns. This is exactly
-  the "role X runs on deepseek-v4-pro" axis this repo today implements by hand
-  in `dsh/index.js` (the `agent/request` rewrite) plus the whole custom
-  Settings card in `dsh/client.js`.
-- **`modelSelectionSettings: true`** — opts into the Host-owned
-  `subagent-model-selection` user setting (`allowedModels[]` allow-list), so a
-  caller/agent may pick a provider+model within authorization; default **off**.
-- Native `reasoningEffort` AND **`maxTokens`** (maximum output length) — the
-  latter is brand new and this repo does not set it anywhere.
+What **is** genuinely new in 0.1.2 (`packages/subagent/tool-subagent/src/model-selection.ts`,
+`model-selection-settings.ts`, `model-selection-state.ts`, `list-models.ts`):
+
+- **`agentOptions.reasoningEffort`** — the field that was missing before.
+  `agentOptions` is now `{ provider, model, reasoningEffort, maxTokens }`.
+  (`provider`/`model`/`maxTokens` already existed in 0.1.1-rc.2; only
+  `reasoningEffort` is new.)
+- **`modelSelectionSettings: true`** — opt into the Host-owned
+  `subagent-model-selection` user setting (`{ enabled, allowedModels[] }`
+  allow-list), so a caller/agent may choose provider+model *within
+  authorization*; default **off**.
+- Delegation model-request policy (`assertAllowedModelSelection`,
+  `preflightChildLlmRoute`, `requestedAgentOptions`) — a requested route is
+  validated against the allow-list before the child starts.
+- A `list-models` tool so the model can enumerate the allowed routes.
 
 **How this maps onto rigorquant — stop reinventing:**
 1. The per-role model *default* can move out of the `agent/request` rewrite and
    into each `tool-subagent-*` row's `agentOptions` (e.g. oracle/adversary rows
-   get `provider/model/reasoningEffort`); this also hands us `maxTokens` for
-   free, which today has no knob.
+   get `provider/model/reasoningEffort`, plus `maxTokens` where useful). This
+   capability is available **today** on 0.1.1-rc.2 for `provider`/`model`/
+   `maxTokens`; `reasoningEffort` needs the 0.1.2 bump.
 2. What is **NOT** replaced, and must stay custom: the **degrade lane**
    (`agent/request-error` → per-role fallback → retry on terminal failure) and
    the **root-role** handling. A static `agentOptions` model has no fallback,
@@ -90,10 +100,11 @@ Everything below still exists in 0.1.2 with the same contract the code relies on
    in `agent.cordis.yml`, at minimum the card becomes "override-only" and can
    shrink from a full matrix to a small deltas editor.
 
-**Priority:** adopt `agentOptions` defaults + `maxTokens` first (pure win,
-removes the waterfall dependency for the common case); keep the degrade lane.
-Consider dropping/replacing the hand-rolled client card to an override sheet
-once `agentOptions` becomes the source of truth.
+**Priority:** adopt `agentOptions` per-role defaults (incl. `reasoningEffort`
+after the bump) first — a pure win that removes the waterfall dependency for
+the common case; keep the degrade lane. Consider dropping/replacing the
+hand-rolled client card with an override sheet once `agentOptions` becomes the
+source of truth.
 
 ### 2.2 Public WebFetch with SSRF protection, no per-request approval
 
@@ -117,10 +128,12 @@ build a credential UI by hand later.
 
 - Third-party UI language support is builtin; rigorquant already ships
   `locale.register(NS, { zh, en })` — nothing reinvented, just stay aligned.
-- Exact per-answer token usage is now shown in the conversation stream, which
-  overlaps rigorquant's own cost-meter theme (`docs/architecture.md` "Cost"):
-  for the *UI* side we can rely on builtin token display rather than adding a
-  custom readout.
+- Exact per-answer token usage is now shown in the conversation stream.
+  Rigorquant does **not** maintain its own cost meter: `agent.cordis.yml`
+  states the host-plane token meter is *consumed, never re-registered*, and
+  `docs/architecture.md` "Cost" is budget policy (`max_cost_usd`), not a UI
+  readout. So this is a builtin we already lean on, and the 0.1.2 display
+  removes any remaining reason to build a custom token readout.
 
 ### 2.5 Headless stderr/stdout split
 
@@ -135,7 +148,8 @@ now only sees the final result.
 - **To fix for 0.1.2-alpha.1:** nothing breaking verified. Bump, re-run
   `tests/` as smoke check.
 - **To stop reinventing:** adopt `@deepseek-ai/dsh-tool-subagent`
-  `agentOptions` (model/provider/reasoningEffort/**maxTokens**) per role as the
+  `agentOptions` (model/provider/**reasoningEffort**/maxTokens) per role as the
   default source of truth, keeping only the degrade-lane + root handling in the
   custom router; rely on builtin WebFetch (SSRF, no per-request approval) and
-  builtin per-answer token display.
+  builtin per-answer token display. Note: `provider`/`model`/`maxTokens` were
+  already available on 0.1.1-rc.2; `reasoningEffort` is the 0.1.2 addition.

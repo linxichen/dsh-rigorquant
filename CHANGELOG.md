@@ -15,11 +15,11 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   was found (ApiProxy removal, conversation-UI split, profile-launch
   unification, and the network-launch token do not touch this surface).
   Identified new builtins to adopt instead of reinventing: per-tool
-  `@deepseek-ai/dsh-tool-subagent` `agentOptions` (`provider`/`model`/
-  `reasoningEffort`/**`maxTokens`**) as the per-role model default (keeping only
-  the degrade-lane + root handling in the custom router), builtin public
-  WebFetch (SSRF-guarded, no per-request approval), and builtin per-answer
-  token display.
+  `@deepseek-ai/dsh-tool-subagent` `agentOptions` as the per-role model default
+  (`provider`/`model`/`maxTokens` already exist on 0.1.1-rc.2; `reasoningEffort`
+  is the 0.1.2 addition), keeping only the degrade-lane + root handling in the
+  custom router; plus builtin public WebFetch (SSRF-guarded, no per-request
+  approval) and builtin per-answer token display.
 - **Live team-activity view (README "The team, live").** A new host half
   `rq-activity` (`dsh/activity.js`, exported as `./activity`) observes the
   events the core already publishes — agent lifecycle, `agent/status`, session
