@@ -15,10 +15,13 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="${DSH_PROFILE:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
+MIN_DSH_VERSION="0.1.2-alpha.1"
 
 usage() {
   cat <<EOF
 Usage: $0 [--skill-only] [--uninstall] [--profile <name>] [--version] [--help]
+
+  Full install requires DSH >= $MIN_DSH_VERSION. `--skill-only` does not.
 
   (no args)      Install everything: the RigorQuant preset, the shared compute
                  lane under \$DSH_HOME/share/rigorquant, and the plugin (role
@@ -49,6 +52,64 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+# Compare semver, including prerelease identifiers, without relying on GNU
+# `sort -V` (the installer also runs on macOS). DSH is a Node application, so
+# node is already a deployment prerequisite whenever `dsh` is present.
+version_at_least() {
+  actual="$1" minimum="$2"
+  node - "$actual" "$minimum" <<'NODE'
+const [actual, minimum] = process.argv.slice(2)
+function parse(raw) {
+  const match = String(raw).trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/)
+  if (!match) return null
+  return { numbers: match.slice(1, 4).map(Number), pre: match[4] === undefined ? null : match[4].split('.') }
+}
+function compare(a, b) {
+  for (let i = 0; i < 3; i += 1) {
+    if (a.numbers[i] !== b.numbers[i]) return a.numbers[i] - b.numbers[i]
+  }
+  if (a.pre === null && b.pre === null) return 0
+  if (a.pre === null) return 1
+  if (b.pre === null) return -1
+  const length = Math.max(a.pre.length, b.pre.length)
+  for (let i = 0; i < length; i += 1) {
+    if (i >= a.pre.length) return -1
+    if (i >= b.pre.length) return 1
+    const left = a.pre[i]
+    const right = b.pre[i]
+    if (left === right) continue
+    const leftNumber = /^\d+$/.test(left)
+    const rightNumber = /^\d+$/.test(right)
+    if (leftNumber && rightNumber) return Number(left) - Number(right)
+    if (leftNumber !== rightNumber) return leftNumber ? -1 : 1
+    return left < right ? -1 : 1
+  }
+  return 0
+}
+const a = parse(actual)
+const b = parse(minimum)
+if (a === null || b === null) process.exit(2)
+process.exit(compare(a, b) >= 0 ? 0 : 1)
+NODE
+}
+
+require_dsh_version() {
+  actual="$(dsh --version 2>/dev/null || true)"
+  if [ -z "$actual" ] || ! version_at_least "$actual" "$MIN_DSH_VERSION"; then
+    printf 'error: dsh-rigorquant requires dsh >= %s (found %s)\n' \
+      "$MIN_DSH_VERSION" "${actual:-unknown}" >&2
+    printf '       upgrade the DSH CLI before installing the full preset.\n' >&2
+    exit 2
+  fi
+}
+
+# The native `agentOptions.reasoningEffort` field is in the full preset, not
+# in --skill-only. Fail before copying anything when an installed CLI is too
+# old; a missing CLI keeps the historical warning and can be installed later.
+if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
+  require_dsh_version
+fi
 
 # Install (or refresh) the plugin half in PROFILE. `dsh plugin ... add` runs
 # pnpm in the profile directory and then reconciles dsh.profile.bundles, so a

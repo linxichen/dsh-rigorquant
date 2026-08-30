@@ -139,6 +139,8 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 
 ## 安装
 
+需要 DSH ≥ 0.1.2-alpha.1（preset 使用原生子代理 `agentOptions.reasoningEffort`）。
+
 两种安装形态：
 
 **Bundle（一条命令，完整可用）**——仓库声明了 `dsh.bundle` manifest，其中的
@@ -148,6 +150,7 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 完整框架（设计记录：docs/architecture.md 决策 23）：
 
 ```sh
+dsh --version                 # 必须 >= 0.1.2-alpha.1
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 
@@ -186,21 +189,23 @@ boot-sync 行落盘——两者写入的字节一致，最后运行者持有该�
 
 ## 角色模型路由（rq-model-router）
 
-内置插件为每个 RigorQuant 角色单独路由模型与推理强度，每个角色各有一个
-回退模型。配置入口：**设置 → 插件 → RigorQuant 模型路由**；最后一次保存的
-选择会持久化（写入设置用户层）。默认配置：
+内置插件为每个 RigorQuant 角色制定模型与推理强度策略，每个角色各有一个
+回退模型。oracle 与 adversary 的工具行使用 DSH 0.1.2 原生的
+`agentOptions` 提供已发布的主选（`deepseek-v4-pro` @ `high`）；路由器只
+覆盖设置中明确的选择，并处理回退重试。配置入口：**设置 → 插件 →
+RigorQuant 模型路由**；最后一次保存的选择会持久化（写入设置用户层）。默认配置：
 
 | 角色 | 主选 | 回退 |
 | --- | --- | --- |
 | 真值预言机 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
 | 对抗审计 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
-| 根编排者、探索者、文献角色 | 继承（root 跟随聊天框选择器） | — |
+| 根编排者、探索者、文献/文档角色 | 继承（root 跟随聊天框选择器） | — |
 
-主选路由遇到终止性失败（无适配器 / HTTP 4xx）时，该角色降级到自己的回退
-模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他
-preset、workflow 工作进程、fork 子进程）一律不干预。需要 DSH ≥ 0.1.0-rc.7
-（插件自注册设置）。设计记录见
-[docs/architecture.md](docs/architecture.md) 决策 16。
+主选路由遇到终止性失败（无适配器 / HTTP 4xx；包括官方额度响应
+`1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他
+preset、workflow 工作进程、fork 子进程）一律不干预。固定层级子代理行使用原生
+`agentOptions.reasoningEffort`，需要 DSH ≥ 0.1.2-alpha.1（插件自注册设置）。
+设计记录见 [docs/architecture.md](docs/architecture.md) 决策 16。
 
 ## 仓库结构
 

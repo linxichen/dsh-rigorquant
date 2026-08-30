@@ -214,16 +214,20 @@ adversary too. The economics point both ways — most of the agent volume is
 divergent exploration and retrieval where flash@high is the right price, while
 the two proof-critical roles are exactly where a weak model burns the most
 rounds (a wrong derivation or a missed counterexample triggers the whole
-BLOCKED loop). Decision: route **per role**, in a plugin, not in the
+BLOCKED loop). Decision: keep **dynamic per-role policy** in a plugin, while
+fixed child defaults may use the native tool-row configuration in the
 composition.
 
 - **Mechanism.** The `dsh-rigorquant` package ships a host half that listens
   on the `agent/request` waterfall. It mounts at profile boot, so its listener
-  registers before any agent-scoped model-selection listener; the outermost
-  listener's rewrite composes last, and the per-role choice — provider, model,
-  AND reasoning effort — wins over both the chatbox picker (root) and parent
-  inheritance (children). Effort per role is expressible here even though
-  `AgentOptions` (the per-tool `agentOptions:` channel) cannot carry it.
+  can overlay an explicit user choice or an active fallback after the native
+  child route has resolved. The per-role choice — provider, model, AND
+  reasoning effort — wins over both the chatbox picker (root) and parent
+  inheritance (children) only when the user configured an override; otherwise
+  the fixed-tier tool row's native `agentOptions` remains authoritative.
+  DSH 0.1.2 now carries `reasoningEffort` in that native channel, so it is no
+  longer necessary to rewrite the shipped oracle/adversary primary on every
+  request.
 - **Role identity.** Every role persona carries a machine-readable tag
   `[[rq:role=<role>]]`. Continuable children persist the persona in their
   first `subagent/descriptor` event; one-shot (foreground) children carry it
@@ -251,11 +255,23 @@ composition.
   the row config or the card, and a default that cannot route degrades
   through the same fallback lane (or fails loudly if the fallback cannot
   either).
+- **0.1.2 native defaults.** `tool-subagent-ground-truth` and
+  `tool-subagent-adversary` now declare those fixed primary choices through
+  the builtin `agentOptions` channel, including `reasoningEffort`. The router
+  reads the raw user layer so a reset returns to that native route instead of
+  running a redundant rewrite. `maxTokens` remains omitted deliberately: the
+  provider's own output ceiling is safer than imposing an arbitrary cap on
+  proof-heavy reports. The new `modelSelectionSettings` allow-list is not
+  enabled for these role tools because caller-selected routes would undermine
+  the forced tier matrix; the Settings card remains the explicit override
+  surface.
 
-Guarded by tests: every role persona must keep its tag, and the router's
-ROLES list must equal the tagged roles plus `root` — a persona that loses its
-tag silently falls back to the session model, which is exactly the failure
-class this closes.
+Guarded by tests: every role persona must keep its tag, the router's ROLES list
+must equal the tagged roles plus `root`, and the fixed-tier rows must retain
+matching native `agentOptions` defaults. A persona that loses its tag silently
+falls back to the session model, which is exactly the failure class this closes;
+`tests/router_probe.cjs` separately pins native pass-through and fallback
+recovery.
 
 ## Decision 17 — budgets are finish targets, with explicit escalation
 

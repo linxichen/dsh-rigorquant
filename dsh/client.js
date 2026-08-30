@@ -1,12 +1,12 @@
 // RigorQuant model router — browser half.
 //
 // One card in the Plugins settings tab, keyed by the `rigorquant-models`
-// settings namespace this package's host half serves. Each role row stages a
-// primary choice (model + reasoning effort) and a per-role fallback choice;
-// "inherit" clears the user layer for that field so the composition default
-// (or, for root, the chatbox picker) governs again. The last saved selection
-// is the persistent one: it lives in the settings user layer, not in this
-// page's state.
+// settings namespace this package's host half serves. Each role row stages an
+// explicit primary override (model + reasoning effort) and a per-role fallback
+// choice; "inherit" clears the user layer for that field so the native
+// tool-subagent default (fixed-tier roles) or the parent/session route (root and
+// inherit roles) governs again. The last saved selection is the persistent one:
+// it lives in the settings user layer, not in this page's state.
 //
 // Shipped in the shell's client-bundle format, because that is what the browser
 // half is REQUIRED to be: the web shell appends this file as a classic
@@ -90,12 +90,16 @@ function createStore(initial) {
   }
 }
 
-const inject = ['slots', 'locale', 'connection', 'settingsScope']
+// `remote` is the 0.1.2 typed Host RPC carrier. Its sub-namespaces are gated:
+// Cordis throws `cannot get property "remote.session" without inject` unless
+// each one is declared here. The settings card reads session.modelCatalog and
+// settings.describe, so declare both sub-namespaces (plus the raw `remote`).
+const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'settingsScope', 'sessions']
 
 const copy = {
   en: {
     title: 'RigorQuant model routing',
-    description: 'Per-role model and reasoning effort for RigorQuant sessions. Root defaults to the chatbox picker; oracle and adversary default to DeepSeek-V4-Pro with a flash fallback. Roles on inherit follow the session model.',
+    description: 'Per-role model overrides and fallbacks for RigorQuant sessions. Native tool defaults supply oracle and adversary; root follows the chatbox picker, and other roles inherit their session model.',
     inherit: 'Inherit',
     none: 'None',
     effortInherit: 'Default',
@@ -138,7 +142,7 @@ const copy = {
   },
   zh: {
     title: 'RigorQuant 角色模型路由',
-    description: '为 RigorQuant 会话的每个角色单独选择模型与推理强度。root 默认跟随聊天框选择器；oracle 与 adversary 默认使用 DeepSeek-V4-Pro，并以 flash 作为独立回退。选择“继承”的角色沿用会话模型。',
+    description: '为 RigorQuant 会话配置每个角色的模型覆盖与回退。oracle 与 adversary 使用原生工具默认值；root 跟随聊天框选择器，其他选择“继承”的角色沿用会话模型。',
     inherit: '继承',
     none: '无',
     effortInherit: '默认',
@@ -245,8 +249,6 @@ class RqModelsCardController {
   constructor(ctx) {
     this.ctx = ctx
     this.scope = ctx.settingsScope.bind({ namespace: CARD_KEY })
-    const connection = ctx.get('connection')
-    this.api = connection?.api
     // The staged edit is a DRAFT USER SECTION — the schema-form unit of
     // editing — not a side table of pending values. `undefined` means "no edit
     // staged"; once staged it is a plain object built immutably with
@@ -260,6 +262,12 @@ class RqModelsCardController {
     this.schema = undefined
     this.store = createStore(this.projection())
     this.scope.subscribe(() => this.publish())
+    // Bounded lazy catalog retry: this bundle is `immediately`, so `apply`
+    // can run in the bootstrap batch before `@deepseek-ai/dsh-api-session-controller`
+    // mounts `remote.session` in the application batch. Polling the namespace
+    // until it exists keeps a healthy catalog RPC from becoming the generic
+    // "unavailable" footer (same boot-ordering class as the activity `sessions`).
+    this.catalogTimer = undefined
   }
 
   /**
@@ -293,18 +301,57 @@ class RqModelsCardController {
   }
 
   async loadCatalog() {
-    try {
-      const response = await this.api.llm.models({})
-      if (!response.result.ok) throw new Error(`${response.result.error.code}: ${response.result.error.message}`)
-      const providers = (response.result.value.groups ?? []).map((group) => ({
-        id: group.id,
-        name: group.name ?? group.id,
-        models: (group.models ?? []).map((model) => ({ id: model.id, name: model.name ?? model.id })),
-      }))
-      this.catalog = { status: 'ready', providers }
-    } catch {
-      this.catalog = { status: 'failed', providers: [] }
+    // The namespace may not be mounted yet under immediate boot. Keep the
+    // initial state as `loading` and retry until it exists or the attempt cap
+    // is reached, rather than declaring the catalog failed on a boot race.
+    if (this.catalogTimer !== undefined) {
+      clearTimeout(this.catalogTimer)
+      this.catalogTimer = undefined
     }
+    this.catalog = { status: 'loading', providers: [] }
+    this.publish()
+    let attempts = 0
+    const attempt = async () => {
+      attempts += 1
+      const session = this.ctx.remote?.session
+      if (session === undefined || typeof session.modelCatalog !== 'function') {
+        if (attempts < 60 && typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+          this.catalogTimer = window.setTimeout(attempt, 250)
+        } else {
+          this.catalog = { status: 'failed', providers: [] }
+          this.publish()
+        }
+        return
+      }
+      try {
+        // DSH 0.1.2's official catalog seam. `connection.api.llm.models` was an
+        // older compatibility facade and is absent from the current connection
+        // handle, which made this card report a false connection failure.
+        const response = await session.modelCatalog()
+        if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
+        const providers = (response.value.groups ?? []).map((group) => ({
+          id: group.id,
+          name: group.name ?? group.id,
+          models: (group.models ?? []).map((model) => ({
+            id: model.id,
+            name: model.name ?? model.id,
+            // Keep the model's actual reasoning-effort surface so the effort
+            // dropdown lists what the model really supports instead of a
+            // hard-coded [off, high, max] that not every route accepts.
+            efforts: (model.reasoning?.efforts ?? []).map((effort) => ({
+              id: effort.id,
+              name: effort.name ?? effort.id,
+            })),
+            defaultEffort: model.reasoning?.defaultEffort,
+          })),
+        }))
+        this.catalog = { status: 'ready', providers }
+      } catch {
+        this.catalog = { status: 'failed', providers: [] }
+      }
+      this.publish()
+    }
+    await attempt()
   }
 
   /**
@@ -316,9 +363,9 @@ class RqModelsCardController {
    */
   async loadSchema() {
     try {
-      const response = await this.api.settings.describe({})
-      if (!response.result.ok) return
-      const view = (response.result.value.namespaces ?? []).find((entry) => entry.ns === CARD_KEY)
+      const response = await this.ctx.remote.settings.describe()
+      if (!response.ok) return
+      const view = (response.value.namespaces ?? []).find((entry) => entry.ns === CARD_KEY)
       if (view === undefined) return
       this.schema = this.schemaForm().rehydrateSchema(view.schema)
     } catch {
@@ -504,10 +551,16 @@ function Select(props) {
 }
 
 function EffortSelect(props) {
-  const { t, choice, onChange } = props
+  const { t, choice, onChange, efforts } = props
+  // Fall back to the generic effort vocabulary only when the catalog did not
+  // report the model's real surfaces (older hosts, or a model with no
+  // reasoning metadata). Otherwise offer exactly what the model supports.
+  const supported = (efforts?.length ?? 0) > 0
+    ? efforts.map((effort) => effort.id)
+    : EFFORTS
   const options = [
     { value: '', label: t('effortInherit') },
-    ...EFFORTS.map((effort) => ({ value: effort, label: effort })),
+    ...supported.map((effort) => ({ value: effort, label: effort })),
   ]
   return React().createElement(Select, {
     value: choice?.reasoningEffort ?? '',
@@ -546,13 +599,25 @@ function RoleRow(props) {
   const models = []
   for (const provider of catalog.providers) {
     for (const model of provider.models) {
-      models.push({ value: `${provider.id}::${model.id}`, label: `${provider.name} · ${model.name}` })
+      models.push({
+        value: `${provider.id}::${model.id}`,
+        label: `${provider.name} · ${model.name}`,
+        efforts: model.efforts,
+        defaultEffort: model.defaultEffort,
+      })
     }
   }
+  // Find the currently chosen model's supported effort surfaces so the effort
+  // select lists what that exact route accepts (a model that doesn't support
+  // "high" must not offer it).
+  const modelByKey = new Map(models.map((model) => [model.value, model]))
   const renderSlot = (slot) => {
     const field = `${role}${slot}`
     const state = fields[field]
     const choice = state.choice
+    const chosenModel = choice === null
+      ? undefined
+      : modelByKey.get(choiceKey(choice))
     // Name what clearing the field falls back to. `inherited` is the resolved
     // value (schema defaults, then the plugin's composition base), so a role
     // the plugin ships a default for says so instead of reading as empty.
@@ -571,7 +636,15 @@ function RoleRow(props) {
       }
       const split = key.split('::')
       const next = { provider: split[0], model: split[1] }
-      if (typeof choice?.reasoningEffort === 'string' && choice.reasoningEffort !== '') next.reasoningEffort = choice.reasoningEffort
+      const targetEfforts = modelByKey.get(key)?.efforts ?? []
+      // Only carry an explicit effort forward if the model keeps supporting it;
+      // otherwise fall back to the model's default (or none) so we never send a
+      // level the route rejects.
+      const effort = typeof choice?.reasoningEffort === 'string' && choice.reasoningEffort !== ''
+        && (targetEfforts.length === 0 || targetEfforts.some((effort) => effort.id === choice.reasoningEffort))
+        ? choice.reasoningEffort
+        : (modelByKey.get(key)?.defaultEffort ?? undefined)
+      if (effort !== undefined) next.reasoningEffort = effort
       stage(field, next)
     }
     const onEffort = (effort) => {
@@ -594,7 +667,10 @@ function RoleRow(props) {
         },
       }, t(slot === 'Fallback' ? 'fallback' : 'primary')),
       React().createElement(Select, { value: choiceKey(choice), options, onChange: onModel }),
-      React().createElement(EffortSelect, { t, choice, onChange: onEffort }),
+      React().createElement(EffortSelect, {
+        t, choice, onChange: onEffort,
+        efforts: chosenModel === undefined ? undefined : chosenModel.efforts,
+      }),
       // Presence in the user layer is the override, so the marker and its
       // reset are driven by `overridden`, never by comparing against the base.
       state.overridden
@@ -793,7 +869,7 @@ const activityCopy = {
   },
 }
 
-/** Set once when the first live lab appears, so the panel opens itself. */
+/** Set once when the current session first resolves to a live lab, so it opens itself. */
 let activityAutoExpanded = false
 /** The user's collapse decision wins until the page reloads. */
 let activityCollapsed = true
@@ -804,6 +880,10 @@ let activityStore = null
 /** One shared mutable state the store publishes (never handed out raw). */
 const activityState = {
   status: 'idle', labs: [], anchorRight: null, currentSessionId: null,
+  // An expanded panel belongs to one current-session route. The shell overlay
+  // outlives route changes, so this owner gate prevents stale dock padding or
+  // an expanded panel leaking into another conversation.
+  openOwner: null,
   panelLayout: null, panelBounds: null,
 }
 
@@ -811,7 +891,7 @@ function snapshotStore() {
   if (activityStore === null) {
     activityStore = createStore({
       status: activityState.status, labs: [], anchorRight: null, currentSessionId: null,
-      panelLayout: null, panelBounds: null,
+      openOwner: null, panelLayout: null, panelBounds: null,
     })
   }
   return activityStore
@@ -887,7 +967,7 @@ function updatePanelShift() {
     const root = typeof document !== 'undefined' ? document.documentElement : null
     if (root === null) return
     const compact = (activityState.panelBounds?.width ?? window.innerWidth ?? Infinity) <= PANEL_COMPACT_BREAKPOINT
-    const expanded = !activityCollapsed
+    const expanded = !activityCollapsed && activityState.openOwner === activityState.currentSessionId
     const docked = activityState.panelLayout?.mode === 'docked'
     if (expanded && docked && !compact) {
       const width = activityState.panelLayout?.width ?? PANEL_DEFAULT_WIDTH
@@ -904,6 +984,7 @@ function updatePanelShift() {
 
 function setActivityCollapsed(collapsed) {
   activityCollapsed = collapsed
+  activityState.openOwner = collapsed ? null : activityState.currentSessionId
   publishActivity()
   updatePanelShift()
 }
@@ -940,6 +1021,16 @@ function ago(ms) {
   return `${Math.round(delta / 3_600_000)}h`
 }
 
+/** The active RigorQuant lab for a captain or member transcript, if any. */
+function labForSession(labs, sessionId) {
+  if (sessionId === null || sessionId === undefined) return null
+  for (const lab of labs) {
+    if (lab.id === sessionId) return lab
+    if ((lab.members ?? []).some((member) => member.sessionId === sessionId)) return lab
+  }
+  return null
+}
+
 function startActivityPoller(ctx) {
   // The web shell, and nothing else: the probe and webless hosts have no
   // fetch/interval, and the floater is only meaningful in a browser anyway.
@@ -970,33 +1061,13 @@ function startActivityPoller(ctx) {
     }, 'rq-activity: dodge css')
   }
   updatePanelShift()
-  const tick = async () => {
-    measureAnchorRight()
-    if (document.hidden) return
-    try {
-      const response = await window.fetch(ACTIVITY_URL, { cache: 'no-store' })
-      if (!response.ok) return
-      const next = await response.json()
-      const labs = Array.isArray(next?.labs) ? next.labs : []
-      if (labs.length > 0 && !activityAutoExpanded) {
-        activityAutoExpanded = true
-        activityCollapsed = false
-      }
-      activityState.status = 'ready'
-      activityState.labs = labs
-      publishActivity()
-    } catch {
-      // Transient: the host route may be absent in a webless profile.
-    }
-  }
-  void tick()
-  measureAnchorRight()
-  const id = window.setInterval(() => { void tick() }, POLL_MS)
   // The floater follows the CURRENT session (same as dsh-agent-teams): only
   // the lab owned by the session open in the conversation view is shown, and
   // only while that session is a RigorQuant one (labs exist only for those).
-  const sessions = ctx.get('sessions')
-  const sessionList = sessions?.list
+  // Bind before the first fetch: this immediately-loaded bundle used to call
+  // tick() before these lexical bindings existed, causing a TDZ rejection.
+  let sessionList = null
+  let unsubscribeSessionList = null
   const syncCurrentSession = () => {
     try {
       const next = typeof sessionList?.getSnapshot === 'function'
@@ -1005,16 +1076,66 @@ function startActivityPoller(ctx) {
       if (next !== activityState.currentSessionId) {
         activityState.currentSessionId = next ?? null
         publishActivity()
+        updatePanelShift()
       }
     } catch {
       // The sessions feed is a best-effort scope, not a hard dependency.
     }
   }
-  if (sessionList !== undefined && typeof sessionList.subscribe === 'function') {
-    syncCurrentSession()
-    const unsubscribe = sessionList.subscribe(syncCurrentSession)
-    ctx.effect(() => unsubscribe, 'rq-activity: current-session listener')
+  const bindSessionList = () => {
+    const list = ctx.get('sessions')?.list
+    if (list === sessionList) return
+    if (typeof unsubscribeSessionList === 'function') unsubscribeSessionList()
+    sessionList = typeof list?.subscribe === 'function' ? list : null
+    unsubscribeSessionList = null
+    if (sessionList !== null) {
+      syncCurrentSession()
+      unsubscribeSessionList = sessionList.subscribe(syncCurrentSession)
+    }
   }
+  bindSessionList()
+  ctx.effect(() => () => {
+    if (typeof unsubscribeSessionList === 'function') unsubscribeSessionList()
+  }, 'rq-activity: current-session listener')
+  let inFlight = false
+  let disposed = false
+  let request = null
+  const tick = async () => {
+    if (inFlight || disposed) return
+    inFlight = true
+    measureAnchorRight()
+    // Re-check until the optional service exists and if its instance changes.
+    bindSessionList()
+    if (typeof document !== 'undefined' && document.hidden) {
+      inFlight = false
+      return
+    }
+    request = typeof AbortController === 'function' ? new AbortController() : null
+    try {
+      const response = await window.fetch(ACTIVITY_URL, {
+        cache: 'no-store', ...(request === null ? {} : { signal: request.signal }),
+      })
+      if (!response.ok || disposed) return
+      const next = await response.json()
+      if (disposed) return
+      const labs = Array.isArray(next?.labs) ? next.labs : []
+      if (!activityAutoExpanded && labForSession(labs, activityState.currentSessionId) !== null) {
+        activityAutoExpanded = true
+        setActivityCollapsed(false)
+      }
+      activityState.status = 'ready'
+      activityState.labs = labs
+      publishActivity()
+    } catch {
+      // Transient: the host route may be absent or restarting.
+    } finally {
+      inFlight = false
+      request = null
+    }
+  }
+  void tick()
+  measureAnchorRight()
+  const id = window.setInterval(() => { void tick() }, POLL_MS)
   if (typeof window.addEventListener === 'function') {
     window.addEventListener('resize', measureAnchorRight)
     ctx.effect(() => () => window.removeEventListener('resize', measureAnchorRight),
@@ -1032,6 +1153,8 @@ function startActivityPoller(ctx) {
     if (conversation !== null) observer.observe(conversation)
   }
   ctx.effect(() => () => {
+    disposed = true
+    if (request !== null) request.abort()
     if (observer !== null) observer.disconnect()
     window.clearInterval(id)
   }, 'rq-activity: poller')
@@ -1351,7 +1474,10 @@ function ActivityPanel(props) {
     return relevant === undefined ? [] : allLabs.filter((lab) => lab.id === relevant)
   })()
   if (labs.length === 0) return null
-  if (activityCollapsed) {
+  // The shell overlay survives a navigation; only its owning session can keep
+  // the expanded panel (and its docked conversation concession) visible.
+  const collapsed = activityCollapsed || snapshot.openOwner !== currentSessionId
+  if (collapsed) {
     const working = labs.reduce((total, lab) => total + (lab.summary?.working ?? 0), 0)
     return R.createElement('button', {
       type: 'button', 'aria-label': t('expand'),

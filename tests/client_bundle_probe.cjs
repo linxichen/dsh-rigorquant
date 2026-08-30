@@ -16,16 +16,26 @@ let handoff = null
 const sandbox = {}
 sandbox.window = sandbox
 sandbox.globalThis = sandbox
-sandbox.console = console
+// In the VM the bundle's `console` is this object, so a stray console.log in
+// the bundle would leak into the JSON verdict stdout. Collect instead of
+// emitting: diagnostics stay on the verdict, stdout stays pure JSON.
+const collectedLogs = []
+sandbox.console = { ...console, log: (...args) => { collectedLogs.push(args.map(String).join(' ')) } }
 sandbox.document = {
   querySelectorAll: () => [],
   createElement: () => ({ dataset: {}, setAttribute() {}, remove() {} }),
   head: { append() {}, appendChild() {} },
 }
+// The card's lazy catalog retry uses window.setTimeout; the VM window is the
+// sandbox itself, so surface the host timers.
+sandbox.setTimeout = setTimeout
+sandbox.clearTimeout = clearTimeout
 sandbox.window.__ModuleLoader__ = { load: (h) => { handoff = h } }
 vm.createContext(sandbox)
 
 const verdict = { registered: false, mode: RC2 ? 'rc2' : 'rc7' }
+/** Set by the mount block; reused by the delayed-namespace scenario. */
+let pluginSurface = null
 try {
   vm.runInContext(code, sandbox, { filename: bundlePath })
 } catch (error) {
@@ -58,6 +68,7 @@ const required = []
 const registrations = []
 const rings = []
 const ops = []
+let modelCatalogCalls = 0
 // Mutable persisted user layer: the ops the card emits land here, so a
 // follow-up edit sees the same layering the real seam would show it.
 const userLayer = {}
@@ -143,22 +154,51 @@ verdict.required = required
 // but throws on mount is the next failure after registration.
 if (verdict.applyIsFunction) {
   const cards = []
+  // `remote` is injected as a required Cordis service, so production code must
+  // use ctx.remote (not ctx.get('remote')). Keep the probe shaped the same way.
+  // Cordis gates sub-namespace access: `remote.session`/`remote.settings` are
+  // only reachable when declared in the plugin's `inject`, otherwise it throws
+  // `cannot get property "remote.session" without inject`. Model the remote as
+  // a Proxy over the declared set so a bundle that forgets a sub-namespace
+  // fails at apply() exactly as it does in the harness.
+  const declaredRemote = verdict.inject ?? []
+  const remoteNamespaces = {
+    session: {
+      modelCatalog: async () => {
+        modelCatalogCalls += 1
+        return {
+          ok: true,
+          value: {
+            groups: [{ id: 'deepseek', name: 'DeepSeek', models: [{ id: 'v4-pro', name: 'V4 Pro' }] }],
+            failures: [], routableProviders: ['deepseek'], default: { provider: 'deepseek', model: 'v4-pro' },
+          },
+        }
+      },
+    },
+    settings: {
+      describe: async () => ({
+        ok: true,
+        value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] },
+      }),
+    },
+  }
+  const remote = new Proxy(remoteNamespaces, {
+    get(target, prop) {
+      if (typeof prop === 'string' && prop in target) {
+        if (!declaredRemote.includes(`remote.${prop}`)) {
+          throw new Error(`cannot get property "remote.${prop}" without inject`)
+        }
+        return target[prop]
+      }
+      return Reflect.get(target, prop)
+    },
+  })
   const ctx = {
     effect: (fn) => fn(),
-    get: (name) => (name === 'connection'
-      ? {
-        api: {
-          llm: { models: async () => ({ result: { ok: false, error: { code: 'stub', message: 'stub' } } }) },
-          settings: {
-            describe: async () => ({
-              result: { ok: true, value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] } },
-            }),
-          },
-        },
-      }
-      : (RC2 && name === 'settingsSchema'
-        ? settingsSchemaService
-        : undefined)),
+    remote,
+    get: (name) => (RC2 && name === 'settingsSchema'
+      ? settingsSchemaService
+      : undefined),
     locale: { register: () => {}, bind: () => (key) => key },
     settingsScope: {
       bind: () => ({
@@ -185,6 +225,7 @@ if (verdict.applyIsFunction) {
   // A fresh materialization for the mount: the loader memoizes one record per
   // bundle, so the surface under test is a factory result, not a reused one.
   const surface = handoff.factory(reqStub)
+  pluginSurface = surface
   try {
     surface.apply(ctx)
     verdict.mounted = true
@@ -314,8 +355,81 @@ async function exerciseDraft() {
   verdict.draft.afterReset = read().fields[FIELD].overridden
 }
 
+// Immediate-boot regression: the card must WAIT for the session Remote to be
+// mounted rather than fail on a bootstrap-batch boot race. `remote.session` is
+// absent at apply time; after a short delay the controller's retry observes it
+// and loads the catalog, leaving status 'ready' instead of 'failed'.
+//
+// This scenario is deliberately isolated: it re-runs apply() on a fresh context
+// and tracks its own registry + catalog counter so it cannot perturb the main
+// mount, rc2, or draft scenarios (which read shared probe globals).
+async function exerciseDelayedCatalog() {
+  if (pluginSurface === null) return
+  let sessionRemote
+  let delayedCalls = 0
+  const delayedRegs = []
+  const delayedNamespaces = {
+    get session() { return sessionRemote },
+    settings: { describe: async () => ({ ok: true, value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] } }) },
+  }
+  const delayedRemote = new Proxy(delayedNamespaces, {
+    get(target, prop) {
+      if (typeof prop === 'string' && prop in target) {
+        if (!(verdict.inject ?? []).includes(`remote.${prop}`)) {
+          throw new Error(`cannot get property "remote.${prop}" without inject`)
+        }
+        return Reflect.get(target, prop)
+      }
+      return Reflect.get(target, prop)
+    },
+  })
+  const delayedCtx = {
+    remote: delayedRemote,
+    locale: { register: () => {}, bind: () => (key) => key },
+    settingsScope: {
+      bind: () => ({
+        getSnapshot: () => ({ status: 'ready', writable: true, mode: 'host', revision: 1, value: {}, base: {}, user: {} }),
+        subscribe: () => () => {},
+        set: async () => {},
+        unset: async () => {},
+      }),
+    },
+    slots: {
+      inject: (ring, fn) => fn(),
+      register: (descriptor, component) => { delayedRegs.push({ descriptor, component }); return descriptor },
+    },
+    effect: (fn) => fn(),
+    // Serve the settingsSchema service so the card never falls back to the
+    // legacy schema-form module require (which would perturb `required`).
+    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
+  }
+  pluginSurface.apply(delayedCtx)
+  // Mount the session namespace a few retry windows later.
+  setTimeout(() => {
+    sessionRemote = {
+      modelCatalog: async () => {
+        delayedCalls += 1
+        return {
+          ok: true,
+          value: {
+            groups: [{ id: 'deepseek', name: 'DeepSeek', models: [{ id: 'v4-pro', name: 'V4 Pro' }] }],
+            failures: [], routableProviders: ['deepseek'], default: { provider: 'deepseek', model: 'v4-pro' },
+          },
+        }
+      },
+    }
+  }, 120)
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  const card = delayedRegs.find((reg) => reg.descriptor.key === 'rigorquant-models')
+  verdict.delayedCatalogStatus = card?.descriptor?.inject?.().hooks?.rqCard?.getSnapshot?.().catalog?.status ?? null
+  verdict.delayedCatalogCalls = delayedCalls
+}
+
 exerciseDraft().catch((error) => {
   verdict.draftError = `${error.name}: ${error.message}`
+}).then(() => exerciseDelayedCatalog()).catch((error) => {
+  verdict.delayedCatalogError = `${error.name}: ${error.message}`
 }).finally(() => {
+  verdict.modelCatalogCalls = modelCatalogCalls
   process.stdout.write(JSON.stringify(verdict))
 })

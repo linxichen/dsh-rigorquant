@@ -154,7 +154,7 @@ generated from [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activit
 
 ## Install
 
-Requires DSH ≥ 0.1.0-rc.7.
+Requires DSH ≥ 0.1.2-alpha.1 (the preset uses native child `agentOptions.reasoningEffort`).
 
 **One line, everything** — the preset, the compute lane, and the plugin (role
 model router + its Settings card):
@@ -184,6 +184,7 @@ package declares a `dsh.bundle` manifest whose rows include a boot-sync half
 distribution (docs/architecture.md Decision 23):
 
 ```sh
+dsh --version                 # must be >= 0.1.2-alpha.1
 dsh plugin --profile web add dsh-rigorquant
 ```
 
@@ -214,22 +215,27 @@ via the skill's `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian
 
 ## Role-routed models (rq-model-router)
 
-The bundled plugin routes each RigorQuant role to its own model + reasoning
-effort, with one fallback per role. Configure it in **Settings → Plugins →
-RigorQuant model routing**: the last saved selection persists (settings user
-layer). Shipped defaults:
+The bundled plugin gives each RigorQuant role a model + reasoning-effort
+policy, with one fallback per role. The oracle and adversary tool rows use DSH
+0.1.2's native `agentOptions` for their shipped primary (`deepseek-v4-pro` @
+`high`); the router only overlays explicit Settings choices and fallback
+retries. Configure overrides in **Settings → Plugins → RigorQuant model
+routing**: the last saved selection persists (settings user layer). Shipped
+defaults:
 
 | Role | Primary | Fallback |
 | --- | --- | --- |
 | Ground-truth oracle | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
 | Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
-| Root, explorers, literature roles | inherit (root follows the chatbox picker) | — |
+| Root, explorers, literature/document roles | inherit (root follows the chatbox picker) | — |
 
-On a terminal primary failure (no adapter / HTTP 4xx) the role degrades to its
+On a terminal primary failure (no adapter / HTTP 4xx, including the official
+quota response `1308` / “Usage limit reached”) the role degrades to its
 fallback for one forced retry, and recovers on the next success or after 10
 minutes. Untagged agents (other presets, workflow workers, forks) are never
-touched. Requires DSH ≥ 0.1.0-rc.7 (self-registered plugin settings). Design
-record: [docs/architecture.md](docs/architecture.md) Decision 16.
+touched. Requires DSH ≥ 0.1.2-alpha.1 for native `agentOptions.reasoningEffort`
+on the fixed-tier child rows. Design record:
+[docs/architecture.md](docs/architecture.md) Decision 16.
 
 ## Repository layout
 

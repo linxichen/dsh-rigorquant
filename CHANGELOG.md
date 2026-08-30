@@ -8,6 +8,60 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Fixed
+- **Effort dropdown was hard-coded to `[off, high, max]`** (`dsh/client.js`). A
+  model whose route doesn't support a level (e.g. some reject `high`) was
+  still offered it, sending an effort the provider errors on. The card now
+  keeps each model's `reasoning.efforts` from the catalog, offers exactly what
+  the chosen model supports, and drops a now-invalid effort when switching to a
+  model that no longer accepts it.
+- **Usage-limit 429 did not trigger the RigorQuant fallback** (`dsh/index.js`).
+  The official quota response can arrive as provider code `1308` with
+  “Usage limit reached” text but no normalized numeric status. The router now
+  classifies that exact terminal failure, records the effective primary route,
+  and retries the configured fallback once; the router probe covers it.
+- **RigorQuant model card let nobody change models** (`dsh/client.js`). The
+  card read `remote.session`/`remote.settings` but never declared those
+  sub-namespaces in its `inject`; Cordis gates sub-namespace access and throws
+  `cannot get property "remote.session" without inject`, so `loadCatalog` failed
+  and the dropdown stayed at `loading` with only the “Inherit” placeholder. The
+  card now declares `remote.session` and `remote.settings`, and the probe models
+  the gate so a forgotten sub-namespace fails the build.
+- **RigorQuant model card still reported “unavailable” after the Remote fix**
+  (`dsh/client.js`). The bundle is `immediately`, so its `load()` could run
+  before `@deepseek-ai/dsh-api-session-controller` mounted `remote.session` in
+  the application batch; the card then threw on the missing namespace and
+  reported a connection failure even though the builtin catalog RPC succeeded.
+  `loadCatalog` now lazily waits (bounded retry) for `remote.session` to mount
+  instead of failing on the boot race.
+- **RigorQuant model catalog unavailable on DSH 0.1.2** (`dsh/client.js`,
+  `package.json`). The card used the removed private
+  `connection.api.llm.models` facade and reported its absence as a connection
+  error. It now declares the official `remote` dependency and uses
+  `remote.session.modelCatalog()` plus `remote.settings.describe()`, matching
+  the builtin model selector.
+- **Activity pillbox boot/navigation regressions on DSH 0.1.2**
+  (`dsh/client.js`). The immediately-materialized floater sampled `sessions`
+  before its binding existed and also started its first poll while that lexical
+  binding was still in the TDZ. It now declares `sessions` as a required
+  dependency, initializes/re-binds before polling, serializes and aborts
+  requests, and scope-owns expansion so a route change cannot leave stale
+  docked conversation padding behind.
+
+### Changed
+- Added `THIRD_PARTY_NOTICES` preserving the upstream MIT notice for the
+  substantial `dsh-agent-teams` activity-panel geometry adaptation.
+- **DSH 0.1.2 native subagent-route migration** (`agent-presets/rigorquant/agent.cordis.yml`,
+  `dsh/index.js`, `install.sh`). Fixed-tier oracle/adversary primaries now use
+  native `tool-subagent` `agentOptions` (including `reasoningEffort`); the custom
+  router only applies explicit settings overrides and fallback retries. The
+  router regression probe covers native pass-through, reset, and degradation.
+  The installer now rejects DSH versions older than `0.1.2-alpha.1`, which is
+  the new preset floor.
+- Updated the English/Chinese README, architecture record, upgrade study, and
+  Settings-card copy to document native defaults and the intentional omission of
+  arbitrary `maxTokens` caps.
+
 ## [0.4.0] - 2026-08-29
 
 ### Added

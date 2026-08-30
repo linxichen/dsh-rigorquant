@@ -31,8 +31,12 @@ PROBE = REPO / "tests/client_bundle_probe.cjs"
 SERVICE_PROVIDERS = {
     "slots": "@deepseek-ai/dsh-client-runtime",
     "locale": "@deepseek-ai/dsh-client-locale",
-    "connection": "@deepseek-ai/dsh-client-connection",
+    "remote": "@deepseek-ai/dsh-api-remotes",
+    # Sub-namespaces are gated: Cordis throws without an explicit inject entry.
+    "remote.session": "@deepseek-ai/dsh-api-session-controller",
+    "remote.settings": "@deepseek-ai/dsh-api-remotes",
     "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
+    "sessions": "@deepseek-ai/dsh-api-session-controller",
 }
 # The card registers into the `settings.plugin.item` ring, which this package
 # declares; the activity floater registers into the root-scoped `shell.overlay`
@@ -107,6 +111,43 @@ def test_factory_returns_the_cordis_plugin_surface(verdict):
 def test_factory_only_requires_platform_modules(verdict):
     """The frozen module table answers platform seed words and nothing else."""
     assert "factoryError" not in verdict, verdict.get("factoryError")
+
+
+def test_card_uses_the_current_session_model_catalog_remote(verdict):
+    """DSH 0.1.2 removed the old connection.api.llm.models facade."""
+    assert verdict["modelCatalogCalls"] >= 1
+    client = (REPO / manifest()["exports"]["./client"]).read_text()
+    assert "this.ctx.remote?.session" in client
+    assert "await session.modelCatalog()" in client
+    assert "this.ctx.get('remote')" not in client
+
+
+def test_card_declares_the_remote_sub_namespaces_in_inject(verdict):
+    """Cordis gates sub-namespace access and throws without an inject entry.
+
+    The card reads `remote.session.modelCatalog()` and
+    `remote.settings.describe()`. The probe models `remote` as a Proxy that only
+    exposes namespaces declared in the module's `inject`; if a sub-namespace is
+    accessed but not declared, apply() throws and the mount fails. A passing
+    mount proves both are declared.
+    """
+    assert "mountError" not in verdict, verdict.get("mountError")
+    assert "remote" in verdict["inject"]
+    assert "remote.session" in verdict["inject"]
+    assert "remote.settings" in verdict["inject"]
+    assert verdict["modelCatalogCalls"] >= 1
+
+
+def test_card_waits_for_session_remote_before_failing(verdict):
+    """Immediate boot can precede remote.session mounting; the card must retry.
+
+    In the probe the session Remote is absent at apply time and mounts a few
+    retry windows later. The controller must converge to 'ready' instead of
+    declaring the catalog failed on a bootstrap-batch boot race.
+    """
+    assert "delayedCatalogError" not in verdict, verdict.get("delayedCatalogError")
+    assert verdict["delayedCatalogStatus"] == "ready", verdict
+    assert verdict["delayedCatalogCalls"] >= 1
 
 
 def test_apply_mounts_both_rings(verdict):
