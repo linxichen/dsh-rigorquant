@@ -29,12 +29,12 @@
 
     # Role-routed models (see docs/architecture.md, Decision 16). The plugin
     # serves the `rigorquant-models` settings namespace (Plugins settings tab
-    # renders its card) and routes agent requests per role: primary choice,
-    # per-role fallback on terminal route failure, per-choice reasoning
-    # effort. Untagged sessions — other presets, workflow workers, fork
-    # children — are never touched. Defaults ship the tier matrix: oracle and
-    # adversary on deepseek-v4-pro with a deepseek-v4-flash fallback; every
-    # other role inherits the session model (root follows the chatbox picker).
+    # renders its card) and overlays explicit per-role choices plus a fallback
+    # on terminal route failure. The fixed oracle/adversary primary defaults
+    # live in the native `agentOptions` on their tool rows; every other role
+    # inherits the session model (root follows the chatbox picker). Untagged
+    # sessions — other presets, workflow workers, fork children — are never
+    # touched.
     - id: rq-model-router
       name: 'dsh-rigorquant'
 

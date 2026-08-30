@@ -14,10 +14,12 @@ the release notes.
 
 ## 1. Incompatibilities to fix
 
-### Verdict: there are **no breaking incompatibilities** for the current API surface.
+### Verdict: the existing API surface is compatible, but the upgraded preset now requires DSH ≥ 0.1.2-alpha.1.
 
 The 0.1.2 release notes call out several *breaking* changes upstream, and none
-of them touches what this distribution uses:
+of them touches what this distribution uses. The implementation does consume
+one new 0.1.2 schema field (`agentOptions.reasoningEffort`), so an older DSH
+must be rejected rather than allowed to install a preset that cannot mount:
 
 | 0.1.2 breaking change (notes) | Impact on dsh-rigorquant |
 |---|---|
@@ -26,6 +28,7 @@ of them touches what this distribution uses:
 | Apps now launched through `dsh` profiles (Python SDK, ACP) | None — the compute lane (`env/`) is a standalone uv venv, not the DSH Python SDK. |
 | One-time token in launch URL for network web access | None — access is local `127.0.0.1`; no network-URL workflow in README/docs. |
 | "Code Mode" renamed to "PTC mode" | None — this repo uses `dsh-plan-mode`, unrelated. |
+| `agentOptions.reasoningEffort` added to `dsh-tool-subagent` | **Required floor:** the upgraded preset now uses this field for oracle/adversary native defaults; the installer rejects DSH < 0.1.2-alpha.1. |
 | Public WebFetch enabled by default (SSRF-guarded, no per-request approval) | **Behavior change, not a break** — this repo already uses the builtin `dsh-tool-web`; the change only relaxes gating. |
 
 ### Verified-compatible surface (checked against `dsh-v0.1.2-alpha.1` source)
@@ -36,7 +39,10 @@ Everything below still exists in 0.1.2 with the same contract the code relies on
 - `agent/request` waterfall — still emitted in `packages/core/agent-loop/src/agent.ts:476-482`, resolves to `LlmCallConfig { provider, model, reasoningEffort, ... }`.
 - `agent/request-error` waterfall — `agent.ts:390-405`; payload still `{ turn, step, provider, failure, retryPolicy, signal }`; `failure.code`/`failure.status` present (used in `routeFatal`).
 - `agent-preset/selected(sessionId, agentPreset)`, `session/event`, `session/disposed`, `agent/disposed` — all present (`packages/preset/agent-presets/src/index.ts:285-286` and core session).
-- `settings.register(NS, schema, { base, applies: 'live' })` — unchanged service.
+- `settings.register(NS, schema, { base, applies: 'live' })` — unchanged service;
+  `settings.describe()` still exposes detached raw `user` layers, and
+  `settings/document-updated` still signals edits/resets (the native-default
+  overlay uses both).
 
 **`dsh/client.js` (settings card)**
 - `settings.plugin.item` slot, `settings.plugins.tab` — present (`packages/client/ui-settings-plugins/src/client/index.ts`).
@@ -49,10 +55,13 @@ Everything below still exists in 0.1.2 with the same contract the code relies on
 - `agents` registry (`list()`/`get(id).status`), `agent/created`, `agent/status { agent, status }`, `agentPresets.composedPreset`, `sessions`, `sessionTitle`.
 - Client floater geometry: `shell.overlay` list slot and `[data-shell-overlay]` (`packages/client/ui-layout/src/client/AppFrame.tsx:210-211`) and `[data-phase='active']` must still exist — **verified present** in 0.1.2.
 
-> Recommendation: nothing must change to run on 0.1.2-alpha.1. After actually
-> pulling the bump through `install.sh`/`@deepseek-ai/dsh`, re-run
-> `tests/` (they already exercise the router and the activity surface under a
-> stub ctx) as the smoke check.
+> Implementation: the preset now uses native `agentOptions` for its fixed-tier
+> oracle/adversary primaries, while the router remains the live override and
+> fallback overlay. `README.md`, `README.zh-CN.md`, and `install.sh` now pin and
+> enforce DSH >= 0.1.2-alpha.1; the direct `dsh plugin add` path documents the
+> same preflight because it does not invoke `install.sh`. The new host probe plus
+> the existing activity, client-bundle, preset-sync, and consistency tests are
+> the smoke check.
 
 ---
 
@@ -84,27 +93,25 @@ What **is** genuinely new in 0.1.2 (`packages/subagent/tool-subagent/src/model-s
   validated against the allow-list before the child starts.
 - A `list-models` tool so the model can enumerate the allowed routes.
 
-**How this maps onto rigorquant — stop reinventing:**
-1. The per-role model *default* can move out of the `agent/request` rewrite and
-   into each `tool-subagent-*` row's `agentOptions` (e.g. oracle/adversary rows
-   get `provider/model/reasoningEffort`, plus `maxTokens` where useful). This
-   capability is available **today** on 0.1.1-rc.2 for `provider`/`model`/
-   `maxTokens`; `reasoningEffort` needs the 0.1.2 bump.
-2. What is **NOT** replaced, and must stay custom: the **degrade lane**
-   (`agent/request-error` → per-role fallback → retry on terminal failure) and
-   the **root-role** handling. A static `agentOptions` model has no fallback,
-   and the builtin's model-selection setting is off by default and allow-list
-   driven (that is "let the caller choose within authorization", the opposite
-   of rigorquant's forced tier matrix). The Settings card may still justify
-   itself as the *per-deployment role-matrix editor*; if we instead pin models
-   in `agent.cordis.yml`, at minimum the card becomes "override-only" and can
-   shrink from a full matrix to a small deltas editor.
+**Implementation in this repository:**
+1. `tool-subagent-ground-truth` and `tool-subagent-adversary` now declare
+   `agentOptions.provider/model/reasoningEffort` in
+   `agent-presets/rigorquant/agent.cordis.yml`. The router reads the raw settings
+   user layer and leaves those native primary requests unchanged when there is
+   no explicit override.
+2. The router still owns what the builtin does not: live per-deployment primary
+   overrides, one fallback per role, terminal-failure retry, and root-role
+   handling. A static `agentOptions` model has no fallback, while enabling the
+   builtin allow-list would let a caller choose a route and undermine the
+   forced tier matrix, so `modelSelectionSettings` remains intentionally off.
+3. The existing Settings card is now documented and worded as the explicit
+   override/fallback surface rather than the source of the shipped primary.
+   `maxTokens` remains omitted from the native defaults deliberately; the
+   provider's own output ceiling is safer for proof-heavy reports.
 
-**Priority:** adopt `agentOptions` per-role defaults (incl. `reasoningEffort`
-after the bump) first — a pure win that removes the waterfall dependency for
-the common case; keep the degrade lane. Consider dropping/replacing the
-hand-rolled client card with an override sheet once `agentOptions` becomes the
-source of truth.
+The installer and both READMEs now enforce the 0.1.2 floor. `tests/router_probe.cjs`
+proves native pass-through, explicit override, reset, fallback retry, and
+restoration after fallback success.
 
 ### 2.2 Public WebFetch with SSRF protection, no per-request approval
 
@@ -145,11 +152,11 @@ now only sees the final result.
 
 ## Summary
 
-- **To fix for 0.1.2-alpha.1:** nothing breaking verified. Bump, re-run
-  `tests/` as smoke check.
-- **To stop reinventing:** adopt `@deepseek-ai/dsh-tool-subagent`
-  `agentOptions` (model/provider/**reasoningEffort**/maxTokens) per role as the
-  default source of truth, keeping only the degrade-lane + root handling in the
-  custom router; rely on builtin WebFetch (SSRF, no per-request approval) and
-  builtin per-answer token display. Note: `provider`/`model`/`maxTokens` were
-  already available on 0.1.1-rc.2; `reasoningEffort` is the 0.1.2 addition.
+- **Implemented incompatibility fix:** require and enforce DSH ≥ 0.1.2-alpha.1,
+  because the preset now uses native `agentOptions.reasoningEffort`.
+- **Implemented de-duplication:** native `agentOptions` owns fixed-tier primary
+  defaults; the custom router only handles explicit live overrides, fallback
+  retries, and root handling. Public WebFetch and per-answer token display
+  remain builtin capabilities already consumed by the preset. The native
+  `maxTokens` field remains available but intentionally unset rather than
+  imposing an arbitrary proof-output cap.

@@ -5,7 +5,8 @@
 # Plane and realm rules follow `standard` exactly: rows that
 # publish a service sit only inside an `isolate` group; host-plane services
 # (jobs, goals, skills registry, subagents registry, web, token meter) are
-# consumed from here, never re-registered.
+# consumed from here, never re-registered. The fixed-tier child rows use
+# `agentOptions.reasoningEffort`, which requires DSH >= 0.1.2-alpha.1.
 
 # ── identity ────────────────────────────────────────────────
 
@@ -175,10 +176,13 @@
       name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
     # Per-role delegation tools. Each role gets its own model-facing tool so the
-    # persona, tool allowlist, and recursion cap are per-role, not per-call.
-    # `maxDepth` is the ABSOLUTE cap on the spawned child's depth, and a child
-    # is always at depth >= 1 — so `maxDepth: 0` blocks ALL delegation (no
-    # child can ever exist), while `maxDepth: 1` allows exactly one level: the
+    # persona, tool allowlist, recursion cap, and (where fixed) native child
+    # model default are per-role, not per-call. The rq-model-router host half
+    # applies only live user overrides and the fallback retry; it does not
+    # rewrite a native default on every request. `maxDepth` is the ABSOLUTE cap
+    # on the spawned child's depth, and a child is always at depth >= 1 — so
+    # `maxDepth: 0` blocks ALL delegation (no child can ever exist), while
+    # `maxDepth: 1` allows exactly one level: the
     # root orchestrates children, and each child inherits these same rows and
     # cannot delegate further (its own child would be depth 2 > 1).
     # Blind roles (ground-truth, novel explorer) deny web_search, web_fetch,
@@ -255,6 +259,12 @@
         toolName: subagent_ground_truth
         backgroundMode: continuable
         maxDepth: 1
+        # DSH 0.1.2 native child defaults: the router leaves this primary
+        # route alone and only applies live overrides or a fallback retry.
+        agentOptions:
+          provider: deepseek-official
+          model: deepseek-v4-pro
+          reasoningEffort: high
         persona: >-
           You are a RigorQuant oracle working in epistemic isolation. Given a
           target (a closed form, invariant, or bound to re-derive, or an
@@ -297,6 +307,12 @@
         toolName: subagent_adversary
         backgroundMode: continuable
         maxDepth: 1
+        # DSH 0.1.2 native child defaults: the router leaves this primary
+        # route alone and only applies live overrides or a fallback retry.
+        agentOptions:
+          provider: deepseek-official
+          model: deepseek-v4-pro
+          reasoningEffort: high
         persona: >-
           You are a RigorQuant adversary. Audit candidate methods and the checks
           themselves for gaps, conditionals, handwaving, and circularity. A

@@ -1,12 +1,12 @@
 // RigorQuant model router — browser half.
 //
 // One card in the Plugins settings tab, keyed by the `rigorquant-models`
-// settings namespace this package's host half serves. Each role row stages a
-// primary choice (model + reasoning effort) and a per-role fallback choice;
-// "inherit" clears the user layer for that field so the composition default
-// (or, for root, the chatbox picker) governs again. The last saved selection
-// is the persistent one: it lives in the settings user layer, not in this
-// page's state.
+// settings namespace this package's host half serves. Each role row stages an
+// explicit primary override (model + reasoning effort) and a per-role fallback
+// choice; "inherit" clears the user layer for that field so the native
+// tool-subagent default (fixed-tier roles) or the parent/session route (root and
+// inherit roles) governs again. The last saved selection is the persistent one:
+// it lives in the settings user layer, not in this page's state.
 //
 // Shipped in the shell's client-bundle format, because that is what the browser
 // half is REQUIRED to be: the web shell appends this file as a classic
@@ -95,7 +95,7 @@ const inject = ['slots', 'locale', 'connection', 'settingsScope']
 const copy = {
   en: {
     title: 'RigorQuant model routing',
-    description: 'Per-role model and reasoning effort for RigorQuant sessions. Root defaults to the chatbox picker; oracle and adversary default to DeepSeek-V4-Pro with a flash fallback. Roles on inherit follow the session model.',
+    description: 'Per-role model overrides and fallbacks for RigorQuant sessions. Native tool defaults supply oracle and adversary; root follows the chatbox picker, and other roles inherit their session model.',
     inherit: 'Inherit',
     none: 'None',
     effortInherit: 'Default',
@@ -138,7 +138,7 @@ const copy = {
   },
   zh: {
     title: 'RigorQuant 角色模型路由',
-    description: '为 RigorQuant 会话的每个角色单独选择模型与推理强度。root 默认跟随聊天框选择器；oracle 与 adversary 默认使用 DeepSeek-V4-Pro，并以 flash 作为独立回退。选择“继承”的角色沿用会话模型。',
+    description: '为 RigorQuant 会话配置每个角色的模型覆盖与回退。oracle 与 adversary 使用原生工具默认值；root 跟随聊天框选择器，其他选择“继承”的角色沿用会话模型。',
     inherit: '继承',
     none: '无',
     effortInherit: '默认',
@@ -972,6 +972,9 @@ function startActivityPoller(ctx) {
   updatePanelShift()
   const tick = async () => {
     measureAnchorRight()
+    // Re-check the optional sessions service: it may activate after this
+    // bundle materialized (see the binding note above).
+    bindSessionList()
     if (document.hidden) return
     try {
       const response = await window.fetch(ACTIVITY_URL, { cache: 'no-store' })
@@ -995,8 +998,15 @@ function startActivityPoller(ctx) {
   // The floater follows the CURRENT session (same as dsh-agent-teams): only
   // the lab owned by the session open in the conversation view is shown, and
   // only while that session is a RigorQuant one (labs exist only for those).
-  const sessions = ctx.get('sessions')
-  const sessionList = sessions?.list
+  // `sessions` is read OPTIONALLY and bound lazily: this bundle materializes
+  // immediately (`dsh.client.immediately`), which on DSH 0.1.2's batched boot
+  // can precede the session controller's activation — sampling
+  // ctx.get('sessions') once at startup then left the pill permanently
+  // unscoped (currentSessionId null → labs filtered to none → no pill). Bind
+  // on every tick until the service exists, and re-bind if its instance is
+  // replaced.
+  let sessionList = null
+  let unsubscribeSessionList = null
   const syncCurrentSession = () => {
     try {
       const next = typeof sessionList?.getSnapshot === 'function'
@@ -1010,11 +1020,21 @@ function startActivityPoller(ctx) {
       // The sessions feed is a best-effort scope, not a hard dependency.
     }
   }
-  if (sessionList !== undefined && typeof sessionList.subscribe === 'function') {
-    syncCurrentSession()
-    const unsubscribe = sessionList.subscribe(syncCurrentSession)
-    ctx.effect(() => unsubscribe, 'rq-activity: current-session listener')
+  const bindSessionList = () => {
+    const list = ctx.get('sessions')?.list
+    if (list === sessionList) return
+    if (typeof unsubscribeSessionList === 'function') unsubscribeSessionList()
+    sessionList = typeof list?.subscribe === 'function' ? list : null
+    unsubscribeSessionList = null
+    if (sessionList !== null) {
+      syncCurrentSession()
+      unsubscribeSessionList = sessionList.subscribe(syncCurrentSession)
+    }
   }
+  bindSessionList()
+  ctx.effect(() => () => {
+    if (typeof unsubscribeSessionList === 'function') unsubscribeSessionList()
+  }, 'rq-activity: current-session listener')
   if (typeof window.addEventListener === 'function') {
     window.addEventListener('resize', measureAnchorRight)
     ctx.effect(() => () => window.removeEventListener('resize', measureAnchorRight),

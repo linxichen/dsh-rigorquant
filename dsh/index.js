@@ -2,10 +2,10 @@
 //
 // One settings namespace (`rigorquant-models`) maps every RigorQuant role to a
 // primary model and a per-role fallback model, each with its own reasoning
-// effort. Routing happens in the `agent/request` waterfall: this plugin mounts
-// at profile boot, so its listener registers before any agent-scoped model
-// selection listener and its rewrite composes last — the per-role choice wins
-// over both the chatbox picker (root) and parent inheritance (children).
+// effort. DSH 0.1.2's native `agentOptions` supplies the shipped primary for
+// fixed-tier roles (oracle/adversary); this router rewrites only an explicit
+// user override or an active fallback. The `agent/request` waterfall remains
+// the small policy overlay that makes live settings and fallback possible.
 //
 // Role identity comes from the preset itself: every role persona in
 // agent-presets/rigorquant/agent.cordis.yml carries a machine-readable tag
@@ -67,8 +67,16 @@ const SettingsSchema = z.object(Object.fromEntries(
   ]),
 ))
 
-const DEFAULT_PRIMARY = { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' }
-const DEFAULT_FALLBACK = { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'low' }
+const DEFAULT_PRIMARY = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' })
+const DEFAULT_FALLBACK = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'low' })
+
+// These fixed-tier defaults are also declared on the corresponding native
+// tool-subagent rows. Keeping the map here lets the fallback policy recognize
+// a failure of the native route without rewriting that route on every request.
+const NATIVE_PRIMARY = Object.freeze({
+  oracle: DEFAULT_PRIMARY,
+  adversary: DEFAULT_PRIMARY,
+})
 
 const Config = z.object({
   presetId: z.string().default('rigorquant'),
@@ -83,8 +91,12 @@ const Config = z.object({
   }),
 })
 
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function isChoice(value) {
-  return typeof value === 'object' && value !== null
+  return isRecord(value)
     && typeof value.provider === 'string' && value.provider !== ''
     && typeof value.model === 'string' && value.model !== ''
 }
@@ -102,13 +114,26 @@ function tagRole(text) {
   return match !== null && ROLES.includes(match[1]) ? match[1] : null
 }
 
+/** Apply a live override/fallback while clearing an inherited effort. */
+function applyChoice(resolved, choice) {
+  const { reasoningEffort: _inheritedEffort, ...withoutInheritedEffort } = resolved
+  return {
+    ...withoutInheritedEffort,
+    provider: choice.provider,
+    model: choice.model,
+    ...typeof choice.reasoningEffort === 'string' && choice.reasoningEffort !== ''
+      ? { reasoningEffort: choice.reasoningEffort }
+      : {},
+  }
+}
+
 function apply(ctx, config) {
   // Registers fiber-scoped: stopping this plugin unregisters the namespace.
   ctx.settings.register(NS, SettingsSchema, { base: config.defaults, applies: 'live' })
 
   /** sessionId → role | null (null = resolved, not routable). */
   const roles = new Map()
-  /** sessionId → { role, until, model } while degraded to the fallback. */
+  /** sessionId → { role, until, provider, model } while degraded. */
   const degraded = new Map()
 
   const section = () => ctx.settings.get(NS)
@@ -116,6 +141,36 @@ function apply(ctx, config) {
     const value = section()?.[`${role}${slot}`]
     return isChoice(value) ? value : null
   }
+
+  // `settings.get()` is the resolved section, so it cannot distinguish a
+  // user override from the composition base. That distinction matters now:
+  // the oracle/adversary rows carry their shipped primary through native
+  // `agentOptions`; the router must not rewrite those native requests on every
+  // step. Keep a detached raw user section and refresh it on every document
+  // change, including a reset whose resolved value happens to stay equal to
+  // the base.
+  let userSection = {}
+  const refreshUserSection = () => {
+    try {
+      const descriptor = ctx.settings.describe().find((entry) => entry.ns === NS)
+      userSection = isRecord(descriptor?.user) ? descriptor.user : {}
+    } catch {
+      // A transient description failure should fail open to native/parent
+      // routing, never strand an agent on a stale custom choice.
+      userSection = {}
+    }
+  }
+  refreshUserSection()
+  ctx.on('settings/document-updated', (namespace) => {
+    if (namespace === NS) refreshUserSection()
+  })
+
+  const userChoiceFor = (role, slot) => {
+    const value = userSection[`${role}${slot}`]
+    return isChoice(value) ? value : null
+  }
+  const nativePrimaryFor = (role) => NATIVE_PRIMARY[role] ?? null
+  const fallbackFor = (role) => userChoiceFor(role, 'Fallback') ?? choiceFor(role, 'Fallback')
 
   // Descriptor events arrive after our listener exists for continuable
   // children; the events scan below covers cold-resumed ones.
@@ -126,7 +181,9 @@ function apply(ctx, config) {
     } else if (event.type === 'assistant/message') {
       const d = degraded.get(session.id)
       const source = event.data?.message?.source
-      if (d !== undefined && source !== undefined && source.model === d.model) {
+      if (d !== undefined && source !== undefined
+        && source.model === d.model
+        && (d.provider === undefined || source.provider === d.provider)) {
         degraded.delete(session.id)
       }
     }
@@ -195,29 +252,35 @@ function apply(ctx, config) {
     const resolved = await next()
     const role = await resolveRole(payload.agent)
     if (role === null || role === undefined) return resolved
-    const primary = choiceFor(role, 'Primary')
-    if (primary === null) return resolved
-    const d = degraded.get(payload.agent.id)
+    const agentId = payload.agent.id
+    const d = degraded.get(agentId)
     const active = d !== undefined && d.role === role && d.until > Date.now()
-    const fallback = active ? choiceFor(role, 'Fallback') : null
-    const choice = fallback ?? primary
-    if (fallback !== null) d.model = fallback.model
-    return {
-      ...resolved,
-      provider: choice.provider,
-      model: choice.model,
-      ...typeof choice.reasoningEffort === 'string' && choice.reasoningEffort !== ''
-        ? { reasoningEffort: choice.reasoningEffort }
-        : {},
+    if (active) {
+      const fallback = fallbackFor(role)
+      // A live settings edit can remove a fallback while a retry is pending.
+      // Do not keep forcing an absent route; let the native/parent route run.
+      if (fallback === null) {
+        degraded.delete(agentId)
+        return resolved
+      }
+      d.provider = fallback.provider
+      d.model = fallback.model
+      return applyChoice(resolved, fallback)
     }
+
+    // A role's fixed shipped default is supplied by the native tool's
+    // `agentOptions`. Only an explicit user primary override belongs in this
+    // waterfall; otherwise the resolved native/parent route is authoritative.
+    const override = userChoiceFor(role, 'Primary')
+    return override === null ? resolved : applyChoice(resolved, override)
   })
 
   ctx.on('agent/request-error', async (payload, next) => {
     const action = await next()
     const role = await resolveRole(payload.agent)
     if (role === null || role === undefined) return action
-    const primary = choiceFor(role, 'Primary')
-    const fallback = choiceFor(role, 'Fallback')
+    const primary = userChoiceFor(role, 'Primary') ?? nativePrimaryFor(role)
+    const fallback = fallbackFor(role)
     if (primary === null || fallback === null) return action
     const agentId = payload.agent.id
     const d = degraded.get(agentId)
@@ -226,7 +289,12 @@ function apply(ctx, config) {
     // Only degrade failures on OUR route: the picker's model failing is the
     // picker's business (the retry policy), not a role-routing event.
     if (payload.provider !== primary.provider) return action
-    degraded.set(agentId, { role, until: Date.now() + config.degradeTtlMs, model: fallback.model })
+    degraded.set(agentId, {
+      role,
+      until: Date.now() + config.degradeTtlMs,
+      provider: fallback.provider,
+      model: fallback.model,
+    })
     ctx.logger.info(
       `rq-model-router: ${role} primary ${primary.provider}/${primary.model} failed `
       + `(${String(payload.failure?.code ?? payload.failure?.status ?? 'unknown')}); `

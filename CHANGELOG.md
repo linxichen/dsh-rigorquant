@@ -8,6 +8,27 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Fixed
+- **Activity pillbox vanished on DSH 0.1.2** (`dsh/client.js`). The floater
+  sampled the optional `sessions` client service exactly once at bundle
+  materialization; 0.1.2's batched client boot can materialize this
+  immediately-loaded bundle before the session controller activates, leaving
+  `currentSessionId` null forever, so no lab ever matched and the pill never
+  rendered. The binding is now lazy and identity-checked (re-bound per poll
+  tick until the service exists, and re-bound if its instance is replaced).
+
+### Changed
+- **DSH 0.1.2 native subagent-route migration** (`agent-presets/rigorquant/agent.cordis.yml`,
+  `dsh/index.js`, `install.sh`). Fixed-tier oracle/adversary primaries now use
+  native `tool-subagent` `agentOptions` (including `reasoningEffort`); the custom
+  router only applies explicit settings overrides and fallback retries. The
+  router regression probe covers native pass-through, reset, and degradation.
+  The installer now rejects DSH versions older than `0.1.2-alpha.1`, which is
+  the new preset floor.
+- Updated the English/Chinese README, architecture record, upgrade study, and
+  Settings-card copy to document native defaults and the intentional omission of
+  arbitrary `maxTokens` caps.
+
 ## [0.4.0] - 2026-08-29
 
 ### Added

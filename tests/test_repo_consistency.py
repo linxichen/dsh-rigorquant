@@ -17,6 +17,7 @@ import pytest
 from conftest import REPO, SKILL_DIR
 
 SKILL_SCRIPTS = ("rq_check.py", "provision-lean.sh")
+ROUTER_PROBE = REPO / "tests/router_probe.cjs"
 
 
 def tracked_files():
@@ -80,6 +81,65 @@ def test_install_script_installs_everything_the_runtime_needs():
     assert "schemas" not in install or "agent-presets" in install
 
 
+def test_native_agent_options_floor_is_declared_and_enforced():
+    """The native reasoning field cannot be installed into an older DSH."""
+    floor = "0.1.2-alpha.1"
+    install = (REPO / "install.sh").read_text()
+    assert "MIN_DSH_VERSION=\"%s\"" % floor in install
+    assert "version_at_least" in install
+    for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
+        assert floor in path.read_text(), "%s omits the DSH floor" % path.name
+
+
+def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
+    """A pre-0.1.2 CLI must not receive a preset using reasoningEffort."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_dsh = fake_bin / "dsh"
+    fake_dsh.write_text("#!/bin/sh\nprintf '0.1.1-rc.2\\n'\n")
+    fake_dsh.chmod(0o755)
+    dsh_home = tmp_path / "dsh-home"
+    env = os.environ.copy()
+    env["PATH"] = "%s:%s" % (fake_bin, env.get("PATH", ""))
+    env["DSH_HOME"] = str(dsh_home)
+    result = subprocess.run(
+        [str(REPO / "install.sh"), "--profile", "upgrade-test"],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "requires dsh >= 0.1.2-alpha.1" in result.stderr
+    assert not dsh_home.exists(), "the old runtime guard must run before copying"
+
+
+def test_installer_accepts_the_minimum_dsh_version(tmp_path):
+    """The prerelease floor itself is supported, not merely later stable tags."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_dsh = fake_bin / "dsh"
+    fake_dsh.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"--version\" ]; then printf '0.1.2-alpha.1\\n'; fi\n"
+    )
+    fake_dsh.chmod(0o755)
+    dsh_home = tmp_path / "dsh-home"
+    env = os.environ.copy()
+    env["PATH"] = "%s:%s" % (fake_bin, env.get("PATH", ""))
+    env["DSH_HOME"] = str(dsh_home)
+    result = subprocess.run(
+        [str(REPO / "install.sh"), "--profile", "upgrade-test"],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "Installed preset" in result.stdout
+    assert (dsh_home / ".agent-presets/rigorquant/agent.cordis.yml").is_file()
+
+
 def test_architecture_record_matches_the_preset_composition():
     """docs/architecture.md described maxDepth: 0, which blocks all delegation."""
     preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
@@ -111,6 +171,7 @@ def test_every_role_persona_carries_its_router_tag():
         "tool-subagent-adversary": "adversary",
         "tool-subagent-lit-line": "lit-line",
         "tool-subagent-lit-adversary": "lit-adversary",
+        "tool-subagent-doc-adversary": "doc-adversary",
     }
     preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
     blocks = dict(_preset_blocks(preset))
@@ -124,6 +185,62 @@ def test_every_role_persona_carries_its_router_tag():
             if other != role:
                 assert "[[rq:role=%s]]" % other not in block, (
                     "%s carries the wrong tag [[rq:role=%s]]" % (row_id, other))
+
+
+def test_fixed_tier_roles_delegate_their_primary_to_native_agent_options():
+    """The native 0.1.2 child route owns shipped primary defaults.
+
+    The host router still owns live overrides and fallback retries, but a normal
+    oracle/adversary request must be able to use the tool row's agentOptions
+    without an unconditional agent/request rewrite.
+    """
+    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    blocks = dict(_preset_blocks(preset))
+    for row_id in ("tool-subagent-ground-truth", "tool-subagent-adversary"):
+        block = blocks.get(row_id)
+        assert block is not None, "preset lost the fixed-tier row %s" % row_id
+        assert re.search(
+            r"agentOptions:\s+provider:\s+deepseek-official\s+"
+            r"model:\s+deepseek-v4-pro\s+reasoningEffort:\s+high",
+            block,
+        ), "%s must declare the native 0.1.2 primary" % row_id
+        assert "maxTokens:" not in block, "%s must not impose a proof-output cap" % row_id
+        assert "modelSelectionSettings:" not in block, (
+            "%s must keep caller-selected model routes disabled" % row_id)
+
+
+def test_activity_floater_binds_the_sessions_service_lazily():
+    """An immediately-materialized bundle must not sample ctx.get() once.
+
+    dsh/client.js materializes immediately; on DSH 0.1.2's batched client boot
+    that can precede the session controller's activation. The floater used to
+    read ctx.get('sessions') exactly once at startup, so currentSessionId
+    stayed null forever and the pill never rendered. It must re-bind per tick
+    until the optional service exists.
+    """
+    client = (REPO / "dsh" / "client.js").read_text()
+    assert "bindSessionList" in client, "the lazy sessions binding was removed"
+    assert "const sessions = ctx.get('sessions')" not in client, (
+        "a one-shot optional-service sample at boot is the 0.1.2 boot-order regression")
+    tick = client[client.index("const tick = async () =>"):]
+    tick = tick[:tick.index("\n  }")]
+    assert "bindSessionList()" in tick, "tick() must re-check the optional sessions service"
+
+
+def test_router_native_defaults_overrides_and_fallback_round_trip():
+    """The host router leaves native defaults alone but keeps its policy overlay."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to execute the router probe")
+    out = subprocess.run(
+        [node, str(ROUTER_PROBE), str(REPO / "dsh/index.js")],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    verdict = json.loads(out.stdout)
+    assert verdict["ok"] is True
 
 
 def test_router_roles_cover_the_tagged_roles_exactly():
