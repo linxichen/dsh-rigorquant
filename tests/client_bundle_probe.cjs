@@ -16,7 +16,11 @@ let handoff = null
 const sandbox = {}
 sandbox.window = sandbox
 sandbox.globalThis = sandbox
-sandbox.console = console
+// In the VM the bundle's `console` is this object, so a stray console.log in
+// the bundle would leak into the JSON verdict stdout. Collect instead of
+// emitting: diagnostics stay on the verdict, stdout stays pure JSON.
+const collectedLogs = []
+sandbox.console = { ...console, log: (...args) => { collectedLogs.push(args.map(String).join(' ')) } }
 sandbox.document = {
   querySelectorAll: () => [],
   createElement: () => ({ dataset: {}, setAttribute() {}, remove() {} }),
@@ -152,7 +156,13 @@ if (verdict.applyIsFunction) {
   const cards = []
   // `remote` is injected as a required Cordis service, so production code must
   // use ctx.remote (not ctx.get('remote')). Keep the probe shaped the same way.
-  const remote = {
+  // Cordis gates sub-namespace access: `remote.session`/`remote.settings` are
+  // only reachable when declared in the plugin's `inject`, otherwise it throws
+  // `cannot get property "remote.session" without inject`. Model the remote as
+  // a Proxy over the declared set so a bundle that forgets a sub-namespace
+  // fails at apply() exactly as it does in the harness.
+  const declaredRemote = verdict.inject ?? []
+  const remoteNamespaces = {
     session: {
       modelCatalog: async () => {
         modelCatalogCalls += 1
@@ -172,6 +182,17 @@ if (verdict.applyIsFunction) {
       }),
     },
   }
+  const remote = new Proxy(remoteNamespaces, {
+    get(target, prop) {
+      if (typeof prop === 'string' && prop in target) {
+        if (!declaredRemote.includes(`remote.${prop}`)) {
+          throw new Error(`cannot get property "remote.${prop}" without inject`)
+        }
+        return target[prop]
+      }
+      return Reflect.get(target, prop)
+    },
+  })
   const ctx = {
     effect: (fn) => fn(),
     remote,
@@ -347,11 +368,23 @@ async function exerciseDelayedCatalog() {
   let sessionRemote
   let delayedCalls = 0
   const delayedRegs = []
-  const delayedCtx = {
-    remote: {
-      get session() { return sessionRemote },
-      settings: { describe: async () => ({ ok: true, value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] } }) },
+  const delayedNamespaces = {
+    get session() { return sessionRemote },
+    settings: { describe: async () => ({ ok: true, value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] } }) },
+  }
+  const delayedRemote = new Proxy(delayedNamespaces, {
+    get(target, prop) {
+      if (typeof prop === 'string' && prop in target) {
+        if (!(verdict.inject ?? []).includes(`remote.${prop}`)) {
+          throw new Error(`cannot get property "remote.${prop}" without inject`)
+        }
+        return Reflect.get(target, prop)
+      }
+      return Reflect.get(target, prop)
     },
+  })
+  const delayedCtx = {
+    remote: delayedRemote,
     locale: { register: () => {}, bind: () => (key) => key },
     settingsScope: {
       bind: () => ({

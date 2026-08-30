@@ -32,6 +32,9 @@ SERVICE_PROVIDERS = {
     "slots": "@deepseek-ai/dsh-client-runtime",
     "locale": "@deepseek-ai/dsh-client-locale",
     "remote": "@deepseek-ai/dsh-api-remotes",
+    # Sub-namespaces are gated: Cordis throws without an explicit inject entry.
+    "remote.session": "@deepseek-ai/dsh-api-session-controller",
+    "remote.settings": "@deepseek-ai/dsh-api-remotes",
     "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
     "sessions": "@deepseek-ai/dsh-api-session-controller",
 }
@@ -117,6 +120,22 @@ def test_card_uses_the_current_session_model_catalog_remote(verdict):
     assert "this.ctx.remote?.session" in client
     assert "await session.modelCatalog()" in client
     assert "this.ctx.get('remote')" not in client
+
+
+def test_card_declares_the_remote_sub_namespaces_in_inject(verdict):
+    """Cordis gates sub-namespace access and throws without an inject entry.
+
+    The card reads `remote.session.modelCatalog()` and
+    `remote.settings.describe()`. The probe models `remote` as a Proxy that only
+    exposes namespaces declared in the module's `inject`; if a sub-namespace is
+    accessed but not declared, apply() throws and the mount fails. A passing
+    mount proves both are declared.
+    """
+    assert "mountError" not in verdict, verdict.get("mountError")
+    assert "remote" in verdict["inject"]
+    assert "remote.session" in verdict["inject"]
+    assert "remote.settings" in verdict["inject"]
+    assert verdict["modelCatalogCalls"] >= 1
 
 
 def test_card_waits_for_session_remote_before_failing(verdict):

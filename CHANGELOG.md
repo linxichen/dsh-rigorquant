@@ -14,6 +14,13 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   “Usage limit reached” text but no normalized numeric status. The router now
   classifies that exact terminal failure, records the effective primary route,
   and retries the configured fallback once; the router probe covers it.
+- **RigorQuant model card let nobody change models** (`dsh/client.js`). The
+  card read `remote.session`/`remote.settings` but never declared those
+  sub-namespaces in its `inject`; Cordis gates sub-namespace access and throws
+  `cannot get property "remote.session" without inject`, so `loadCatalog` failed
+  and the dropdown stayed at `loading` with only the “Inherit” placeholder. The
+  card now declares `remote.session` and `remote.settings`, and the probe models
+  the gate so a forgotten sub-namespace fails the build.
 - **RigorQuant model card still reported “unavailable” after the Remote fix**
   (`dsh/client.js`). The bundle is `immediately`, so its `load()` could run
   before `@deepseek-ai/dsh-api-session-controller` mounted `remote.session` in

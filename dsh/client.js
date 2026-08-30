@@ -90,10 +90,11 @@ function createStore(initial) {
   }
 }
 
-// `remote` is the 0.1.2 typed Host RPC carrier. The settings card uses its
-// canonical session.modelCatalog endpoint rather than the removed
-// connection.api.llm.models compatibility facade.
-const inject = ['slots', 'locale', 'remote', 'settingsScope', 'sessions']
+// `remote` is the 0.1.2 typed Host RPC carrier. Its sub-namespaces are gated:
+// Cordis throws `cannot get property "remote.session" without inject` unless
+// each one is declared here. The settings card reads session.modelCatalog and
+// settings.describe, so declare both sub-namespaces (plus the raw `remote`).
+const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'settingsScope', 'sessions']
 
 const copy = {
   en: {
