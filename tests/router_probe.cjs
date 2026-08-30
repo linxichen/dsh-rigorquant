@@ -189,6 +189,22 @@ async function main() {
     'primary restored after fallback success',
   )
 
+  // The DeepSeek official quota response can carry provider code 1308 and its
+  // usage-limit text without a normalized numeric status. It is terminal for
+  // this primary and must take the same one-shot fallback lane as a normal 429.
+  const quotaAction = await waterfall('agent/request-error', {
+    agent: oracle,
+    provider: DEFAULT_PRIMARY.provider,
+    failure: { code: '1308', message: 'Usage limit reached for 5 hour.' },
+  }, undefined)
+  equal(quotaAction, { kind: 'retry' }, 'usage-limit fallback action')
+  equal(
+    await waterfall('agent/request', { agent: oracle }, nativeRoute),
+    DEFAULT_FALLBACK,
+    'usage-limit fallback route',
+  )
+  assert(logs.length === 2 && logs[1].includes('(1308)'), 'usage-limit fallback log')
+
   process.stdout.write(JSON.stringify({ ok: true, logs }))
 }
 

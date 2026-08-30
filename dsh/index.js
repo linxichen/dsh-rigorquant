@@ -101,12 +101,21 @@ function isChoice(value) {
     && typeof value.model === 'string' && value.model !== ''
 }
 
-/** A failure the route itself cannot recover from: no adapter, or HTTP 4xx. */
+/** A failure the route itself cannot recover from: no adapter or bad primary.
+ *
+ * Providers should surface numeric HTTP status, but the official usage-limit
+ * response currently exposes its provider code (`1308`) and message while some
+ * adapter paths omit `status`. Treat that specific quota exhaustion as terminal
+ * too: retrying the same primary cannot help, whereas the role fallback can.
+ */
 function routeFatal(failure) {
   if (failure === undefined || failure === null) return false
   if (failure.code === 'NO_ADAPTER') return true
-  const status = failure.status
-  return typeof status === 'number' && status >= 400 && status < 500
+  const status = typeof failure.status === 'number'
+    ? failure.status
+    : typeof failure.status === 'string' ? Number(failure.status) : NaN
+  if (Number.isFinite(status) && status >= 400 && status < 500) return true
+  return failure.code === '1308' && /usage limit reached/i.test(String(failure.message ?? ''))
 }
 
 function tagRole(text) {
@@ -135,6 +144,8 @@ function apply(ctx, config) {
   const roles = new Map()
   /** sessionId → { role, until, provider, model } while degraded. */
   const degraded = new Map()
+  /** The exact resolved request route, for error-to-primary attribution. */
+  const requested = new Map()
 
   const section = () => ctx.settings.get(NS)
   const choiceFor = (role, slot) => {
@@ -191,10 +202,12 @@ function apply(ctx, config) {
   ctx.on('session/disposed', (session) => {
     roles.delete(session.id)
     degraded.delete(session.id)
+    requested.delete(session.id)
   })
   ctx.on('agent/disposed', ({ agent }) => {
     roles.delete(agent.id)
     degraded.delete(agent.id)
+    requested.delete(agent.id)
   })
   // A session that switches preset must be re-resolved (either direction).
   ctx.on('agent-preset/selected', (sessionId, agentPreset) => {
@@ -253,6 +266,10 @@ function apply(ctx, config) {
     const role = await resolveRole(payload.agent)
     if (role === null || role === undefined) return resolved
     const agentId = payload.agent.id
+    const remember = (route) => {
+      requested.set(agentId, { role, provider: route.provider, model: route.model })
+      return route
+    }
     const d = degraded.get(agentId)
     const active = d !== undefined && d.role === role && d.until > Date.now()
     if (active) {
@@ -261,18 +278,18 @@ function apply(ctx, config) {
       // Do not keep forcing an absent route; let the native/parent route run.
       if (fallback === null) {
         degraded.delete(agentId)
-        return resolved
+        return remember(resolved)
       }
       d.provider = fallback.provider
       d.model = fallback.model
-      return applyChoice(resolved, fallback)
+      return remember(applyChoice(resolved, fallback))
     }
 
     // A role's fixed shipped default is supplied by the native tool's
     // `agentOptions`. Only an explicit user primary override belongs in this
     // waterfall; otherwise the resolved native/parent route is authoritative.
     const override = userChoiceFor(role, 'Primary')
-    return override === null ? resolved : applyChoice(resolved, override)
+    return remember(override === null ? resolved : applyChoice(resolved, override))
   })
 
   ctx.on('agent/request-error', async (payload, next) => {
@@ -286,9 +303,13 @@ function apply(ctx, config) {
     const d = degraded.get(agentId)
     if (d !== undefined && d.role === role && d.until > Date.now()) return action
     if (!routeFatal(payload.failure)) return action
-    // Only degrade failures on OUR route: the picker's model failing is the
-    // picker's business (the retry policy), not a role-routing event.
-    if (payload.provider !== primary.provider) return action
+    // Only degrade failures on OUR route: compare against the exact route
+    // resolved for this request, not merely the static native-default map.
+    // This keeps an unrelated picker route out of the fallback lane while
+    // correctly covering native agentOptions and user overrides alike.
+    const route = requested.get(agentId)
+    if (route === undefined || route.role !== role
+      || route.model !== primary.model || route.provider !== payload.provider) return action
     degraded.set(agentId, {
       role,
       until: Date.now() + config.degradeTtlMs,

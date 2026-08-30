@@ -201,8 +201,8 @@ RigorQuant 模型路由**；最后一次保存的选择会持久化（写入设�
 | 对抗审计 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
 | 根编排者、探索者、文献/文档角色 | 继承（root 跟随聊天框选择器） | — |
 
-主选路由遇到终止性失败（无适配器 / HTTP 4xx）时，该角色降级到自己的回退
-模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他
+主选路由遇到终止性失败（无适配器 / HTTP 4xx；包括官方额度响应
+`1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他
 preset、workflow 工作进程、fork 子进程）一律不干预。固定层级子代理行使用原生
 `agentOptions.reasoningEffort`，需要 DSH ≥ 0.1.2-alpha.1（插件自注册设置）。
 设计记录见 [docs/architecture.md](docs/architecture.md) 决策 16。

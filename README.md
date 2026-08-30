@@ -229,7 +229,8 @@ defaults:
 | Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
 | Root, explorers, literature/document roles | inherit (root follows the chatbox picker) | — |
 
-On a terminal primary failure (no adapter / HTTP 4xx) the role degrades to its
+On a terminal primary failure (no adapter / HTTP 4xx, including the official
+quota response `1308` / “Usage limit reached”) the role degrades to its
 fallback for one forced retry, and recovers on the next success or after 10
 minutes. Untagged agents (other presets, workflow workers, forks) are never
 touched. Requires DSH ≥ 0.1.2-alpha.1 for native `agentOptions.reasoningEffort`

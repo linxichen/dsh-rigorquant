@@ -9,6 +9,11 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [Unreleased]
 
 ### Fixed
+- **Usage-limit 429 did not trigger the RigorQuant fallback** (`dsh/index.js`).
+  The official quota response can arrive as provider code `1308` with
+  “Usage limit reached” text but no normalized numeric status. The router now
+  classifies that exact terminal failure, records the effective primary route,
+  and retries the configured fallback once; the router probe covers it.
 - **RigorQuant model catalog unavailable on DSH 0.1.2** (`dsh/client.js`,
   `package.json`). The card used the removed private
   `connection.api.llm.models` facade and reported its absence as a connection
