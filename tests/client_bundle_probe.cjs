@@ -58,6 +58,7 @@ const required = []
 const registrations = []
 const rings = []
 const ops = []
+let modelCatalogCalls = 0
 // Mutable persisted user layer: the ops the card emits land here, so a
 // follow-up edit sees the same layering the real seam would show it.
 const userLayer = {}
@@ -145,15 +146,25 @@ if (verdict.applyIsFunction) {
   const cards = []
   const ctx = {
     effect: (fn) => fn(),
-    get: (name) => (name === 'connection'
+    get: (name) => (name === 'remote'
       ? {
-        api: {
-          llm: { models: async () => ({ result: { ok: false, error: { code: 'stub', message: 'stub' } } }) },
-          settings: {
-            describe: async () => ({
-              result: { ok: true, value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] } },
-            }),
+        session: {
+          modelCatalog: async () => {
+            modelCatalogCalls += 1
+            return {
+              ok: true,
+              value: {
+                groups: [{ id: 'deepseek', name: 'DeepSeek', models: [{ id: 'v4-pro', name: 'V4 Pro' }] }],
+                failures: [], routableProviders: ['deepseek'], default: { provider: 'deepseek', model: 'v4-pro' },
+              },
+            }
           },
+        },
+        settings: {
+          describe: async () => ({
+            ok: true,
+            value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] },
+          }),
         },
       }
       : (RC2 && name === 'settingsSchema'
@@ -317,5 +328,6 @@ async function exerciseDraft() {
 exerciseDraft().catch((error) => {
   verdict.draftError = `${error.name}: ${error.message}`
 }).finally(() => {
+  verdict.modelCatalogCalls = modelCatalogCalls
   process.stdout.write(JSON.stringify(verdict))
 })

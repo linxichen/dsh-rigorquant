@@ -90,7 +90,10 @@ function createStore(initial) {
   }
 }
 
-const inject = ['slots', 'locale', 'connection', 'settingsScope']
+// `remote` is the 0.1.2 typed Host RPC carrier. The settings card uses its
+// canonical session.modelCatalog endpoint rather than the removed
+// connection.api.llm.models compatibility facade.
+const inject = ['slots', 'locale', 'remote', 'settingsScope']
 
 const copy = {
   en: {
@@ -245,8 +248,6 @@ class RqModelsCardController {
   constructor(ctx) {
     this.ctx = ctx
     this.scope = ctx.settingsScope.bind({ namespace: CARD_KEY })
-    const connection = ctx.get('connection')
-    this.api = connection?.api
     // The staged edit is a DRAFT USER SECTION — the schema-form unit of
     // editing — not a side table of pending values. `undefined` means "no edit
     // staged"; once staged it is a plain object built immutably with
@@ -294,9 +295,13 @@ class RqModelsCardController {
 
   async loadCatalog() {
     try {
-      const response = await this.api.llm.models({})
-      if (!response.result.ok) throw new Error(`${response.result.error.code}: ${response.result.error.message}`)
-      const providers = (response.result.value.groups ?? []).map((group) => ({
+      // DSH 0.1.2's official catalog seam. `connection.api.llm.models` was an
+      // older compatibility facade and is absent from the current connection
+      // handle, which made this card report a false connection failure.
+      const response = await this.ctx.get('remote')?.session?.modelCatalog()
+      if (response === undefined) throw new Error('session model catalog remote unavailable')
+      if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
+      const providers = (response.value.groups ?? []).map((group) => ({
         id: group.id,
         name: group.name ?? group.id,
         models: (group.models ?? []).map((model) => ({ id: model.id, name: model.name ?? model.id })),
@@ -316,9 +321,9 @@ class RqModelsCardController {
    */
   async loadSchema() {
     try {
-      const response = await this.api.settings.describe({})
-      if (!response.result.ok) return
-      const view = (response.result.value.namespaces ?? []).find((entry) => entry.ns === CARD_KEY)
+      const response = await this.ctx.get('remote')?.settings?.describe()
+      if (response === undefined || !response.ok) return
+      const view = (response.value.namespaces ?? []).find((entry) => entry.ns === CARD_KEY)
       if (view === undefined) return
       this.schema = this.schemaForm().rehydrateSchema(view.schema)
     } catch {

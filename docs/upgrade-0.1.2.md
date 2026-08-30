@@ -14,12 +14,16 @@ the release notes.
 
 ## 1. Incompatibilities to fix
 
-### Verdict: the existing API surface is compatible, but the upgraded preset now requires DSH ≥ 0.1.2-alpha.1.
+### Verdict: two client-side migrations are required, and the upgraded preset requires DSH ≥ 0.1.2-alpha.1.
 
-The 0.1.2 release notes call out several *breaking* changes upstream, and none
-of them touches what this distribution uses. The implementation does consume
-one new 0.1.2 schema field (`agentOptions.reasoningEffort`), so an older DSH
-must be rejected rather than allowed to install a preset that cannot mount:
+The 0.1.2 release notes call out several *breaking* changes upstream. The
+initial source audit missed one private compatibility facade used by the custom
+settings card: `connection.api.llm.models`. Live validation exposed it as
+“Model catalog unavailable”; the card now uses the public
+`remote.session.modelCatalog()` Remote, just like the builtin selector. The
+implementation also consumes the new `agentOptions.reasoningEffort` field, so
+an older DSH must be rejected rather than allowed to install a preset that
+cannot mount:
 
 | 0.1.2 breaking change (notes) | Impact on dsh-rigorquant |
 |---|---|
@@ -28,6 +32,7 @@ must be rejected rather than allowed to install a preset that cannot mount:
 | Apps now launched through `dsh` profiles (Python SDK, ACP) | None — the compute lane (`env/`) is a standalone uv venv, not the DSH Python SDK. |
 | One-time token in launch URL for network web access | None — access is local `127.0.0.1`; no network-URL workflow in README/docs. |
 | "Code Mode" renamed to "PTC mode" | None — this repo uses `dsh-plan-mode`, unrelated. |
+| Legacy `connection.api.llm.models` facade unavailable in the 0.1.2 client | **Fixed:** the RigorQuant card now declares `remote` and calls the public `remote.session.modelCatalog()` Remote; `remote.settings.describe()` replaces the paired legacy schema request. |
 | `agentOptions.reasoningEffort` added to `dsh-tool-subagent` | **Required floor:** the upgraded preset now uses this field for oracle/adversary native defaults; the installer rejects DSH < 0.1.2-alpha.1. |
 | Public WebFetch enabled by default (SSRF-guarded, no per-request approval) | **Behavior change, not a break** — this repo already uses the builtin `dsh-tool-web`; the change only relaxes gating. |
 
@@ -46,6 +51,10 @@ Everything below still exists in 0.1.2 with the same contract the code relies on
 
 **`dsh/client.js` (settings card)**
 - `settings.plugin.item` slot, `settings.plugins.tab` — present (`packages/client/ui-settings-plugins/src/client/index.ts`).
+- **Corrected after live validation:** the old `connection.api.llm.models` /
+  `connection.api.settings.describe` facade is not a supported 0.1.2 client
+  seam. The card now injects `remote` from `@deepseek-ai/dsh-api-remotes` and
+  uses `remote.session.modelCatalog()` plus `remote.settings.describe()`.
 - `settingsSchema.rehydrate` service — present (`packages/client/ui-settings/src/client/schema.ts:50`).
 - `locale.register(NS, { zh, en })` — present (`packages/client/locale/src/client/index.ts:368`).
 - Already dual-versioned for `>= 0.1.1-rc.2` (both 0.1.1-rc.2 and 0.1.2-alpha.1 ship the `rehydrate` name) — no change needed.

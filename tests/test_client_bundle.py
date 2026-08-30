@@ -31,7 +31,7 @@ PROBE = REPO / "tests/client_bundle_probe.cjs"
 SERVICE_PROVIDERS = {
     "slots": "@deepseek-ai/dsh-client-runtime",
     "locale": "@deepseek-ai/dsh-client-locale",
-    "connection": "@deepseek-ai/dsh-client-connection",
+    "remote": "@deepseek-ai/dsh-api-remotes",
     "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
 }
 # The card registers into the `settings.plugin.item` ring, which this package
@@ -107,6 +107,11 @@ def test_factory_returns_the_cordis_plugin_surface(verdict):
 def test_factory_only_requires_platform_modules(verdict):
     """The frozen module table answers platform seed words and nothing else."""
     assert "factoryError" not in verdict, verdict.get("factoryError")
+
+
+def test_card_uses_the_current_session_model_catalog_remote(verdict):
+    """DSH 0.1.2 removed the old connection.api.llm.models facade."""
+    assert verdict["modelCatalogCalls"] == 1
 
 
 def test_apply_mounts_both_rings(verdict):

@@ -9,6 +9,12 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [Unreleased]
 
 ### Fixed
+- **RigorQuant model catalog unavailable on DSH 0.1.2** (`dsh/client.js`,
+  `package.json`). The card used the removed private
+  `connection.api.llm.models` facade and reported its absence as a connection
+  error. It now declares the official `remote` dependency and uses
+  `remote.session.modelCatalog()` plus `remote.settings.describe()`, matching
+  the builtin model selector.
 - **Activity pillbox vanished on DSH 0.1.2** (`dsh/client.js`). The floater
   sampled the optional `sessions` client service exactly once at bundle
   materialization; 0.1.2's batched client boot can materialize this
