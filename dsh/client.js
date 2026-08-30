@@ -261,6 +261,12 @@ class RqModelsCardController {
     this.schema = undefined
     this.store = createStore(this.projection())
     this.scope.subscribe(() => this.publish())
+    // Bounded lazy catalog retry: this bundle is `immediately`, so `apply`
+    // can run in the bootstrap batch before `@deepseek-ai/dsh-api-session-controller`
+    // mounts `remote.session` in the application batch. Polling the namespace
+    // until it exists keeps a healthy catalog RPC from becoming the generic
+    // "unavailable" footer (same boot-ordering class as the activity `sessions`).
+    this.catalogTimer = undefined
   }
 
   /**
@@ -294,21 +300,46 @@ class RqModelsCardController {
   }
 
   async loadCatalog() {
-    try {
-      // DSH 0.1.2's official catalog seam. `connection.api.llm.models` was an
-      // older compatibility facade and is absent from the current connection
-      // handle, which made this card report a false connection failure.
-      const response = await this.ctx.remote.session.modelCatalog()
-      if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
-      const providers = (response.value.groups ?? []).map((group) => ({
-        id: group.id,
-        name: group.name ?? group.id,
-        models: (group.models ?? []).map((model) => ({ id: model.id, name: model.name ?? model.id })),
-      }))
-      this.catalog = { status: 'ready', providers }
-    } catch {
-      this.catalog = { status: 'failed', providers: [] }
+    // The namespace may not be mounted yet under immediate boot. Keep the
+    // initial state as `loading` and retry until it exists or the attempt cap
+    // is reached, rather than declaring the catalog failed on a boot race.
+    if (this.catalogTimer !== undefined) {
+      clearTimeout(this.catalogTimer)
+      this.catalogTimer = undefined
     }
+    this.catalog = { status: 'loading', providers: [] }
+    this.publish()
+    let attempts = 0
+    const attempt = async () => {
+      attempts += 1
+      const session = this.ctx.remote?.session
+      if (session === undefined || typeof session.modelCatalog !== 'function') {
+        if (attempts < 60 && typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+          this.catalogTimer = window.setTimeout(attempt, 250)
+        } else {
+          this.catalog = { status: 'failed', providers: [] }
+          this.publish()
+        }
+        return
+      }
+      try {
+        // DSH 0.1.2's official catalog seam. `connection.api.llm.models` was an
+        // older compatibility facade and is absent from the current connection
+        // handle, which made this card report a false connection failure.
+        const response = await session.modelCatalog()
+        if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
+        const providers = (response.value.groups ?? []).map((group) => ({
+          id: group.id,
+          name: group.name ?? group.id,
+          models: (group.models ?? []).map((model) => ({ id: model.id, name: model.name ?? model.id })),
+        }))
+        this.catalog = { status: 'ready', providers }
+      } catch {
+        this.catalog = { status: 'failed', providers: [] }
+      }
+      this.publish()
+    }
+    await attempt()
   }
 
   /**

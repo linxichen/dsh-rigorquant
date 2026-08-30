@@ -14,6 +14,13 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   “Usage limit reached” text but no normalized numeric status. The router now
   classifies that exact terminal failure, records the effective primary route,
   and retries the configured fallback once; the router probe covers it.
+- **RigorQuant model card still reported “unavailable” after the Remote fix**
+  (`dsh/client.js`). The bundle is `immediately`, so its `load()` could run
+  before `@deepseek-ai/dsh-api-session-controller` mounted `remote.session` in
+  the application batch; the card then threw on the missing namespace and
+  reported a connection failure even though the builtin catalog RPC succeeded.
+  `loadCatalog` now lazily waits (bounded retry) for `remote.session` to mount
+  instead of failing on the boot race.
 - **RigorQuant model catalog unavailable on DSH 0.1.2** (`dsh/client.js`,
   `package.json`). The card used the removed private
   `connection.api.llm.models` facade and reported its absence as a connection

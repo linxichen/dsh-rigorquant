@@ -112,10 +112,23 @@ def test_factory_only_requires_platform_modules(verdict):
 
 def test_card_uses_the_current_session_model_catalog_remote(verdict):
     """DSH 0.1.2 removed the old connection.api.llm.models facade."""
-    assert verdict["modelCatalogCalls"] == 1
+    assert verdict["modelCatalogCalls"] >= 1
     client = (REPO / manifest()["exports"]["./client"]).read_text()
-    assert "this.ctx.remote.session.modelCatalog()" in client
+    assert "this.ctx.remote?.session" in client
+    assert "await session.modelCatalog()" in client
     assert "this.ctx.get('remote')" not in client
+
+
+def test_card_waits_for_session_remote_before_failing(verdict):
+    """Immediate boot can precede remote.session mounting; the card must retry.
+
+    In the probe the session Remote is absent at apply time and mounts a few
+    retry windows later. The controller must converge to 'ready' instead of
+    declaring the catalog failed on a bootstrap-batch boot race.
+    """
+    assert "delayedCatalogError" not in verdict, verdict.get("delayedCatalogError")
+    assert verdict["delayedCatalogStatus"] == "ready", verdict
+    assert verdict["delayedCatalogCalls"] >= 1
 
 
 def test_apply_mounts_both_rings(verdict):

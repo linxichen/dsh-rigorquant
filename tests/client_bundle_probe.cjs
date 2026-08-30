@@ -22,10 +22,16 @@ sandbox.document = {
   createElement: () => ({ dataset: {}, setAttribute() {}, remove() {} }),
   head: { append() {}, appendChild() {} },
 }
+// The card's lazy catalog retry uses window.setTimeout; the VM window is the
+// sandbox itself, so surface the host timers.
+sandbox.setTimeout = setTimeout
+sandbox.clearTimeout = clearTimeout
 sandbox.window.__ModuleLoader__ = { load: (h) => { handoff = h } }
 vm.createContext(sandbox)
 
 const verdict = { registered: false, mode: RC2 ? 'rc2' : 'rc7' }
+/** Set by the mount block; reused by the delayed-namespace scenario. */
+let pluginSurface = null
 try {
   vm.runInContext(code, sandbox, { filename: bundlePath })
 } catch (error) {
@@ -198,6 +204,7 @@ if (verdict.applyIsFunction) {
   // A fresh materialization for the mount: the loader memoizes one record per
   // bundle, so the surface under test is a factory result, not a reused one.
   const surface = handoff.factory(reqStub)
+  pluginSurface = surface
   try {
     surface.apply(ctx)
     verdict.mounted = true
@@ -327,8 +334,68 @@ async function exerciseDraft() {
   verdict.draft.afterReset = read().fields[FIELD].overridden
 }
 
+// Immediate-boot regression: the card must WAIT for the session Remote to be
+// mounted rather than fail on a bootstrap-batch boot race. `remote.session` is
+// absent at apply time; after a short delay the controller's retry observes it
+// and loads the catalog, leaving status 'ready' instead of 'failed'.
+//
+// This scenario is deliberately isolated: it re-runs apply() on a fresh context
+// and tracks its own registry + catalog counter so it cannot perturb the main
+// mount, rc2, or draft scenarios (which read shared probe globals).
+async function exerciseDelayedCatalog() {
+  if (pluginSurface === null) return
+  let sessionRemote
+  let delayedCalls = 0
+  const delayedRegs = []
+  const delayedCtx = {
+    remote: {
+      get session() { return sessionRemote },
+      settings: { describe: async () => ({ ok: true, value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] } }) },
+    },
+    locale: { register: () => {}, bind: () => (key) => key },
+    settingsScope: {
+      bind: () => ({
+        getSnapshot: () => ({ status: 'ready', writable: true, mode: 'host', revision: 1, value: {}, base: {}, user: {} }),
+        subscribe: () => () => {},
+        set: async () => {},
+        unset: async () => {},
+      }),
+    },
+    slots: {
+      inject: (ring, fn) => fn(),
+      register: (descriptor, component) => { delayedRegs.push({ descriptor, component }); return descriptor },
+    },
+    effect: (fn) => fn(),
+    // Serve the settingsSchema service so the card never falls back to the
+    // legacy schema-form module require (which would perturb `required`).
+    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
+  }
+  pluginSurface.apply(delayedCtx)
+  // Mount the session namespace a few retry windows later.
+  setTimeout(() => {
+    sessionRemote = {
+      modelCatalog: async () => {
+        delayedCalls += 1
+        return {
+          ok: true,
+          value: {
+            groups: [{ id: 'deepseek', name: 'DeepSeek', models: [{ id: 'v4-pro', name: 'V4 Pro' }] }],
+            failures: [], routableProviders: ['deepseek'], default: { provider: 'deepseek', model: 'v4-pro' },
+          },
+        }
+      },
+    }
+  }, 120)
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  const card = delayedRegs.find((reg) => reg.descriptor.key === 'rigorquant-models')
+  verdict.delayedCatalogStatus = card?.descriptor?.inject?.().hooks?.rqCard?.getSnapshot?.().catalog?.status ?? null
+  verdict.delayedCatalogCalls = delayedCalls
+}
+
 exerciseDraft().catch((error) => {
   verdict.draftError = `${error.name}: ${error.message}`
+}).then(() => exerciseDelayedCatalog()).catch((error) => {
+  verdict.delayedCatalogError = `${error.name}: ${error.message}`
 }).finally(() => {
   verdict.modelCatalogCalls = modelCatalogCalls
   process.stdout.write(JSON.stringify(verdict))
