@@ -144,32 +144,34 @@ verdict.required = required
 // but throws on mount is the next failure after registration.
 if (verdict.applyIsFunction) {
   const cards = []
+  // `remote` is injected as a required Cordis service, so production code must
+  // use ctx.remote (not ctx.get('remote')). Keep the probe shaped the same way.
+  const remote = {
+    session: {
+      modelCatalog: async () => {
+        modelCatalogCalls += 1
+        return {
+          ok: true,
+          value: {
+            groups: [{ id: 'deepseek', name: 'DeepSeek', models: [{ id: 'v4-pro', name: 'V4 Pro' }] }],
+            failures: [], routableProviders: ['deepseek'], default: { provider: 'deepseek', model: 'v4-pro' },
+          },
+        }
+      },
+    },
+    settings: {
+      describe: async () => ({
+        ok: true,
+        value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] },
+      }),
+    },
+  }
   const ctx = {
     effect: (fn) => fn(),
-    get: (name) => (name === 'remote'
-      ? {
-        session: {
-          modelCatalog: async () => {
-            modelCatalogCalls += 1
-            return {
-              ok: true,
-              value: {
-                groups: [{ id: 'deepseek', name: 'DeepSeek', models: [{ id: 'v4-pro', name: 'V4 Pro' }] }],
-                failures: [], routableProviders: ['deepseek'], default: { provider: 'deepseek', model: 'v4-pro' },
-              },
-            }
-          },
-        },
-        settings: {
-          describe: async () => ({
-            ok: true,
-            value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] },
-          }),
-        },
-      }
-      : (RC2 && name === 'settingsSchema'
-        ? settingsSchemaService
-        : undefined)),
+    remote,
+    get: (name) => (RC2 && name === 'settingsSchema'
+      ? settingsSchemaService
+      : undefined),
     locale: { register: () => {}, bind: () => (key) => key },
     settingsScope: {
       bind: () => ({

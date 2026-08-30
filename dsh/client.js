@@ -298,8 +298,7 @@ class RqModelsCardController {
       // DSH 0.1.2's official catalog seam. `connection.api.llm.models` was an
       // older compatibility facade and is absent from the current connection
       // handle, which made this card report a false connection failure.
-      const response = await this.ctx.get('remote')?.session?.modelCatalog()
-      if (response === undefined) throw new Error('session model catalog remote unavailable')
+      const response = await this.ctx.remote.session.modelCatalog()
       if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`)
       const providers = (response.value.groups ?? []).map((group) => ({
         id: group.id,
@@ -321,8 +320,8 @@ class RqModelsCardController {
    */
   async loadSchema() {
     try {
-      const response = await this.ctx.get('remote')?.settings?.describe()
-      if (response === undefined || !response.ok) return
+      const response = await this.ctx.remote.settings.describe()
+      if (!response.ok) return
       const view = (response.value.namespaces ?? []).find((entry) => entry.ns === CARD_KEY)
       if (view === undefined) return
       this.schema = this.schemaForm().rehydrateSchema(view.schema)

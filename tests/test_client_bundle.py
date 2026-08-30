@@ -113,6 +113,9 @@ def test_factory_only_requires_platform_modules(verdict):
 def test_card_uses_the_current_session_model_catalog_remote(verdict):
     """DSH 0.1.2 removed the old connection.api.llm.models facade."""
     assert verdict["modelCatalogCalls"] == 1
+    client = (REPO / manifest()["exports"]["./client"]).read_text()
+    assert "this.ctx.remote.session.modelCatalog()" in client
+    assert "this.ctx.get('remote')" not in client
 
 
 def test_apply_mounts_both_rings(verdict):
