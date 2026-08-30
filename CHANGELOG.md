@@ -15,15 +15,17 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   error. It now declares the official `remote` dependency and uses
   `remote.session.modelCatalog()` plus `remote.settings.describe()`, matching
   the builtin model selector.
-- **Activity pillbox vanished on DSH 0.1.2** (`dsh/client.js`). The floater
-  sampled the optional `sessions` client service exactly once at bundle
-  materialization; 0.1.2's batched client boot can materialize this
-  immediately-loaded bundle before the session controller activates, leaving
-  `currentSessionId` null forever, so no lab ever matched and the pill never
-  rendered. The binding is now lazy and identity-checked (re-bound per poll
-  tick until the service exists, and re-bound if its instance is replaced).
+- **Activity pillbox boot/navigation regressions on DSH 0.1.2**
+  (`dsh/client.js`). The immediately-materialized floater sampled `sessions`
+  before its binding existed and also started its first poll while that lexical
+  binding was still in the TDZ. It now declares `sessions` as a required
+  dependency, initializes/re-binds before polling, serializes and aborts
+  requests, and scope-owns expansion so a route change cannot leave stale
+  docked conversation padding behind.
 
 ### Changed
+- Added `THIRD_PARTY_NOTICES` preserving the upstream MIT notice for the
+  substantial `dsh-agent-teams` activity-panel geometry adaptation.
 - **DSH 0.1.2 native subagent-route migration** (`agent-presets/rigorquant/agent.cordis.yml`,
   `dsh/index.js`, `install.sh`). Fixed-tier oracle/adversary primaries now use
   native `tool-subagent` `agentOptions` (including `reasoningEffort`); the custom

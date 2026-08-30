@@ -212,19 +212,30 @@ def test_fixed_tier_roles_delegate_their_primary_to_native_agent_options():
 def test_activity_floater_binds_the_sessions_service_lazily():
     """An immediately-materialized bundle must not sample ctx.get() once.
 
-    dsh/client.js materializes immediately; on DSH 0.1.2's batched client boot
-    that can precede the session controller's activation. The floater used to
-    read ctx.get('sessions') exactly once at startup, so currentSessionId
-    stayed null forever and the pill never rendered. It must re-bind per tick
-    until the optional service exists.
+    dsh/client.js materializes immediately. Its required `sessions` injection
+    gates normal activation, while the lazy binding handles replacement and
+    must be initialized before the first poll. The previous ordering called
+    tick() inside the lexical TDZ, so its first fetch always rejected.
     """
     client = (REPO / "dsh" / "client.js").read_text()
     assert "bindSessionList" in client, "the lazy sessions binding was removed"
     assert "const sessions = ctx.get('sessions')" not in client, (
-        "a one-shot optional-service sample at boot is the 0.1.2 boot-order regression")
+        "a one-shot service sample at boot is the 0.1.2 boot-order regression")
     tick = client[client.index("const tick = async () =>"):]
     tick = tick[:tick.index("\n  }")]
-    assert "bindSessionList()" in tick, "tick() must re-check the optional sessions service"
+    assert "bindSessionList()" in tick, "tick() must re-check the sessions service"
+    assert client.index("const bindSessionList") < client.index("void tick()"), (
+        "the initial poll must not enter the sessions-binding TDZ")
+    assert "request.abort()" in client, "poll cleanup must abort its live request"
+    assert "activityState.openOwner === activityState.currentSessionId" in client, (
+        "a docked panel must not leave conversation padding after route changes")
+
+
+def test_agent_teams_geometry_attribution_keeps_the_upstream_mit_notice():
+    notice = (REPO / "THIRD_PARTY_NOTICES").read_text()
+    assert "dsh-agent-teams" in notice
+    assert "Copyright (c) 2026 程序员阿江(Relakkes)" in notice
+    assert "The above copyright notice and this permission notice" in notice
 
 
 def test_router_native_defaults_overrides_and_fallback_round_trip():

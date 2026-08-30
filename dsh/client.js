@@ -93,7 +93,7 @@ function createStore(initial) {
 // `remote` is the 0.1.2 typed Host RPC carrier. The settings card uses its
 // canonical session.modelCatalog endpoint rather than the removed
 // connection.api.llm.models compatibility facade.
-const inject = ['slots', 'locale', 'remote', 'settingsScope']
+const inject = ['slots', 'locale', 'remote', 'settingsScope', 'sessions']
 
 const copy = {
   en: {
@@ -798,7 +798,7 @@ const activityCopy = {
   },
 }
 
-/** Set once when the first live lab appears, so the panel opens itself. */
+/** Set once when the current session first resolves to a live lab, so it opens itself. */
 let activityAutoExpanded = false
 /** The user's collapse decision wins until the page reloads. */
 let activityCollapsed = true
@@ -809,6 +809,10 @@ let activityStore = null
 /** One shared mutable state the store publishes (never handed out raw). */
 const activityState = {
   status: 'idle', labs: [], anchorRight: null, currentSessionId: null,
+  // An expanded panel belongs to one current-session route. The shell overlay
+  // outlives route changes, so this owner gate prevents stale dock padding or
+  // an expanded panel leaking into another conversation.
+  openOwner: null,
   panelLayout: null, panelBounds: null,
 }
 
@@ -816,7 +820,7 @@ function snapshotStore() {
   if (activityStore === null) {
     activityStore = createStore({
       status: activityState.status, labs: [], anchorRight: null, currentSessionId: null,
-      panelLayout: null, panelBounds: null,
+      openOwner: null, panelLayout: null, panelBounds: null,
     })
   }
   return activityStore
@@ -892,7 +896,7 @@ function updatePanelShift() {
     const root = typeof document !== 'undefined' ? document.documentElement : null
     if (root === null) return
     const compact = (activityState.panelBounds?.width ?? window.innerWidth ?? Infinity) <= PANEL_COMPACT_BREAKPOINT
-    const expanded = !activityCollapsed
+    const expanded = !activityCollapsed && activityState.openOwner === activityState.currentSessionId
     const docked = activityState.panelLayout?.mode === 'docked'
     if (expanded && docked && !compact) {
       const width = activityState.panelLayout?.width ?? PANEL_DEFAULT_WIDTH
@@ -909,6 +913,7 @@ function updatePanelShift() {
 
 function setActivityCollapsed(collapsed) {
   activityCollapsed = collapsed
+  activityState.openOwner = collapsed ? null : activityState.currentSessionId
   publishActivity()
   updatePanelShift()
 }
@@ -945,6 +950,16 @@ function ago(ms) {
   return `${Math.round(delta / 3_600_000)}h`
 }
 
+/** The active RigorQuant lab for a captain or member transcript, if any. */
+function labForSession(labs, sessionId) {
+  if (sessionId === null || sessionId === undefined) return null
+  for (const lab of labs) {
+    if (lab.id === sessionId) return lab
+    if ((lab.members ?? []).some((member) => member.sessionId === sessionId)) return lab
+  }
+  return null
+}
+
 function startActivityPoller(ctx) {
   // The web shell, and nothing else: the probe and webless hosts have no
   // fetch/interval, and the floater is only meaningful in a browser anyway.
@@ -975,41 +990,11 @@ function startActivityPoller(ctx) {
     }, 'rq-activity: dodge css')
   }
   updatePanelShift()
-  const tick = async () => {
-    measureAnchorRight()
-    // Re-check the optional sessions service: it may activate after this
-    // bundle materialized (see the binding note above).
-    bindSessionList()
-    if (document.hidden) return
-    try {
-      const response = await window.fetch(ACTIVITY_URL, { cache: 'no-store' })
-      if (!response.ok) return
-      const next = await response.json()
-      const labs = Array.isArray(next?.labs) ? next.labs : []
-      if (labs.length > 0 && !activityAutoExpanded) {
-        activityAutoExpanded = true
-        activityCollapsed = false
-      }
-      activityState.status = 'ready'
-      activityState.labs = labs
-      publishActivity()
-    } catch {
-      // Transient: the host route may be absent in a webless profile.
-    }
-  }
-  void tick()
-  measureAnchorRight()
-  const id = window.setInterval(() => { void tick() }, POLL_MS)
   // The floater follows the CURRENT session (same as dsh-agent-teams): only
   // the lab owned by the session open in the conversation view is shown, and
   // only while that session is a RigorQuant one (labs exist only for those).
-  // `sessions` is read OPTIONALLY and bound lazily: this bundle materializes
-  // immediately (`dsh.client.immediately`), which on DSH 0.1.2's batched boot
-  // can precede the session controller's activation — sampling
-  // ctx.get('sessions') once at startup then left the pill permanently
-  // unscoped (currentSessionId null → labs filtered to none → no pill). Bind
-  // on every tick until the service exists, and re-bind if its instance is
-  // replaced.
+  // Bind before the first fetch: this immediately-loaded bundle used to call
+  // tick() before these lexical bindings existed, causing a TDZ rejection.
   let sessionList = null
   let unsubscribeSessionList = null
   const syncCurrentSession = () => {
@@ -1020,6 +1005,7 @@ function startActivityPoller(ctx) {
       if (next !== activityState.currentSessionId) {
         activityState.currentSessionId = next ?? null
         publishActivity()
+        updatePanelShift()
       }
     } catch {
       // The sessions feed is a best-effort scope, not a hard dependency.
@@ -1040,6 +1026,45 @@ function startActivityPoller(ctx) {
   ctx.effect(() => () => {
     if (typeof unsubscribeSessionList === 'function') unsubscribeSessionList()
   }, 'rq-activity: current-session listener')
+  let inFlight = false
+  let disposed = false
+  let request = null
+  const tick = async () => {
+    if (inFlight || disposed) return
+    inFlight = true
+    measureAnchorRight()
+    // Re-check until the optional service exists and if its instance changes.
+    bindSessionList()
+    if (typeof document !== 'undefined' && document.hidden) {
+      inFlight = false
+      return
+    }
+    request = typeof AbortController === 'function' ? new AbortController() : null
+    try {
+      const response = await window.fetch(ACTIVITY_URL, {
+        cache: 'no-store', ...(request === null ? {} : { signal: request.signal }),
+      })
+      if (!response.ok || disposed) return
+      const next = await response.json()
+      if (disposed) return
+      const labs = Array.isArray(next?.labs) ? next.labs : []
+      if (!activityAutoExpanded && labForSession(labs, activityState.currentSessionId) !== null) {
+        activityAutoExpanded = true
+        setActivityCollapsed(false)
+      }
+      activityState.status = 'ready'
+      activityState.labs = labs
+      publishActivity()
+    } catch {
+      // Transient: the host route may be absent or restarting.
+    } finally {
+      inFlight = false
+      request = null
+    }
+  }
+  void tick()
+  measureAnchorRight()
+  const id = window.setInterval(() => { void tick() }, POLL_MS)
   if (typeof window.addEventListener === 'function') {
     window.addEventListener('resize', measureAnchorRight)
     ctx.effect(() => () => window.removeEventListener('resize', measureAnchorRight),
@@ -1057,6 +1082,8 @@ function startActivityPoller(ctx) {
     if (conversation !== null) observer.observe(conversation)
   }
   ctx.effect(() => () => {
+    disposed = true
+    if (request !== null) request.abort()
     if (observer !== null) observer.disconnect()
     window.clearInterval(id)
   }, 'rq-activity: poller')
@@ -1376,7 +1403,10 @@ function ActivityPanel(props) {
     return relevant === undefined ? [] : allLabs.filter((lab) => lab.id === relevant)
   })()
   if (labs.length === 0) return null
-  if (activityCollapsed) {
+  // The shell overlay survives a navigation; only its owning session can keep
+  // the expanded panel (and its docked conversation concession) visible.
+  const collapsed = activityCollapsed || snapshot.openOwner !== currentSessionId
+  if (collapsed) {
     const working = labs.reduce((total, lab) => total + (lab.summary?.working ?? 0), 0)
     return R.createElement('button', {
       type: 'button', 'aria-label': t('expand'),

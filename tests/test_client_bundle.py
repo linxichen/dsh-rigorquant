@@ -33,6 +33,7 @@ SERVICE_PROVIDERS = {
     "locale": "@deepseek-ai/dsh-client-locale",
     "remote": "@deepseek-ai/dsh-api-remotes",
     "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
+    "sessions": "@deepseek-ai/dsh-api-session-controller",
 }
 # The card registers into the `settings.plugin.item` ring, which this package
 # declares; the activity floater registers into the root-scoped `shell.overlay`
