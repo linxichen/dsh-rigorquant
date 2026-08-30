@@ -9,6 +9,12 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [Unreleased]
 
 ### Fixed
+- **Effort dropdown was hard-coded to `[off, high, max]`** (`dsh/client.js`). A
+  model whose route doesn't support a level (e.g. some reject `high`) was
+  still offered it, sending an effort the provider errors on. The card now
+  keeps each model's `reasoning.efforts` from the catalog, offers exactly what
+  the chosen model supports, and drops a now-invalid effort when switching to a
+  model that no longer accepts it.
 - **Usage-limit 429 did not trigger the RigorQuant fallback** (`dsh/index.js`).
   The official quota response can arrive as provider code `1308` with
   “Usage limit reached” text but no normalized numeric status. The router now

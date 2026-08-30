@@ -332,7 +332,18 @@ class RqModelsCardController {
         const providers = (response.value.groups ?? []).map((group) => ({
           id: group.id,
           name: group.name ?? group.id,
-          models: (group.models ?? []).map((model) => ({ id: model.id, name: model.name ?? model.id })),
+          models: (group.models ?? []).map((model) => ({
+            id: model.id,
+            name: model.name ?? model.id,
+            // Keep the model's actual reasoning-effort surface so the effort
+            // dropdown lists what the model really supports instead of a
+            // hard-coded [off, high, max] that not every route accepts.
+            efforts: (model.reasoning?.efforts ?? []).map((effort) => ({
+              id: effort.id,
+              name: effort.name ?? effort.id,
+            })),
+            defaultEffort: model.reasoning?.defaultEffort,
+          })),
         }))
         this.catalog = { status: 'ready', providers }
       } catch {
@@ -540,10 +551,16 @@ function Select(props) {
 }
 
 function EffortSelect(props) {
-  const { t, choice, onChange } = props
+  const { t, choice, onChange, efforts } = props
+  // Fall back to the generic effort vocabulary only when the catalog did not
+  // report the model's real surfaces (older hosts, or a model with no
+  // reasoning metadata). Otherwise offer exactly what the model supports.
+  const supported = (efforts?.length ?? 0) > 0
+    ? efforts.map((effort) => effort.id)
+    : EFFORTS
   const options = [
     { value: '', label: t('effortInherit') },
-    ...EFFORTS.map((effort) => ({ value: effort, label: effort })),
+    ...supported.map((effort) => ({ value: effort, label: effort })),
   ]
   return React().createElement(Select, {
     value: choice?.reasoningEffort ?? '',
@@ -582,13 +599,25 @@ function RoleRow(props) {
   const models = []
   for (const provider of catalog.providers) {
     for (const model of provider.models) {
-      models.push({ value: `${provider.id}::${model.id}`, label: `${provider.name} · ${model.name}` })
+      models.push({
+        value: `${provider.id}::${model.id}`,
+        label: `${provider.name} · ${model.name}`,
+        efforts: model.efforts,
+        defaultEffort: model.defaultEffort,
+      })
     }
   }
+  // Find the currently chosen model's supported effort surfaces so the effort
+  // select lists what that exact route accepts (a model that doesn't support
+  // "high" must not offer it).
+  const modelByKey = new Map(models.map((model) => [model.value, model]))
   const renderSlot = (slot) => {
     const field = `${role}${slot}`
     const state = fields[field]
     const choice = state.choice
+    const chosenModel = choice === null
+      ? undefined
+      : modelByKey.get(choiceKey(choice))
     // Name what clearing the field falls back to. `inherited` is the resolved
     // value (schema defaults, then the plugin's composition base), so a role
     // the plugin ships a default for says so instead of reading as empty.
@@ -607,7 +636,15 @@ function RoleRow(props) {
       }
       const split = key.split('::')
       const next = { provider: split[0], model: split[1] }
-      if (typeof choice?.reasoningEffort === 'string' && choice.reasoningEffort !== '') next.reasoningEffort = choice.reasoningEffort
+      const targetEfforts = modelByKey.get(key)?.efforts ?? []
+      // Only carry an explicit effort forward if the model keeps supporting it;
+      // otherwise fall back to the model's default (or none) so we never send a
+      // level the route rejects.
+      const effort = typeof choice?.reasoningEffort === 'string' && choice.reasoningEffort !== ''
+        && (targetEfforts.length === 0 || targetEfforts.some((effort) => effort.id === choice.reasoningEffort))
+        ? choice.reasoningEffort
+        : (modelByKey.get(key)?.defaultEffort ?? undefined)
+      if (effort !== undefined) next.reasoningEffort = effort
       stage(field, next)
     }
     const onEffort = (effort) => {
@@ -630,7 +667,10 @@ function RoleRow(props) {
         },
       }, t(slot === 'Fallback' ? 'fallback' : 'primary')),
       React().createElement(Select, { value: choiceKey(choice), options, onChange: onModel }),
-      React().createElement(EffortSelect, { t, choice, onChange: onEffort }),
+      React().createElement(EffortSelect, {
+        t, choice, onChange: onEffort,
+        efforts: chosenModel === undefined ? undefined : chosenModel.efforts,
+      }),
       // Presence in the user layer is the override, so the marker and its
       // reset are driven by `overridden`, never by comparing against the base.
       state.overridden

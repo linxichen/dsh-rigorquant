@@ -238,6 +238,24 @@ def test_agent_teams_geometry_attribution_keeps_the_upstream_mit_notice():
     assert "The above copyright notice and this permission notice" in notice
 
 
+def test_effort_select_uses_the_models_real_supported_levels():
+    """The effort dropdown must not hard-code [high, max] globally.
+
+    A model that does not support a given reasoning effort (e.g. some routes
+    reject "high") must not be offered that level, and switching to such a
+    model must not carry a now-invalid effort forward.
+    """
+    client = (REPO / "dsh" / "client.js").read_text()
+    # The catalog keeps each model's reasoning effort surface.
+    assert "efforts: (model.reasoning?.efforts ?? [])" in client, (
+        "the card drops model reasoning efforts instead of keeping them")
+    assert "defaultEffort: model.reasoning?.defaultEffort" in client
+    # The effort select filters on the chosen model's surfaces, not a constant.
+    assert "const supported = (efforts?.length ?? 0) > 0" in client
+    assert "targetEfforts.some((effort) => effort.id" in client, (
+        "switching models must discard an effort the new route rejects")
+
+
 def test_router_native_defaults_overrides_and_fallback_round_trip():
     """The host router leaves native defaults alone but keeps its policy overlay."""
     node = shutil.which("node")
