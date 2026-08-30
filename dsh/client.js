@@ -826,8 +826,10 @@ const ROLE_DEF_CLIENT = {
   oracle: { label: 'Oracle', avatar: 'avatar-oracle.png' },
   adversary: { label: 'Adversary', avatar: 'avatar-adversary.png' },
   'lit-line': { label: 'Literature', avatar: 'avatar-literature.png' },
-  'lit-adversary': { label: 'Literature', avatar: 'avatar-literature-adversary.png' },
-  'doc-adversary': { label: 'Document', avatar: 'avatar-document-adversary.png' },
+  // Compact for the 96px DAG node; the roster caption shows the full
+  // "Literature adversary" from the host ROLE_DEF.
+  'lit-adversary': { label: 'Lit adversary', avatar: 'avatar-literature-adversary.png' },
+  'doc-adversary': { label: 'Doc adversary', avatar: 'avatar-document-adversary.png' },
 }
 
 const activityCopy = {
@@ -1246,6 +1248,10 @@ const RQ_PIPELINE_EDGES = [
   ['explorer', 'oracle'], ['novel', 'oracle'],
   ['oracle', 'adversary'],
   ['lit-line', 'lit-adversary'],
+  // Optional loop-back: the literature adversary independently re-verifies the
+  // load-bearing claims, and its verdicts feed the main adversarial audit.
+  // Dashed to mark it as an optional/conditional handoff, not a strict stage.
+  ['lit-adversary', 'adversary', 'dashed'],
   ['adversary', 'doc-adversary'],
 ]
 
@@ -1382,7 +1388,8 @@ function RoleGraph(props) {
       positions.set(roles[i], { x: startX + i * (RQ_NODE_WIDTH + RQ_H_GAP), y })
     }
   }
-  const edges = RQ_PIPELINE_EDGES.map(([from, to]) => {
+  const edges = RQ_PIPELINE_EDGES.map((edge) => {
+    const [from, to, line] = edge
     const source = positions.get(from)
     const target = positions.get(to)
     if (source === undefined || target === undefined) return null
@@ -1391,10 +1398,14 @@ function RoleGraph(props) {
     const x2 = target.x + RQ_NODE_WIDTH / 2
     const y2 = target.y
     const bend = Math.max(10, (y2 - y1) / 2)
+    const dashed = line === 'dashed'
     return R.createElement('path', {
       key: `${from}:${to}`,
       d: `M${x1} ${y1}C${x1} ${y1 + bend},${x2} ${y2 - bend},${x2} ${y2}`,
-      fill: 'none', stroke: 'var(--dsw-alias-border-l2)', strokeWidth: 1.5,
+      fill: 'none',
+      stroke: dashed ? 'var(--dsw-alias-label-tertiary)' : 'var(--dsw-alias-border-l2)',
+      strokeWidth: 1.5,
+      ...(dashed ? { strokeDasharray: '4 3' } : {}),
     })
   }).filter(Boolean)
 

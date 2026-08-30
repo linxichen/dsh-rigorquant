@@ -256,6 +256,22 @@ def test_effort_select_uses_the_models_real_supported_levels():
         "switching models must discard an effort the new route rejects")
 
 
+def test_activity_dag_labels_literature_adversary_distinctly():
+    """The pillbox DAG must not call the literature adversary 'Literature'.
+
+    The literature advisor is a node distinct from the literature lane, and the
+    optional loop-back edge from it to the main adversary is dashed.
+    """
+    host = (REPO / "dsh" / "activity.js").read_text()
+    client = (REPO / "dsh" / "client.js").read_text()
+    # Roster (host) keeps the full name; the narrow DAG node uses a compact one.
+    assert "'lit-adversary': { label: 'Literature adversary'" in host
+    assert "'lit-adversary': { label: 'Lit adversary'" in client
+    # The optional verification loop-back exists and is dashed.
+    assert "['lit-adversary', 'adversary', 'dashed']" in client
+    assert "strokeDasharray: '4 3'" in client
+
+
 def test_router_native_defaults_overrides_and_fallback_round_trip():
     """The host router leaves native defaults alone but keeps its policy overlay."""
     node = shutil.which("node")

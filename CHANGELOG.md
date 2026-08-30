@@ -9,6 +9,12 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [Unreleased]
 
 ### Fixed
+- **Activity pillbox DAG mislabeled the literature adversary and missed the
+  optional loop-back** (`dsh/activity.js`, `dsh/client.js`). The literature
+  adversary node read "Literature" (same as the literature lane). It now has a
+  distinct label ("Lit adversary" on the narrow DAG node, "Literature adversary"
+  on the roster), and a dashed `lit-adversary → adversary` edge marks the
+  optional verification handoff back into the main adversarial audit.
 - **Effort dropdown was hard-coded to `[off, high, max]`** (`dsh/client.js`). A
   model whose route doesn't support a level (e.g. some reject `high`) was
   still offered it, sending an effort the provider errors on. The card now

@@ -42,7 +42,9 @@ export const ROLE_DEF = {
   oracle:    { label: 'Oracle',       tool: 'subagent_ground_truth',   avatar: 'avatar-oracle.png' },
   adversary: { label: 'Adversary',    tool: 'subagent_adversary',      avatar: 'avatar-adversary.png' },
   'lit-line':     { label: 'Literature', tool: 'subagent_lit_line',    avatar: 'avatar-literature.png' },
-  'lit-adversary': { label: 'Literature', tool: 'subagent_lit_adversary', avatar: 'avatar-literature-adversary.png' },
+  // Roster/caption label: full and unambiguous (the DAG node uses a shorter
+  // variant in ROLE_DEF_CLIENT because of node width).
+  'lit-adversary': { label: 'Literature adversary', tool: 'subagent_lit_adversary', avatar: 'avatar-literature-adversary.png' },
   'doc-adversary': { label: 'Document',  tool: 'subagent_document_adversary', avatar: 'avatar-document-adversary.png' },
   validator: { label: 'Validator',    tool: 'rq_check.py',             avatar: 'avatar-validator.png' },
 }
