@@ -210,6 +210,21 @@
           self-contained call with the concrete result; the agent that started
           you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=explorer]]
+        # Explorer tool budget: the persona is the whole protocol, and the
+        # method track is OPEN, so web_search/web_fetch and `skill` stay (the
+        # rigorquant skill carries the working procedure). Denied: every
+        # delegation tool (C2 — depth already blocks spawn at depth 1; the deny
+        # also removes the schemas), the orchestration loops (workflow/ralph),
+        # child-control tools (a depth-1 child has no children), the
+        # orchestrator-owned task state (goal trio + todo_write; Decision 10:
+        # one task-level goal, root-owned), ask_user_question (children run
+        # unattended; questions route through the orchestrator), and plan mode.
+        # Static lists may only name tools every deployment mounts
+        # (tools.restrict throws on unknown names); deployment-optional noise
+        # (ssh_*/import_*/image tools) is trimmed by the barebone assembly
+        # filter, never here.
+        toolFilter:
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-novel
       name: '@deepseek-ai/dsh-tool-subagent'

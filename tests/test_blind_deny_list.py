@@ -29,6 +29,17 @@ BLIND_TOOLS = {
 }
 DELEGATION = BLIND_TOOLS - {"web_search", "web_fetch", "skill"}
 
+# Tools only the root orchestrator may touch. Children get them mounted by the
+# shared composition, so each role's deny list must name them explicitly.
+ORCHESTRATOR_TOOLS = {
+    "workflow", "ralph",                                # fan-out loops
+    "send_message", "interrupt_agent", "list_agents",   # child-control
+    "create_goal", "update_goal", "get_goal",           # Decision 10: one task-level goal
+    "todo_write",                                       # Decision 10
+    "ask_user_question",                                # unattended contract
+    "exit_plan_mode",                                   # children are never in plan mode
+}
+
 
 def _rows(text):
     """Yield (row_id, body) for every 4-space-indented composition row."""
@@ -119,6 +130,27 @@ def test_document_adversary_is_delegation_denied():
         assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
         assert "web_search" in denied and "web_fetch" in denied, \
             "%s must keep web_search/web_fetch denied" % row_id
+
+
+def test_explorer_is_delegation_denied_and_child_scoped():
+    """The open-track explorer keeps web and `skill`, and nothing orchestrator-owned.
+
+    The method track is open (web stays for known-result checks; the novelty
+    toggle lives on the separate subagent_novel row), and `skill` stays because
+    the rigorquant skill carries the working procedure. Everything else the
+    root owns is denied: delegation, orchestration loops, child-control, task
+    state, ask_user_question, plan mode.
+    """
+    text = CORDIS.read_text()
+    explorer_rows = {rn: _deny(b) for rn, b in _rows(text) if _tool_name(b) == "subagent"}
+    assert set(explorer_rows) == {"tool-subagent"}, "the explorer row must exist"
+    for row_id, denied in explorer_rows.items():
+        missing = sorted(DELEGATION - denied)
+        assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
+        missing = sorted(ORCHESTRATOR_TOOLS - denied)
+        assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
+        for kept in ("web_search", "web_fetch", "skill"):
+            assert kept not in denied, "%s must keep %s (open track)" % (row_id, kept)
 
 
 def test_blind_deny_sets_carry_every_delegation_row():

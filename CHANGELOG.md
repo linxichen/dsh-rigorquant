@@ -8,6 +8,23 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Changed
+- **Per-role tool budgets for delegation children** (`agent-presets/rigorquant/agent.cordis.yml`,
+  `tests/test_blind_deny_list.py`). Every role now carries an explicit
+  `toolFilter` that removes the tool schemas it must never touch from the
+  child's request, instead of relying on depth-1 spawn failures. Denied
+  everywhere: the full delegation set (C2), the workflow/ralph loops,
+  child-control tools, the goal trio and `todo_write` (Decision 10: one
+  root-owned task-level goal), `ask_user_question` (children run unattended),
+  and plan mode. Per-role policy: explorer and adversary keep web/skill per
+  their tracks (open track / check-battery procedure lives in the skill);
+  blind roles stay web/skill-denied; the document adversary keeps web denied.
+  Static lists only name tools every deployment mounts (a static deny of a
+  plugin-optional tool would throw at child spawn); deployment-optional noise
+  (ssh/import/image tools) is left to the barebone assembly filter. Explorer
+  lands first: 41 → 13 visible tools. A consistency test asserts each role's
+  deny list against the derived delegation set plus the orchestrator-owned set.
+
 ### Fixed
 - **Delegation denial lagged the document-adversary row** (`agent-presets/rigorquant/agent.cordis.yml`,
   `tests/test_blind_deny_list.py`). `subagent_document_adversary` was mounted by the
