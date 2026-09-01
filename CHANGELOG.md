@@ -9,6 +9,15 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [Unreleased]
 
 ### Fixed
+- **Delegation denial lagged the document-adversary row** (`agent-presets/rigorquant/agent.cordis.yml`,
+  `tests/test_blind_deny_list.py`). `subagent_document_adversary` was mounted by the
+  composition but absent from every delegation deny list and from the test's
+  `BLIND_TOOLS` set, so oracle/novel/lit/doc-adversary children still saw that
+  spawn tool in their depth-1 catalog — Decision 14's C2 ("delegation denied
+  outright") was one row behind the composition. The name now appears in all
+  five deny lists and in `BLIND_TOOLS`; a new consistency test derives the
+  delegation set from every mounted `provider: spawn` row and fails when a
+  future delegation row is added without extending the deny lists.
 - **Activity pillbox DAG mislabeled the literature adversary and missed the
   optional loop-back** (`dsh/activity.js`, `dsh/client.js`). The literature
   adversary node read "Literature" (same as the literature lane). It now has a

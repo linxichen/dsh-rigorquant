@@ -250,7 +250,7 @@
           you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=novel]]
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
 
     - id: tool-subagent-ground-truth
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -298,7 +298,7 @@
           receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=oracle]]
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
 
     - id: tool-subagent-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -348,7 +348,7 @@
           finish; the agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-line]]
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
 
     - id: tool-subagent-lit-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -373,7 +373,7 @@
           the agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-adversary]]
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
 
     - id: tool-subagent-doc-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -411,7 +411,7 @@
           The agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=doc-adversary]]
         toolFilter:
-          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
 
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'

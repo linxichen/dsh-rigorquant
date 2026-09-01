@@ -1,10 +1,17 @@
-"""The blind novel lane is tool-denied, not just prompt-asked.
+"""Delegation-denial is tool-denied, not just prompt-asked.
 
-docs/architecture.md Decision 14 (C1, C2): the ground-truth oracle and the novel
-explorer must deny web_search, web_fetch, skill, and every delegation tool in
-the composition itself. This is the one piece of the lane's isolation that IS
-enforceable; the residual bash-curl and filesystem holes are documented as
-procedural, and named as such under Decision 14.
+docs/architecture.md Decision 14 (C1, C2): the blind roles (ground-truth oracle,
+novel explorer) must deny web_search, web_fetch, skill, and every delegation
+tool in the composition itself, and every other role that denies delegation
+(literature line/adversary, document adversary) must deny the same delegation
+set. This is the one piece of the lane's isolation that IS enforceable; the
+residual bash-curl and filesystem holes are documented as procedural, and named
+as such under Decision 14.
+
+`BLIND_TOOLS` must name every delegation tool the composition can mount — a
+new delegation row whose toolName is absent here silently re-opens C2 for every
+previously blind child. The self-name is included on purpose (each row denies
+its own toolName too), mirroring the shipped deny lists.
 """
 
 import re
@@ -17,6 +24,7 @@ BLIND_TOOLS = {
     "web_search", "web_fetch", "skill",
     "subagent", "subagent_ground_truth", "subagent_adversary",
     "subagent_novel", "subagent_lit_line", "subagent_lit_adversary",
+    "subagent_document_adversary",
     "subagent_fork", "workflow", "ralph",
 }
 DELEGATION = BLIND_TOOLS - {"web_search", "web_fetch", "skill"}
@@ -97,3 +105,35 @@ def test_lit_roles_are_delegation_denied_leaves_that_keep_web():
         assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
         assert "web_search" not in denied and "web_fetch" not in denied, \
             "%s must keep web_search/web_fetch for retrieval" % row_id
+
+
+def test_document_adversary_is_delegation_denied():
+    """The document adversary audits local deliverables: no web, no delegation."""
+    text = CORDIS.read_text()
+    doc_rows = {rn: _deny(b) for rn, b in _rows(text)
+                if _tool_name(b) == "subagent_document_adversary"}
+    assert set(doc_rows) == {"tool-subagent-doc-adversary"}, \
+        "the document-adversary row must exist"
+    for row_id, denied in doc_rows.items():
+        missing = sorted(DELEGATION - denied)
+        assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
+        assert "web_search" in denied and "web_fetch" in denied, \
+            "%s must keep web_search/web_fetch denied" % row_id
+
+
+def test_blind_deny_sets_carry_every_delegation_row():
+    """BLIND_TOOLS must name every delegation toolName the composition mounts.
+
+    A new delegation row that forgets to extend this set (and the shipped deny
+    lists with it) silently re-opens Decision 14's C2 for every previously
+    blind child: the tool stays in the catalog at depth 1.
+    """
+    text = CORDIS.read_text()
+    mounted = {_tool_name(b) for _, b in _rows(text)
+               if _tool_name(b) is not None and "provider: spawn" in b}
+    delegation_rows = {name for name in mounted if name.startswith("subagent")}
+    missing_from_set = sorted(delegation_rows - DELEGATION)
+    assert not missing_from_set, (
+        "delegation toolName(s) %r are mounted by the composition but absent "
+        "from BLIND_TOOLS/DELEGATION; extend the set and every delegation "
+        "deny list" % missing_from_set)
