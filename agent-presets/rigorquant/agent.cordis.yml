@@ -214,17 +214,20 @@
         # method track is OPEN, so web_search/web_fetch and `skill` stay (the
         # rigorquant skill carries the working procedure). Denied: every
         # delegation tool (C2 — depth already blocks spawn at depth 1; the deny
-        # also removes the schemas), the orchestration loops (workflow/ralph),
-        # child-control tools (a depth-1 child has no children), the
-        # orchestrator-owned task state (goal trio + todo_write; Decision 10:
-        # one task-level goal, root-owned), ask_user_question (children run
-        # unattended; questions route through the orchestrator), and plan mode.
-        # Static lists may only name tools every deployment mounts
-        # (tools.restrict throws on unknown names); deployment-optional noise
-        # (ssh_*/import_*/image tools) is trimmed by the barebone assembly
-        # filter, never here.
+        # also removes the schemas), child-control tools (a depth-1 child has
+        # no children), the orchestrator-owned task state (goal trio +
+        # todo_write; Decision 10: one task-level goal, root-owned),
+        # ask_user_question (children run unattended; questions route through
+        # the orchestrator), and plan mode. The orchestration spawners
+        # (subagent_fork, workflow, ralph) are disabled outright at the group
+        # level — untagged, unscopeable children contradict the isolation
+        # design — so they appear in no deny list (tools.restrict throws on
+        # names no mounted tool provides). Static lists may only name tools
+        # every deployment mounts (tools.restrict throws on unknown names);
+        # deployment-optional noise (ssh_*/import_*/image tools) is trimmed by
+        # the barebone assembly filter, never here.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-novel
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -283,7 +286,7 @@
         # (unattended contract), plan mode. Kept: bash + fs six (own scratch
         # directory, seed recording), report (delivery), job trio.
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-ground-truth
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -350,7 +353,7 @@
         # bash + fs six (scratch derivation, seed recording, brute-force
         # numeric tracks), report (delivery), job trio (long background runs).
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -389,7 +392,7 @@
         # orchestration loops, child-control, orchestrator-owned task state,
         # ask_user_question, plan mode.
         toolFilter:
-          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-line
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -419,7 +422,7 @@
         # loops, child-control, orchestrator-owned task state, ask_user_question
         # (unattended contract), plan mode.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -447,7 +450,7 @@
         # verdicts) — web stays (independent re-retrieval is the job), skill
         # and bash stay, job trio stays. Same child-scope denials.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-doc-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -494,10 +497,18 @@
         # rides with bash (denying jobs while bash keeps run_in_background
         # makes background runs uncollectable).
         toolFilter:
-          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
+    # Fork is DISABLED (feature/subagent-context): a fork child inherits the
+    # parent's completed-turn conversation by design — exactly the context
+    # flow the isolation design forbids (Decision 8: not used for track work;
+    # SKILL.md lists it as an anti-pattern). Disabled beats scoped: a
+    # toolFilter would bound its catalog, never its inherited context. While
+    # this row is disabled no deny list may name `subagent_fork` —
+    # tools.restrict throws on names no mounted tool provides.
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
       config:
         provider: fork
         toolName: subagent_fork
@@ -533,16 +544,32 @@
         enableRunInBackground: false
         maxDepth: provider-managed
 
+    # The workflow engine and its model-facing tool are DISABLED
+    # (feature/subagent-context): workflow `agent()` children carry no role
+    # tag, and the engine's start path expresses neither a persona nor a
+    # per-child toolFilter, so every workflow child ran as an untagged agent
+    # wearing the root persona with the full catalog (74 of 162 children in
+    # the 0.4.x study logs; ~23k-token headers). The framework's fan-out is
+    # the goal-round driver plus the per-role delegation tools; a deployment
+    # that wants workflows should use another preset, not this one. While
+    # these rows are disabled no deny list may name `workflow`.
     - id: workflow-worker-thread
       name: '@deepseek-ai/dsh-workflow-worker-thread'
+      disabled: true
       config:
         provider: spawn
 
     - id: tool-workflow
       name: '@deepseek-ai/dsh-tool-workflow'
+      disabled: true
 
+    # Ralph is DISABLED for the same reason as workflow: ralph rounds spawn
+    # untagged children with no persona and no expressible per-child scope,
+    # and the framework's iteration loop is the goal-round driver. While this
+    # row is disabled no deny list may name `ralph`.
     - id: tool-ralph
       name: '@deepseek-ai/dsh-tool-ralph'
+      disabled: true
       config:
         subagentProvider: spawn
         maxRounds: 64

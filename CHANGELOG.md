@@ -41,6 +41,19 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   that converts the bash-network residual hole into an auditable instruction.
   A consistency test pins the block in both personas and against SKILL.md's
   documented form.
+- **Untagged spawner rows disabled** (`agent.cordis.yml`, `docs/architecture.md`,
+  `tests/test_role_tool_budgets.py`). `subagent_fork`, `tool-workflow`,
+  `tool-ralph`, and the `workflow-worker-thread` engine are disabled in this
+  preset. Their children carry no role tag (the router never routes them), and
+  workflow `agent()` calls express neither a per-child persona nor a per-child
+  toolFilter — 74 of the 162 children in the 0.4.x study logs were untagged
+  workers wearing the root persona with the full ~54-tool catalog (~23k-token
+  headers). Disabled rows mount no tools, so their names also leave every
+  deny list (tools.restrict throws on unmounted names); the per-role deny
+  lists, the conftest delegation/orchestrator sets, and the guaranteed-mounted
+  universe all drop them, and a regression test fails if any of the four rows
+  is re-enabled without revisiting that. Decision 8 amended in
+  docs/architecture.md.
 
 ### Fixed
 - **Delegation denial lagged the document-adversary row** (`agent-presets/rigorquant/agent.cordis.yml`,

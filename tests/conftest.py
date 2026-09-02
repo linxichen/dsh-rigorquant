@@ -37,22 +37,25 @@ RQ_CHECK = Path(os.environ.get("RQ_CHECK_BIN", SKILL_DIR / "scripts/rq_check.py"
 
 CORDIS = REPO / "agent-presets/rigorquant/agent.cordis.yml"
 
-# Every delegation tool name the composition can mount, plus web/skill for the
-# blind lane. A new delegation row whose toolName is absent here silently
-# re-opens Decision 14's C2 for every previously blind child.
+# Every delegation tool name a MOUNTED delegation row provides, plus web/skill
+# for the blind lane. A new delegation row whose toolName is absent here
+# silently re-opens Decision 14's C2 for every previously blind child.
+# (`subagent_fork`, `workflow`, and `ralph` are NOT here: their rows are
+# disabled outright — untagged, unscopeable children — so they are neither
+# mounted nor deniable; tools.restrict throws on unmounted names.)
 BLIND_TOOLS = {
     "web_search", "web_fetch", "skill",
     "subagent", "subagent_ground_truth", "subagent_adversary",
     "subagent_novel", "subagent_lit_line", "subagent_lit_adversary",
     "subagent_document_adversary",
-    "subagent_fork", "workflow", "ralph",
 }
 DELEGATION = BLIND_TOOLS - {"web_search", "web_fetch", "skill"}
 
 # Tools only the root orchestrator may touch. Children get them mounted by the
 # shared composition, so each role's deny list must name them explicitly.
+# (Workflow/ralph are absent: their rows are disabled outright — see
+# BLIND_TOOLS above.)
 ORCHESTRATOR_TOOLS = {
-    "workflow", "ralph",                                # fan-out loops
     "send_message", "interrupt_agent", "list_agents",   # child-control
     "create_goal", "update_goal", "get_goal",           # Decision 10: one task-level goal
     "todo_write",                                       # Decision 10

@@ -53,12 +53,13 @@ GUARANTEED = frozenset({
     "create_goal", "update_goal", "get_goal", "todo_write",
     "ask_user_question", "exit_plan_mode",
     "send_message", "interrupt_agent", "list_agents",
-    # orchestration loops (preset tool-workflow / tool-ralph rows)
-    "workflow", "ralph",
-    # delegation (the preset's own spawn rows)
+    # delegation (the preset's own spawn rows). The untagged spawner rows
+    # (subagent_fork, workflow, ralph, workflow-worker-thread) are disabled
+    # outright and mount nothing, so they appear neither here nor in any deny
+    # list (tools.restrict throws on unmounted names).
     "subagent", "subagent_ground_truth", "subagent_adversary",
     "subagent_novel", "subagent_lit_line", "subagent_lit_adversary",
-    "subagent_document_adversary", "subagent_fork",
+    "subagent_document_adversary",
 })
 
 # toolName -> the exact visible set a spawned child of that role must see.
@@ -188,3 +189,29 @@ def test_blind_lane_sees_no_web_and_no_skill():
             continue
         leaked = sorted({"web_search", "web_fetch", "skill"} & visible)
         assert not leaked, "%s (%s) leaks blind-lane capabilities: %r" % (row_id, name, leaked)
+
+
+def test_untagged_spawner_rows_are_disabled():
+    """fork/workflow/ralph cannot mint untagged children in this preset.
+
+    Their children carry no role tag (the router never routes them), and for
+    workflow `agent()` calls neither a persona nor a per-child toolFilter is
+    expressible — the engine's start path takes only prompt/parent/route/
+    schema. 74 of the 162 children in the 0.4.x study logs were untagged
+    workers wearing the root persona with the full catalog. The preset
+    declares these spawners out of scope instead; disabled rows mount no
+    tools, which is also why no deny list may name them
+    (tools.restrict throws on unmounted names).
+    """
+    import re
+
+    for row_id, body in composition_rows(_composition()):
+        if row_id in ("tool-subagent-fork", "workflow-worker-thread",
+                      "tool-workflow", "tool-ralph"):
+            assert re.search(r"^\s+disabled: true\s*$", body, re.MULTILINE), (
+                "%s must stay disabled: it mints untagged, unscopeable children"
+                % row_id)
+            name = tool_name_of(body)
+            assert name not in GUARANTEED, (
+                "%s is disabled but its tool %r is still listed as "
+                "guaranteed-mounted" % (row_id, name))
