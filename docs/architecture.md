@@ -187,7 +187,7 @@ per-role network or filesystem scope exists in the spawn provider:
 - **Bash-curl.** The blind lane keeps `bash`; nothing prevents it from curling
   `export.arxiv.org`. The math adversary audits for it — a blind output that
   cites or recalls an external result it could not have derived is flagged.
-- **Mounted checker-lane search** (named with Decision 24). The OffGridThinker
+- **Mounted checker-lane search** (named with Decision 23). The OffGridThinker
   must not fetch known results, but a mounted jacobian/Lean lane reaches every
   child (plugin-optional tools cannot appear in a static deny list —
   `tools.restrict` throws on unmounted names). Procedural rule, stated in the
@@ -326,19 +326,7 @@ escalation is an explicit recorded act.**
 - Journal stays append-only (a rolling journal was considered and rejected:
   the append-only record is the study's audit trail).
 
-## Decision 18 — j-space is unbundled
-
-The j-space cognition suite shipped inside this preset (skill directory,
-install.sh wiring, and an inline j-space protocol paragraph in every persona).
-It is the user's separate distribution and adds a hard external dependency to
-every rigorquant session — including the blind roles (`offgrid`, `doublechecker`),
-which deny the `skill` tool and can never load it, so the inline block was
-pure prompt tax on every one of their requests. Decision: **j-space lives in
-its own branch, not here.** The skill directory, its install/uninstall lines,
-and all inline persona references are removed; rigorquant no longer mandates
-it. Guarded by a consistency test asserting the absence.
-
-## Decision 19 — claim-keyed blocking (narrow before patch)
+## Decision 18 — claim-keyed blocking (narrow before patch)
 
 The 20260820 var-expected-return-term run burned rounds 2–6 of an 8-round
 budget re-certifying one stage-3 claim: every round found a genuine new
@@ -352,7 +340,7 @@ round must either narrow the declared scope to what is certified or declare
 BLOCKED with the exact gap; a re-patch that changes only the mechanism, not
 the scope, is a defect. Guarded by procedure (lifecycle.md, SKILL.md Step 3).
 
-## Decision 20 — verdict data is the deliverable; status waits for it
+## Decision 19 — verdict data is the deliverable; status waits for it
 
 The same run's other loops were all process failures: six delegated agents
 produced complete verdict JSON (36/36 cells) without ever writing the report
@@ -383,7 +371,7 @@ own generator emitted a wrong table cell that went unaudited. Decision:
 
 Guarded by `tests/test_procedural_gates.py`.
 
-## Decision 21 — adopt the 0.1.1-rc.2 builtins; dual-version the browser half
+## Decision 20 — adopt the 0.1.1-rc.2 builtins; dual-version the browser half
 
 Studied deepseek-harness 0.1.1-rc.2 (the newest release; the running harness
 is 0.1.0-rc.7). The host half and preset are byte-compatible; the browser half
@@ -423,7 +411,7 @@ Storage note: rc.8 changed the SQLite backend format (no migration), but it is
 opt-in; rigorquant sessions persist as JSONL, which is byte-compatible across
 the upgrade.
 
-## Decision 22 — reproducibility is the record; junk is derived state
+## Decision 21 — reproducibility is the record; junk is derived state
 
 Core philosophy of the plugin, hard-won from the 20260820
 var-expected-return-term run: the study tree ended at ~729 MB of venvs and
@@ -451,7 +439,7 @@ registry-outputs-exist check. Full statement, operational rules R1-R7, junk
 taxonomy and the close-out sweep protocol:
 `agent-presets/rigorquant/skills/rigorquant/references/reproducibility.md`.
 
-## Decision 23 — the bundle self-installs the preset and the lane
+## Decision 22 — the bundle self-installs the preset and the lane
 
 The distribution previously had two doors: `./install.sh` (everything) and
 `dsh plugin add` (a router with nothing to route, because only install.sh
@@ -512,7 +500,7 @@ venv-survival, no venv leakage, kept-local edits, damage restore);
 `test_repo_consistency.py` pins the wiring (row mounted, export resolves,
 exclusions named).
 
-## Decision 24 — role identity: DoubleChecker, OffGridThinker, `subagent_explorer`
+## Decision 23 — role identity: DoubleChecker, OffGridThinker, `subagent_explorer`
 
 Three renames landed together because they are one decision about what a role
 name must carry: the name is protocol. Every delegation tool is model-facing,

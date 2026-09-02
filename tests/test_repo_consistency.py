@@ -552,6 +552,41 @@ def test_schemas_are_valid_json():
         json.loads(s.read_text())  # raises on malformed JSON
 
 
+
+def test_pre_commit_hook_enforces_95_percent_validator_coverage():
+    """The validator is the honesty boundary; its coverage gate must be hard to weaken.
+
+    rq_check.py runs only as a subprocess, so ordinary pytest-cov module
+    selection measures the wrong process. The checked-in hook/CI contract is
+    deliberately explicit: RQ_COVERAGE wraps each validator child in coverage
+    run --parallel, combine merges the child files, then report applies 95%.
+    Pin both the mechanics and the footgun guard -- `.coverage*` would delete
+    .coveragerc before the report runs.
+    """
+    hook = REPO / ".githooks" / "pre-commit"
+    assert hook.is_file() and os.access(hook, os.X_OK), (
+        "missing executable .githooks/pre-commit coverage gate")
+    text = hook.read_text()
+    for required in ("RQ_COVERAGE=1", "UV_CACHE_DIR", "coverage combine",
+                     "--fail-under=95", "rm -f .coverage .coverage.*"):
+        assert required in text, "pre-commit hook lost %r" % required
+    assert not re.search(r"^rm -f \.coverage\*$", text, re.MULTILINE), (
+        "the broad cleanup glob deletes .coveragerc itself")
+
+    coverage = (REPO / ".coveragerc").read_text()
+    assert "parallel = true" in coverage
+    assert "source = agent-presets/rigorquant/skills/rigorquant/scripts" in coverage
+
+    lane = (REPO / "env" / "pyproject.toml").read_text()
+    assert "coverage>=7.6,<8" in lane, "the pinned lane lacks coverage"
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    assert "RQ_COVERAGE=1" in ci and "--fail-under=95" in ci, (
+        "CI must run the same coverage gate as pre-commit")
+    install = (REPO / "install.sh").read_text()
+    assert "core.hooksPath .githooks" in install, (
+        "install.sh must activate the checked-in hook for git checkouts")
+
+
 def test_install_script_installs_literature_skills():
     """Decision 15: arxiv + academic-paper-search ship to $DSH_HOME/skills/."""
     install = (REPO / "install.sh").read_text()
@@ -559,21 +594,6 @@ def test_install_script_installs_literature_skills():
         assert ('$DSH_HOME/skills/%s"' % skill) in install or \
                ('$DSH_HOME/skills/%s ' % skill) in install, \
                "install.sh never installs %s globally" % skill
-
-
-def test_j_space_is_not_bundled():
-    """j-space lives in its own distribution, never in this preset/plugin.
-
-    The rigorquant personas must not mandate it (the blind roles cannot even
-    load skills), and install.sh must neither install nor remove it.
-    """
-    assert not (REPO / "agent-presets/rigorquant/skills/j-space").exists(), \
-        "the j-space skill must not ship inside dsh-rigorquant"
-    install = (REPO / "install.sh").read_text()
-    assert "j-space" not in install, "install.sh must not reference j-space"
-    for p in (REPO / "agent-presets/rigorquant").rglob("*.yml"):
-        assert "j-space" not in p.read_text(), \
-            "%s must not mandate the external j-space skill" % p.name
 
 
 def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
@@ -592,7 +612,7 @@ def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
 
 
 def test_bundle_patch_mounts_the_preset_sync_half():
-    """Decision 23: the bundle self-installs the preset and the compute lane.
+    """Decision 22: the bundle self-installs the preset and the compute lane.
 
     The whole point of the rq-preset-sync row is that `dsh plugin add` alone
     leaves a WORKING distribution at the next profile boot. If the row is

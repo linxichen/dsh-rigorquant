@@ -6,3 +6,6 @@ __pycache__/
 .session-recovery/
 node_modules/
 package-lock.json
+.coverage
+.coverage.*
+.uv-cache/

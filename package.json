@@ -15,17 +15,19 @@
   ],
   "type": "module",
   "files": [
-    "cordis.patch.yml",
-    "dsh/",
-    "agent-presets/",
-    "env/",
-    "mcp/",
-    "docs/",
-    "tests/",
-    "install.sh",
+    ".coveragerc",
+    ".githooks/",
+    "LICENSE",
     "README.md",
     "README.zh-CN.md",
-    "LICENSE"
+    "agent-presets/",
+    "cordis.patch.yml",
+    "docs/",
+    "dsh/",
+    "env/",
+    "install.sh",
+    "mcp/",
+    "tests/"
   ],
   "exports": {
     ".": "./dsh/index.js",

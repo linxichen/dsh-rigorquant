@@ -156,7 +156,7 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 `rq-preset-sync` 行会在 profile 下次启动时，把 agent preset 落盘到
 `$DSH_HOME/.agent-presets/rigorquant`、把计算通道落盘到
 `$DSH_HOME/share/rigorquant/`，因此生态的 `dsh plugin add` 安装路径即可获得
-完整框架（设计记录：docs/architecture.md 决策 23）：
+完整框架（设计记录：docs/architecture.md 决策 22）：
 
 ```sh
 dsh --version                 # 必须 >= 0.1.2-alpha.1
@@ -252,6 +252,22 @@ studies/                    每个任务一个研究文件夹（Mode B；各 che
 uv sync --frozen --project env
 uv run --frozen --project env python -m pytest tests/ -q
 ```
+
+### 提交前覆盖率闸门（校验器 ≥95%）
+
+仓库内的 [`.githooks/pre-commit`](.githooks/pre-commit) 会在覆盖率模式下运行同一
+整套测试；已发布的校验器（`rq_check.py`）低于**95% 行覆盖率**时拒绝提交。`./install.sh`
+在 git checkout 中自动启用；已有 checkout 可显式执行：
+
+```sh
+git config core.hooksPath .githooks
+```
+
+校验器以子进程形式运行，因此覆盖率采用显式接线而非插件魔法：`RQ_COVERAGE=1` 让
+`tests/conftest.py::run_check` 调用 `coverage run --parallel`；hook 合并子进程数据并
+执行 `coverage report --fail-under=95`。CI 运行完全相同的闸门。单次绕过可使用
+Git 的标准 `git commit --no-verify`。
+
 
 `tests/test_repo_consistency.py` 负责另一半：唯一的校验器、唯一的 schema、
 文档中可解析的命令、与文件系统一致的目录说明。

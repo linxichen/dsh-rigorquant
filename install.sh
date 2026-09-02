@@ -177,6 +177,22 @@ if [ "$mode" = uninstall ]; then
       && echo "Removed the plugin from the '$PROFILE' profile." \
       || true
   fi
+  # Undo the hook wiring only when it still points at ours.
+  if [ -d "$HERE/.git" ] && [ "$(cd "$HERE" && git config core.hooksPath 2>/dev/null)" = ".githooks" ]; then
+    (cd "$HERE" && git config --unset core.hooksPath) 2>/dev/null || true
+
+# Developer convenience for git checkouts only: point git at the repo's hooks
+# so every commit runs the coverage gate (.githooks/pre-commit). Non-fatal by
+# design: exported tarballs / npx cache copies have no .git, and a failed `git
+# config` must never fail an install.
+if [ "$mode" != uninstall ] && [ -d "$HERE/.git" ] && [ -x "$HERE/.githooks/pre-commit" ]; then
+  if (cd "$HERE" && git config core.hooksPath .githooks) 2>/dev/null; then
+    echo "Enabled the pre-commit coverage gate (git config core.hooksPath .githooks)."
+  fi
+fi
+
+    echo "Disabled the pre-commit coverage gate (unset core.hooksPath)."
+  fi
   echo "Removed the RigorQuant preset, skills, and shared lane."
   exit 0
 fi

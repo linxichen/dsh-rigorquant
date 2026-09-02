@@ -191,7 +191,7 @@ package declares a `dsh.bundle` manifest whose rows include a boot-sync half
 (`rq-preset-sync`): on the profile's next start it lands the agent preset into
 `$DSH_HOME/.agent-presets/rigorquant` and the compute lane into
 `$DSH_HOME/share/rigorquant/`, so `dsh plugin add` alone yields a working
-distribution (docs/architecture.md Decision 23):
+distribution (docs/architecture.md Decision 22):
 
 ```sh
 dsh --version                 # must be >= 0.1.2-alpha.1
@@ -284,6 +284,24 @@ gate is not itself tested is a framework that certifies whatever it is handed.
 uv sync --frozen --project env
 uv run --frozen --project env python -m pytest tests/ -q
 ```
+
+### Pre-commit coverage gate (validator ≥95%)
+
+The checked-in hook at [`.githooks/pre-commit`](.githooks/pre-commit) runs the
+same full suite under coverage and refuses a commit when the shipped validator
+(`rq_check.py`) drops below **95% line coverage**. `./install.sh` enables it in
+a git checkout; in an existing checkout, enable it explicitly:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+The validator is a subprocess, so coverage is deliberately explicit rather
+than plugin magic: `RQ_COVERAGE=1` makes `tests/conftest.py::run_check` invoke
+`coverage run --parallel`; the hook combines those child data files and applies
+`coverage report --fail-under=95`. CI runs the identical gate. Bypass one
+commit only with Git's standard `git commit --no-verify`.
+
 
 `tests/test_repo_consistency.py` covers the other half: one validator, one
 schema, documented commands that resolve, and layout blocks that match the

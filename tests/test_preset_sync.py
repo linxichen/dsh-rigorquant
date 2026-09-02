@@ -1,6 +1,6 @@
 """The boot-sync engine (dsh/sync.js) — the self-installing distribution.
 
-Decision 23: the bundle row `rq-preset-sync` lands the preset and the compute
+Decision 22: the bundle row `rq-preset-sync` lands the preset and the compute
 lane into $DSH_HOME at profile boot. Its contract has exactly four load-bearing
 properties, each pinned here against a real execution of the engine (via
 tests/preset_sync_probe.cjs, not by re-implementing it in Python):

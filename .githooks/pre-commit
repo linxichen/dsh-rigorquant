@@ -1,0 +1,33 @@
+#!/bin/sh
+# RigorQuant pre-commit hook — the suite must pass AND the shipped validator
+# must stay at >= 95% coverage.
+#
+# Why a gate: rq_check.py is the honesty boundary of the whole framework
+# (architecture.md Decision 13), and every refusal branch in it is a promise.
+# Coverage is measured the only honest way for a validator that runs as a
+# subprocess: conftest.run_check wraps each child in `coverage run
+# --parallel` (RQ_COVERAGE=1), every run drops a .coverage.* file, and
+# `coverage combine` + `coverage report --fail-under=95` decide. Config:
+# .coveragerc. The closing tests live in tests/test_gate_surface.py.
+#
+# Bypass once: git commit --no-verify
+# Bypass always (not recommended): SKIP_RQ_HOOK=1
+set -eu
+
+[ "${SKIP_RQ_HOOK:-0}" = "1" ] && exit 0
+
+cd "$(git rev-parse --show-toplevel)"
+
+# A checkout-local fallback keeps the hook usable in sandboxed/restricted
+# environments where ~/.cache/uv is unreadable. A caller or CI may still
+# supply UV_CACHE_DIR explicitly, and .uv-cache/ is derived state.
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$PWD/.uv-cache}"
+
+# Scoped on purpose: `rm -f .coverage*` would eat .coveragerc itself.
+rm -f .coverage .coverage.*
+trap 'rm -f .coverage .coverage.*' EXIT
+
+RQ_COVERAGE=1 uv run --frozen --project env python -m pytest tests/ -q
+
+uv run --frozen --project env python -m coverage combine --rcfile .coveragerc >/dev/null
+uv run --frozen --project env python -m coverage report --rcfile .coveragerc --fail-under=95

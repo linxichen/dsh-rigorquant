@@ -323,12 +323,20 @@ def golden_study(root: Path) -> Path:
 
 
 def run_check(study_root: Path, *extra):
-    """Run the validator; return (exit_code, combined output)."""
-    cp = subprocess.run(
-        [sys.executable, str(RQ_CHECK), "--study", str(study_root), *extra],
-        capture_output=True,
-        text=True,
-    )
+    """Run the validator; return (exit_code, combined output).
+
+    Under RQ_COVERAGE=1 the child runs through `coverage run --parallel`
+    instead of the bare interpreter: the validator is only ever a subprocess
+    here, so this is the one place its execution can be measured. Each run
+    drops a .coverage.* file for `coverage combine` (see .coveragerc and the
+    pre-commit hook).
+    """
+    command = [sys.executable]
+    if os.environ.get("RQ_COVERAGE") == "1":
+        command += ["-m", "coverage", "run", "--rcfile",
+                    str(REPO / ".coveragerc"), "--parallel-mode"]
+    command += [str(RQ_CHECK), "--study", str(study_root), *extra]
+    cp = subprocess.run(command, capture_output=True, text=True)
     return cp.returncode, cp.stdout + cp.stderr
 
 

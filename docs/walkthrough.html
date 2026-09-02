@@ -372,9 +372,9 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
     <span class="en">Mechanical facts worth noticing: every child is tagged <code class="inl">[[rq:role=…]]</code> so the host-side router can
     route per role without touching untagged agents; every child is <code class="inl">maxDepth: 1</code> — it cannot spawn grandchildren;
     and since harness 0.1.1-rc.2 adoption, every role delivers its result through the harness <code class="inl">report</code> channel,
-    which wakes the orchestrator (Decision 21). A seventh row, <code class="inl">subagent_fork</code>, exists but procedure bans it for track work
+    which wakes the orchestrator (Decision 20). A seventh row, <code class="inl">subagent_fork</code>, exists but procedure bans it for track work
     — a fork shares the parent conversation, which would destroy independence.</span>
-    <span class="zh">值得注意的机械事实：每个子代理都带 <code class="inl">[[rq:role=…]]</code> 标记，宿主侧路由器据此按角色路由、绝不触碰未标记的代理；每个子代理都是 <code class="inl">maxDepth: 1</code> —— 不能再生孙辈；自采用 harness 0.1.1-rc.2 起，每个角色通过 Harness 的 <code class="inl">report</code> 通道交付结果并唤醒编排者（决策 21）。还有第七行 <code class="inl">subagent_fork</code> 存在但被规程禁止用于轨道工作 —— fork 会共享父会话，从而摧毁独立性。</span>
+    <span class="zh">值得注意的机械事实：每个子代理都带 <code class="inl">[[rq:role=…]]</code> 标记，宿主侧路由器据此按角色路由、绝不触碰未标记的代理；每个子代理都是 <code class="inl">maxDepth: 1</code> —— 不能再生孙辈；自采用 harness 0.1.1-rc.2 起，每个角色通过 Harness 的 <code class="inl">report</code> 通道交付结果并唤醒编排者（决策 20）。还有第七行 <code class="inl">subagent_fork</code> 存在但被规程禁止用于轨道工作 —— fork 会共享父会话，从而摧毁独立性。</span>
   </p>
 </section>
 
@@ -402,10 +402,8 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
     <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
       <p>
       <span class="en">On the first message of a rigorquant task, load <code class="inl">rigorquant</code> (the SOP) — plus
-      <code class="inl">literature</code> when the task is a review. Historical note told honestly: early runs also loaded the
-      <code class="inl">j-space</code> cognition skill; Decision 18 later unbundled it because the blind roles deny the
-      <code class="inl">skill</code> tool entirely and could never load it — it was pure prompt tax on them.</span>
-      <span class="zh">rigorquant 任务的首条消息先加载 <code class="inl">rigorquant</code>（操作规程）；综述类任务再加载 <code class="inl">literature</code>。一个诚实的史料注记：早期运行还会加载 <code class="inl">j-space</code> 认知技能；决策 18 后来把它拆包移除，因为盲态角色彻底禁用 <code class="inl">skill</code> 工具根本加载不了 —— 对他们来说，这只剩每一步都要付的提示词税。</span></p>
+      <code class="inl">literature</code> when the task is a review.</span>
+      <span class="zh">rigorquant 任务的首条消息先加载 <code class="inl">rigorquant</code>（操作规程）；综述类任务再加载 <code class="inl">literature</code>。</span></p>
     </div>
     <div class="band evid"><span class="blab en">Evidence</span><span class="blab zh">证据层</span>
       <p>
@@ -770,8 +768,8 @@ USE4L   252                   5        504                    2        168</pre>
       <span class="en">Routes are grouped by mathematical idea into families; BLOCKED routes carry their exact gap. Two rules guard the
       synthesizer against itself: <b>status is written from verdicts</b> (never before they land), and <b>blocking is keyed on the claim,
       not the gap</b> — after two consecutive NEEDS-EDITS on the same claim, the next round narrows scope or declares BLOCKED
-      (Decision 19). Orchestrator-produced numbers get a second instrument like any agent's (Decision 20).</span>
-      <span class="zh">路线按数学思想聚成族；BLOCKED 的路线必须写明确切缺口。两条规则保护综合者不自欺：<b>状态由裁决书写</b>（裁决未落地绝不先写）；<b>阻断以命题为单位计数，而不是以缺口为单位</b>—— 同一命题连续两次 NEEDS-EDITS 之后，下一轮要么收窄范围、要么宣布 BLOCKED（决策 19）。编排者自己产出的数字同样要过第二仪器（决策 20）。</span></p>
+      (Decision 18). Orchestrator-produced numbers get a second instrument like any agent's (Decision 19).</span>
+      <span class="zh">路线按数学思想聚成族；BLOCKED 的路线必须写明确切缺口。两条规则保护综合者不自欺：<b>状态由裁决书写</b>（裁决未落地绝不先写）；<b>阻断以命题为单位计数，而不是以缺口为单位</b>—— 同一命题连续两次 NEEDS-EDITS 之后，下一轮要么收窄范围、要么宣布 BLOCKED（决策 18）。编排者自己产出的数字同样要过第二仪器（决策 19）。</span></p>
     </div>
     <div class="band evid"><span class="blab en">Evidence — a real registry entry (DR study, registry.json)</span>
       <span class="blab zh">证据层 —— 一条真实的登记项（DR 研究 registry.json）</span>
@@ -895,9 +893,9 @@ USE4L   252                   5        504                    2        168</pre>
       audit-referenced route, missing seeds/N-grid/failure conditions in the audit record, tolerance mismatches, deliverables that don't
       compile, scratch references into <code class="inl">interim/</code>, derived junk on the committed surface, a status asserting certification without
       a verdict file or frozen hash, an edited-after-certification claim digest, an intake-pin mismatch — all refused.
-      Lifecycle: <b>PASS</b> → auto-implement; <b>BLOCKED</b> (same claim, per Decision 19) → strongest derivation + exact gap;
+      Lifecycle: <b>PASS</b> → auto-implement; <b>BLOCKED</b> (same claim, per Decision 18) → strongest derivation + exact gap;
       <b>BUDGET</b> (3 orchestrator rounds) → checkpoint + report; <b>UNKNOWN</b> recorded honestly.</span>
-      <span class="zh">证据检查读取 <code class="inl">audits/</code>、<code class="inl">derivations/</code>、<code class="inl">artifacts/</code> —— <b>绝不读取 <code class="inl">study.json</code></b>。空的阶段输出、空的 <code class="inl">derivations/</code>、解析不出带审计引用路线的「passed」字样、审计记录里缺种子／N 网格／失败条件、容差不匹配、无法编译的交付物、指进 <code class="inl">interim/</code> 的草稿引用、提交面上残留的派生垃圾、没有裁决文件或冻结哈希却宣称认证的状态、认证后又被改动的主张摘要、intake 钉扎不匹配 —— 一律拒绝。生命周期：<b>PASS</b> → 自动实现并继续；<b>BLOCKED</b>（同一条命题，决策 19）→ 给出最强推导＋确切缺口；<b>BUDGET</b>（3 个编排轮）→ 检查点＋报告；<b>UNKNOWN</b> 被如实地记录下来。</span></p>
+      <span class="zh">证据检查读取 <code class="inl">audits/</code>、<code class="inl">derivations/</code>、<code class="inl">artifacts/</code> —— <b>绝不读取 <code class="inl">study.json</code></b>。空的阶段输出、空的 <code class="inl">derivations/</code>、解析不出带审计引用路线的「passed」字样、审计记录里缺种子／N 网格／失败条件、容差不匹配、无法编译的交付物、指进 <code class="inl">interim/</code> 的草稿引用、提交面上残留的派生垃圾、没有裁决文件或冻结哈希却宣称认证的状态、认证后又被改动的主张摘要、intake 钉扎不匹配 —— 一律拒绝。生命周期：<b>PASS</b> → 自动实现并继续；<b>BLOCKED</b>（同一条命题，决策 18）→ 给出最强推导＋确切缺口；<b>BUDGET</b>（3 个编排轮）→ 检查点＋报告；<b>UNKNOWN</b> 被如实地记录下来。</span></p>
     </div>
     <div class="band evid"><span class="blab en">Evidence — iterate-to-green, visible as files (implied-expected-returns/audits/)</span>
       <span class="blab zh">证据层 —— 以文件形式可见的迭代转绿（implied-expected-returns/audits/）</span>
@@ -1008,8 +1006,8 @@ rq-check-final3.json  rq-check-final-r2.json
     <tbody>
       <tr><td class="mono">L1 · <span class="en">narrow before patch</span><span class="zh">先收窄再修补</span></td>
         <td><span class="en">one claim consumed rounds 2–6, each round a new gap</span><span class="zh">一个命题吃掉第 2–6 轮，每轮都有新缺口</span></td>
-        <td><span class="en">after 2 consecutive NEEDS-EDITS on a claim: narrow scope or BLOCKED — never a third re-patch (Decision 19)</span>
-          <span class="zh">同一命题连续两次 NEEDS-EDITS 后：收窄范围或 BLOCKED —— 绝不第三次重补（决策 19）</span></td></tr>
+        <td><span class="en">after 2 consecutive NEEDS-EDITS on a claim: narrow scope or BLOCKED — never a third re-patch (Decision 18)</span>
+          <span class="zh">同一命题连续两次 NEEDS-EDITS 后：收窄范围或 BLOCKED —— 绝不第三次重补（决策 18）</span></td></tr>
       <tr><td class="mono">L2 · <span class="en">report-first delegation</span><span class="zh">报告优先委派</span></td>
         <td><span class="en">agents produced complete verdict JSON, never wrote reports</span><span class="zh">代理交出完整裁决 JSON，却不写报告</span></td>
         <td><span class="en">the verdict IS the deliverable via the harness <code class="inl">report</code> tool; a run settling without it is a failed run</span>
@@ -1038,8 +1036,8 @@ rq-check-final3.json  rq-check-final-r2.json
       <tr><td class="mono">L13/L14 · <span class="en">junk is derived state</span><span class="zh">垃圾即派生态</span></td>
         <td><span class="en">study tree grew ~729 MB of venvs/caches; reproduction promised but absent on fresh clone</span>
           <span class="zh">研究树膨胀出约 729 MB 虚拟环境／缓存；承诺可复现但新克隆上一条可用命令都没有</span></td>
-        <td><span class="en">reproducibility is the record: tracked <code class="inl">code/</code>, resolvable cited paths, <code class="inl">uv.lock</code> by declaration; cleanup and repro are one pass (Decision 22)</span>
-          <span class="zh">可复现性即记录本体：入库的 <code class="inl">code/</code>、引用路径必须可解析、<code class="inl">uv.lock</code> 按声明复现环境；清理与复现是同一遍收尾（决策 22）</span></td></tr>
+        <td><span class="en">reproducibility is the record: tracked <code class="inl">code/</code>, resolvable cited paths, <code class="inl">uv.lock</code> by declaration; cleanup and repro are one pass (Decision 21)</span>
+          <span class="zh">可复现性即记录本体：入库的 <code class="inl">code/</code>、引用路径必须可解析、<code class="inl">uv.lock</code> 按声明复现环境；清理与复现是同一遍收尾（决策 21）</span></td></tr>
     </tbody>
   </table>
 </section>

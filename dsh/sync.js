@@ -3,7 +3,7 @@
 // The bundle-patch plane cannot express an agent preset: the harness's own
 // profile overlay pins the `agent-presets` row's roots to the shipped preset
 // root, and discovery is a filesystem scan of `$DSH_HOME/.agent-presets` —
-// nothing a `cordis.patch.yml` row config can reach (Decision 23). It cannot
+// nothing a `cordis.patch.yml` row config can reach (Decision 22). It cannot
 // host the compute lane either: a uv venv is derived state with absolute
 // paths, and node_modules is volatile (pnpm update/remove would delete a
 // provisioned lane mid-study) and version-pathed (recorded `env_lane` paths

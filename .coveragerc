@@ -1,0 +1,14 @@
+# Coverage measurement for the shipped validator (rq_check.py).
+#
+# The validator is executed as a SUBPROCESS by the test suite (conftest.run_check),
+# so measurement is explicit, not plugin magic: run_check wraps the child in
+# `coverage run --parallel` when RQ_COVERAGE=1, every run drops a .coverage.*
+# file, and `coverage combine` + `coverage report --fail-under=95` gate the
+# result. The pre-commit hook (.githooks/pre-commit) and CI run exactly this.
+[run]
+parallel = true
+source = agent-presets/rigorquant/skills/rigorquant/scripts
+
+[report]
+precision = 1
+show_missing = true

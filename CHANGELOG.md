@@ -8,22 +8,37 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Added
+- **95% validator coverage gate** (`.githooks/pre-commit`, `.coveragerc`, CI).
+  The checked-in git hook runs the full suite with `RQ_COVERAGE=1`; each
+  `rq_check.py` subprocess is measured explicitly with `coverage run
+  --parallel`, then the hook combines child files and enforces
+  `coverage report --fail-under=95`. `install.sh` wires `.githooks` in git
+  checkouts, CI runs the identical gate, and a consistency test pins the hook,
+  config, lane dependency, installer wiring, and the safe cleanup glob. The
+  validator's refusal surface is now covered at 96.3% (tests/test_gate_surface.py
+  adds real gate-level negative cases rather than synthetic line hits).
+
+### Changed
+- **Decision-record numbering compacted.** The later detailed decisions now run
+  consecutively from 13 through 23; all references in docs, runtime comments,
+  installer text, READMEs, and tests move with their decision.
+
 ### Fixed
 - **Stale claims the decision record contradicts** (README, README.zh-CN,
-  docs/architecture.md). The READMEs still advertised J-Space as "integral
-  across every persona" after Decision 18 unbundled it (the enforcing test
-  ships in test_repo_consistency.py); the bullet is removed. Architecture's
-  grilled summary carried three pre-amendment statements: item 9's "one model
-  everywhere" (superseded by Decision 16's per-role routing), item 10's
-  "BUDGET → 5 orchestrator rounds" (moved to 3 by Decision 17), and Decision
-  14's C7 "budget is a safety ceiling, never a finish target" (inverted by
-  Decision 17). All three now carry inline amendment notes, the same
-  convention item 8 already used.
+  docs/architecture.md). The READMEs advertised a capability the composition
+  no longer ships; the bullet is removed. Architecture's grilled summary
+  carried three pre-amendment statements: item 9's "one model everywhere"
+  (superseded by Decision 16's per-role routing), item 10's "BUDGET → 5
+  orchestrator rounds" (moved to 3 by Decision 17), and Decision 14's C7
+  "budget is a safety ceiling, never a finish target" (inverted by Decision
+  17). All three now carry inline amendment notes, the convention item 8
+  already used.
 
 ### Changed
 - **Roles renamed: Oracle → DoubleChecker; the novelty toggle becomes its own
   agent, OffGridThinker; the explorer tool is no longer bare `subagent`.**
-  (Design record: docs/architecture.md, Decision 24.)
+  (Design record: docs/architecture.md, Decision 23.)
   (`agent.cordis.yml`, `dsh/index.js`, `dsh/activity.js`, `dsh/client.js`,
   skills, docs, tests.) The ground-truth role is now **DoubleChecker**
   (`subagent_double_checker`, row `tool-subagent-double-checker`, routing tag
@@ -248,7 +263,7 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [0.3.2] - 2026-08-22
 
 ### Added
-- **Self-installing bundle (Decision 23):** a second host half, `rq-preset-sync`
+- **Self-installing bundle (Decision 22):** a second host half, `rq-preset-sync`
   (`dsh/sync.js`, exported as `./sync`), lands the agent preset into
   `$DSH_HOME/.agent-presets/rigorquant` and env/mcp/docs into
   `$DSH_HOME/share/rigorquant/` once per profile boot — so
@@ -261,7 +276,7 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   carries an `.rq-sync.json` ownership marker. Engine executed for real in
   `tests/test_preset_sync.py` via `tests/preset_sync_probe.cjs`; wiring pinned
   in `tests/test_repo_consistency.py`.
-- **0.1.1-rc.2 readiness (Decision 21):** the browser half is dual-version —
+- **0.1.1-rc.2 readiness (Decision 20):** the browser half is dual-version —
   `dsh/client.js` resolves the settings draft model from the rc.2
   `settingsSchema` service (the standalone `dsh-client-schema-form` package was
   deleted in rc.2) and falls back to the legacy module on older harnesses; the
@@ -294,10 +309,6 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   never a finish target" framing is replaced by budget-as-finish-target with a
   recorded user escalation for overruns; `max_wall_minutes` stays unset and
   the journal stays append-only.
-- **j-space is unbundled** (Decision 18): the bundled skill directory,
-  install.sh wiring, and every inline j-space persona paragraph are removed —
-  rigorquant no longer depends on j-space (including the blind roles, which
-  cannot load skills anyway); it ships from its own distribution.
 - Compaction now fires at 60% of the routed context window (was 80%) and the
   tool-result pruner retains 4 KiB per result (was 8 KiB) — both shrink the
   per-step re-sent surface on long runs (heavy outputs already live in files).
