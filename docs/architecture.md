@@ -53,7 +53,13 @@
    level of delegation — a child is always at depth ≥ 1, so `maxDepth: 0` would
    block delegation entirely) + `workflow` fan-out with
    JSON schemas + goal-round driver; registry/journal files are the cross-round
-   memory. `subagent_fork` is not used for track work.
+   memory. `subagent_fork` is not used for track work. *(Amended on
+   `feature/subagent-context`: the `subagent_fork`, `workflow`, and `ralph`
+   rows are disabled outright in this preset — their children carry no role
+   tag, and workflow `agent()` calls express neither a per-child persona nor a
+   per-child toolFilter, so the preset declares them out of scope rather than
+   minting unscoped, root-persona'd agents. Fan-out remains the goal-round
+   driver plus the per-role delegation tools.)*
 9. **Model routing** — one model everywhere (user's choice); reasoning-effort
    knob available per role; independence comes from context separation.
 10. **Lifecycle** — PASS → auto-implement under branch/worktree + frozen write

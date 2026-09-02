@@ -210,6 +210,24 @@
           self-contained call with the concrete result; the agent that started
           you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=explorer]]
+        # Explorer tool budget: the persona is the whole protocol, and the
+        # method track is OPEN, so web_search/web_fetch and `skill` stay (the
+        # rigorquant skill carries the working procedure). Denied: every
+        # delegation tool (C2 — depth already blocks spawn at depth 1; the deny
+        # also removes the schemas), child-control tools (a depth-1 child has
+        # no children), the orchestrator-owned task state (goal trio +
+        # todo_write; Decision 10: one task-level goal, root-owned),
+        # ask_user_question (children run unattended; questions route through
+        # the orchestrator), and plan mode. The orchestration spawners
+        # (subagent_fork, workflow, ralph) are disabled outright at the group
+        # level — untagged, unscopeable children contradict the isolation
+        # design — so they appear in no deny list (tools.restrict throws on
+        # names no mounted tool provides). Static lists may only name tools
+        # every deployment mounts (tools.restrict throws on unknown names);
+        # deployment-optional noise (ssh_*/import_*/image tools) is trimmed by
+        # the barebone assembly filter, never here.
+        toolFilter:
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-novel
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -244,13 +262,31 @@
           result plus its exact remaining gap — nothing else. A verified
           negative is a closed path: it is neither a premise nor a clue, and
           you must not try to reconstruct what it came from.
+
+          COMPUTE LANE — run all code through the pinned uv lane, never the
+          ambient interpreter: `uv run --frozen --project <env_lane> python
+          ...`, where <env_lane> is `$DSH_HOME/share/rigorquant/env`
+          (`$DSH_HOME` defaults to `~/.dsh`). Installed: numpy, scipy, pandas,
+          sympy, mpmath, cvxpy, hypothesis, jax. Work symbolically first
+          (sympy/mpmath); check any numeric result at high precision (mpmath,
+          50+ digits) before trusting a float. Never `pip install` or
+          `uv sync` anything, and fetch nothing: if the lane lacks a package
+          you need, report that gap as part of your result instead of reaching
+          for the network.
           You cannot delegate further.
           Deliver your findings with the `report` tool before you finish — one
           self-contained call with the concrete result; the agent that started
           you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=novel]]
+        # Novel tool budget: identical isolation to the oracle (C1/C2 — web,
+        # `skill`, and delegation denied; derivation compute rides on bash and
+        # the pinned uv lane, numpy/scipy/sympy/... need no catalog entry).
+        # Adds the child-scope standard: child-control tools, orchestrator-owned
+        # task state (goal trio + todo_write, Decision 10), ask_user_question
+        # (unattended contract), plan mode. Kept: bash + fs six (own scratch
+        # directory, seed recording), report (delivery), job trio.
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-ground-truth
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -292,13 +328,32 @@
           complete derivation or the strongest rigorously proved partial result
           plus its exact remaining gap — nothing else. A verified negative the
           orchestrator passed you is a closed path, not a premise and not a
-          clue. You cannot delegate further.
+          clue.
+
+          COMPUTE LANE — run all code through the pinned uv lane, never the
+          ambient interpreter: `uv run --frozen --project <env_lane> python
+          ...`, where <env_lane> is `$DSH_HOME/share/rigorquant/env`
+          (`$DSH_HOME` defaults to `~/.dsh`). Installed: numpy, scipy, pandas,
+          sympy, mpmath, cvxpy, hypothesis, jax. Work symbolically first
+          (sympy/mpmath); check any numeric result at high precision (mpmath,
+          50+ digits) before trusting a float. Never `pip install` or
+          `uv sync` anything, and fetch nothing: if the lane lacks a package
+          you need, report that gap as part of your result instead of reaching
+          for the network.
+          You cannot delegate further.
           Deliver your derivation with the `report` tool before you finish — one
           self-contained call with the exact result; the agent that started you
           receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=oracle]]
+        # Oracle tool budget: C1/C2 already deny web, `skill`, and delegation
+        # outright (the blind lane). This adds the child-scope standard set:
+        # child-control tools (a depth-1 oracle has no children), the
+        # orchestrator-owned task state (goal trio + todo_write, Decision 10),
+        # ask_user_question (unattended contract), and plan mode. Kept:
+        # bash + fs six (scratch derivation, seed recording, brute-force
+        # numeric tracks), report (delivery), job trio (long background runs).
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -325,6 +380,19 @@
           killing evidence; the agent that started you receives only what you
           report.
           Harness model-routing tag, internal, ignore it: [[rq:role=adversary]]
+        # Adversary tool budget: the verdict is the honesty boundary, so it
+        # must rest on derivation and computation the adversary itself ran.
+        # web_search/web_fetch are DENIED: a web citation would enter the PASS
+        # gate unaudited (nobody downstream re-verifies the checker's sources),
+        # and literature facts reach the math lane only as the orchestrator's
+        # verified-negatives export (Decision 14 membrane). `skill` STAYS —
+        # the check battery's procedures, tolerances, and audit schema live in
+        # the rigorquant skill; this is the one web-blind, skill-capable role.
+        # Everything else mirrors the explorer budget: delegation (C2),
+        # orchestration loops, child-control, orchestrator-owned task state,
+        # ask_user_question, plan mode.
+        toolFilter:
+          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-line
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -347,8 +415,14 @@
           Deliver your load-bearing findings with the `report` tool before you
           finish; the agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-line]]
+        # Literature line budget (review verdicts): an open retrieval role —
+        # web_search/web_fetch, `skill` (arxiv + academic-paper-search are
+        # load-bearing), bash (retrieval scripting), and the job trio for
+        # background sweeps all stay. Denied: delegation (C2), orchestration
+        # loops, child-control, orchestrator-owned task state, ask_user_question
+        # (unattended contract), plan mode.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -372,8 +446,11 @@
           Deliver each claim verdict with the `report` tool before you finish;
           the agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-adversary]]
+        # Literature adversary budget: mirrors the line budget (review
+        # verdicts) — web stays (independent re-retrieval is the job), skill
+        # and bash stay, job trio stays. Same child-scope denials.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-doc-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -410,11 +487,28 @@
           motivation gap, or audience mismatch) so a human reader can act on it.
           The agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=doc-adversary]]
+        # Document-adversary tool budget: audits LOCAL deliverables, so web
+        # stays denied (its own long-standing policy). `write` is load-bearing,
+        # not a convenience: rq_check reads the verdict from the record
+        # (audits/document-adversary-<name>.md), never from the transcript --
+        # Decision 13's "a study may not vouch for itself" is what REQUIRES
+        # this role's write access. `skill` kept per the non-blind pattern
+        # (weakest case: the checklist is inline in the persona); the job trio
+        # rides with bash (denying jobs while bash keeps run_in_background
+        # makes background runs uncollectable).
         toolFilter:
-          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
+    # Fork is DISABLED (feature/subagent-context): a fork child inherits the
+    # parent's completed-turn conversation by design — exactly the context
+    # flow the isolation design forbids (Decision 8: not used for track work;
+    # SKILL.md lists it as an anti-pattern). Disabled beats scoped: a
+    # toolFilter would bound its catalog, never its inherited context. While
+    # this row is disabled no deny list may name `subagent_fork` —
+    # tools.restrict throws on names no mounted tool provides.
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
       config:
         provider: fork
         toolName: subagent_fork
@@ -450,16 +544,32 @@
         enableRunInBackground: false
         maxDepth: provider-managed
 
+    # The workflow engine and its model-facing tool are DISABLED
+    # (feature/subagent-context): workflow `agent()` children carry no role
+    # tag, and the engine's start path expresses neither a persona nor a
+    # per-child toolFilter, so every workflow child ran as an untagged agent
+    # wearing the root persona with the full catalog (74 of 162 children in
+    # the 0.4.x study logs; ~23k-token headers). The framework's fan-out is
+    # the goal-round driver plus the per-role delegation tools; a deployment
+    # that wants workflows should use another preset, not this one. While
+    # these rows are disabled no deny list may name `workflow`.
     - id: workflow-worker-thread
       name: '@deepseek-ai/dsh-workflow-worker-thread'
+      disabled: true
       config:
         provider: spawn
 
     - id: tool-workflow
       name: '@deepseek-ai/dsh-tool-workflow'
+      disabled: true
 
+    # Ralph is DISABLED for the same reason as workflow: ralph rounds spawn
+    # untagged children with no persona and no expressible per-child scope,
+    # and the framework's iteration loop is the goal-round driver. While this
+    # row is disabled no deny list may name `ralph`.
     - id: tool-ralph
       name: '@deepseek-ai/dsh-tool-ralph'
+      disabled: true
       config:
         subagentProvider: spawn
         maxRounds: 64

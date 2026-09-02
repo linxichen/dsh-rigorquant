@@ -8,6 +8,53 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Changed
+- **Per-role tool budgets for delegation children** (`agent-presets/rigorquant/agent.cordis.yml`,
+  `tests/test_blind_deny_list.py`). Every role now carries an explicit
+  `toolFilter` that removes the tool schemas it must never touch from the
+  child's request, instead of relying on depth-1 spawn failures. Denied
+  everywhere: the full delegation set (C2), the workflow/ralph loops,
+  child-control tools, the goal trio and `todo_write` (Decision 10: one
+  root-owned task-level goal), `ask_user_question` (children run unattended),
+  and plan mode. Per-role policy: the explorer keeps web/skill (open track);
+  the adversary is web-blind but skill-capable (the verdict must rest on
+  derivation and computation it ran itself — a web citation would enter the
+  PASS gate unaudited — while the check battery lives in the skill); blind
+  roles stay web/skill-denied; the document adversary keeps web denied.
+  Static lists only name tools every deployment mounts (a static deny of a
+  plugin-optional tool would throw at child spawn); deployment-optional noise
+  (ssh/import/image tools) is left to the barebone assembly filter. All seven
+  roles are landed: explorer, lit-line, and lit-adversary at 13 first-class
+  tools (open retrieval and proposal roles: web, skills, bash, and background
+  sweeps kept per review); adversary and doc-adversary at 11 (web denied; the
+  doc-adversary keeps write because rq_check reads its verdict file from the
+  record); blind roles at 10.
+  A consistency test asserts each role's deny list against the derived
+  delegation set plus the orchestrator-owned set and fails if any delegation
+  row mounts without a filter; a budget module pins each landed role's exact
+  visible catalog and the spawn-safety invariant.
+- **Blind personas carry the compute-lane block** (`agent.cordis.yml`,
+  `tests/test_blind_deny_list.py`). The oracle and novel personas now include
+  the sanctioned invocation (`uv run --frozen --project <env_lane> python ...`,
+  lane at `$DSH_HOME/share/rigorquant/env`), the installed-package list, the
+  symbolic-first/high-precision rule, and a no-install/no-fetch discipline
+  that converts the bash-network residual hole into an auditable instruction.
+  A consistency test pins the block in both personas and against SKILL.md's
+  documented form.
+- **Untagged spawner rows disabled** (`agent.cordis.yml`, `docs/architecture.md`,
+  `tests/test_role_tool_budgets.py`). `subagent_fork`, `tool-workflow`,
+  `tool-ralph`, and the `workflow-worker-thread` engine are disabled in this
+  preset. Their children carry no role tag (the router never routes them), and
+  workflow `agent()` calls express neither a per-child persona nor a per-child
+  toolFilter — 74 of the 162 children in the 0.4.x study logs were untagged
+  workers wearing the root persona with the full ~54-tool catalog (~23k-token
+  headers). Disabled rows mount no tools, so their names also leave every
+  deny list (tools.restrict throws on unmounted names); the per-role deny
+  lists, the conftest delegation/orchestrator sets, and the guaranteed-mounted
+  universe all drop them, and a regression test fails if any of the four rows
+  is re-enabled without revisiting that. Decision 8 amended in
+  docs/architecture.md.
+
 ### Fixed
 - **Delegation denial lagged the document-adversary row** (`agent-presets/rigorquant/agent.cordis.yml`,
   `tests/test_blind_deny_list.py`). `subagent_document_adversary` was mounted by the
