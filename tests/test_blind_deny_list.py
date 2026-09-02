@@ -15,49 +15,14 @@ its own toolName too), mirroring the shipped deny lists.
 """
 
 import re
-from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-CORDIS = REPO / "agent-presets/rigorquant/agent.cordis.yml"
-
-BLIND_TOOLS = {
-    "web_search", "web_fetch", "skill",
-    "subagent", "subagent_ground_truth", "subagent_adversary",
-    "subagent_novel", "subagent_lit_line", "subagent_lit_adversary",
-    "subagent_document_adversary",
-    "subagent_fork", "workflow", "ralph",
-}
-DELEGATION = BLIND_TOOLS - {"web_search", "web_fetch", "skill"}
-
-# Tools only the root orchestrator may touch. Children get them mounted by the
-# shared composition, so each role's deny list must name them explicitly.
-ORCHESTRATOR_TOOLS = {
-    "workflow", "ralph",                                # fan-out loops
-    "send_message", "interrupt_agent", "list_agents",   # child-control
-    "create_goal", "update_goal", "get_goal",           # Decision 10: one task-level goal
-    "todo_write",                                       # Decision 10
-    "ask_user_question",                                # unattended contract
-    "exit_plan_mode",                                   # children are never in plan mode
-}
+from conftest import (BLIND_TOOLS, CORDIS, DELEGATION, ORCHESTRATOR_TOOLS,
+                      composition_rows, deny_of, tool_name_of)
 
 
-def _rows(text):
-    """Yield (row_id, body) for every 4-space-indented composition row."""
-    for part in re.split(r"\n    - id: ", text)[1:]:
-        row_id = part.split("\n", 1)[0].strip()
-        yield row_id, part
-
-
-def _tool_name(body):
-    m = re.search(r"toolName:\s*(\S+)", body)
-    return m.group(1) if m else None
-
-
-def _deny(body):
-    m = re.search(r"deny:\s*\[([^\]]*)\]", body)
-    if not m:
-        return set()
-    return {t.strip() for t in m.group(1).split(",") if t.strip()}
+def _persona(body):
+    m = re.search(r"persona: >-\n(.*?)\n(?=\s{8}\S|\s{4}- id:)", body, re.DOTALL)
+    return m.group(1) if m else ""
 
 
 def test_fetch_is_enabled():
@@ -67,8 +32,8 @@ def test_fetch_is_enabled():
 
 def test_blind_roles_deny_web_skill_and_delegation():
     text = CORDIS.read_text()
-    blind_rows = {rn: _deny(b) for rn, b in _rows(text)
-                  if _tool_name(b) in ("subagent_ground_truth", "subagent_novel")}
+    blind_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
+                  if tool_name_of(b) in ("subagent_ground_truth", "subagent_novel")}
     assert set(blind_rows) == {"tool-subagent-ground-truth", "tool-subagent-novel"}, \
         "both blind rows must exist"
     for row_id, denied in blind_rows.items():
@@ -89,8 +54,8 @@ def test_blind_personas_carry_the_protocol_they_cannot_load():
     has to travel in the persona itself.
     """
     text = CORDIS.read_text()
-    for row_id, body in _rows(text):
-        if _tool_name(body) not in ("subagent_ground_truth", "subagent_novel"):
+    for row_id, body in composition_rows(text):
+        if tool_name_of(body) not in ("subagent_ground_truth", "subagent_novel"):
             continue
         persona = _persona(body).lower()
         assert len(persona) > 800, (
@@ -107,8 +72,8 @@ def test_blind_personas_carry_the_protocol_they_cannot_load():
 
 def test_lit_roles_are_delegation_denied_leaves_that_keep_web():
     text = CORDIS.read_text()
-    lit_rows = {rn: _deny(b) for rn, b in _rows(text)
-                if _tool_name(b) in ("subagent_lit_line", "subagent_lit_adversary")}
+    lit_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
+                if tool_name_of(b) in ("subagent_lit_line", "subagent_lit_adversary")}
     assert set(lit_rows) == {"tool-subagent-lit-line", "tool-subagent-lit-adversary"}, \
         "both literature rows must exist"
     for row_id, denied in lit_rows.items():
@@ -121,8 +86,8 @@ def test_lit_roles_are_delegation_denied_leaves_that_keep_web():
 def test_document_adversary_is_delegation_denied():
     """The document adversary audits local deliverables: no web, no delegation."""
     text = CORDIS.read_text()
-    doc_rows = {rn: _deny(b) for rn, b in _rows(text)
-                if _tool_name(b) == "subagent_document_adversary"}
+    doc_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
+                if tool_name_of(b) == "subagent_document_adversary"}
     assert set(doc_rows) == {"tool-subagent-doc-adversary"}, \
         "the document-adversary row must exist"
     for row_id, denied in doc_rows.items():
@@ -142,8 +107,8 @@ def test_adversary_is_delegation_denied_web_blind_and_skill_capable():
     other role.
     """
     text = CORDIS.read_text()
-    adv_rows = {rn: _deny(b) for rn, b in _rows(text)
-                if _tool_name(b) == "subagent_adversary"}
+    adv_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
+                if tool_name_of(b) == "subagent_adversary"}
     assert set(adv_rows) == {"tool-subagent-adversary"}, \
         "the adversary row must exist"
     for row_id, denied in adv_rows.items():
@@ -166,7 +131,7 @@ def test_explorer_is_delegation_denied_and_child_scoped():
     state, ask_user_question, plan mode.
     """
     text = CORDIS.read_text()
-    explorer_rows = {rn: _deny(b) for rn, b in _rows(text) if _tool_name(b) == "subagent"}
+    explorer_rows = {rn: deny_of(b) for rn, b in composition_rows(text) if tool_name_of(b) == "subagent"}
     assert set(explorer_rows) == {"tool-subagent"}, "the explorer row must exist"
     for row_id, denied in explorer_rows.items():
         missing = sorted(DELEGATION - denied)
@@ -185,8 +150,8 @@ def test_blind_deny_sets_carry_every_delegation_row():
     blind child: the tool stays in the catalog at depth 1.
     """
     text = CORDIS.read_text()
-    mounted = {_tool_name(b) for _, b in _rows(text)
-               if _tool_name(b) is not None and "provider: spawn" in b}
+    mounted = {tool_name_of(b) for _, b in composition_rows(text)
+               if tool_name_of(b) is not None and "provider: spawn" in b}
     delegation_rows = {name for name in mounted if name.startswith("subagent")}
     missing_from_set = sorted(delegation_rows - DELEGATION)
     assert not missing_from_set, (
@@ -196,8 +161,8 @@ def test_blind_deny_sets_carry_every_delegation_row():
     # End-state invariant: every spawn row ships a complete toolFilter. A row
     # mounted without one puts the whole catalog (its own spawn tool included)
     # in front of the child at depth 1.
-    unfiltered = sorted(row_id for row_id, body in _rows(text)
-                        if _tool_name(body) in delegation_rows and not _deny(body))
+    unfiltered = sorted(row_id for row_id, body in composition_rows(text)
+                        if tool_name_of(body) in delegation_rows and not deny_of(body))
     assert not unfiltered, (
         "delegation row(s) %r mount without a toolFilter deny list; every "
         "child-facing delegation row must deny DELEGATION (and, unless the "

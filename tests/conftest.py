@@ -12,6 +12,7 @@ a domain-general framework must be able to certify a domain-general example.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,59 @@ REPO = Path(__file__).resolve().parents[1]
 # is how a new gate is shown to fail against the version that lacked it.
 SKILL_DIR = REPO / "agent-presets/rigorquant/skills/rigorquant"
 RQ_CHECK = Path(os.environ.get("RQ_CHECK_BIN", SKILL_DIR / "scripts/rq_check.py"))
+
+# ── composition parsing (shared by the deny-list and tool-budget tests) ─────
+#
+# The test venv carries no yaml module and the composition embeds `!!js`
+# runtime expressions, so rows are extracted structurally-by-convention rather
+# than parsed: a row is one 4-space `    - id: ` block, `toolName:` its
+# delegation tool, and `deny:` the row's first deny flow sequence. One copy
+# lives here so the deny-list tests and the tool-budget tests cannot drift
+# into two different parsers of the same file.
+
+CORDIS = REPO / "agent-presets/rigorquant/agent.cordis.yml"
+
+# Every delegation tool name the composition can mount, plus web/skill for the
+# blind lane. A new delegation row whose toolName is absent here silently
+# re-opens Decision 14's C2 for every previously blind child.
+BLIND_TOOLS = {
+    "web_search", "web_fetch", "skill",
+    "subagent", "subagent_ground_truth", "subagent_adversary",
+    "subagent_novel", "subagent_lit_line", "subagent_lit_adversary",
+    "subagent_document_adversary",
+    "subagent_fork", "workflow", "ralph",
+}
+DELEGATION = BLIND_TOOLS - {"web_search", "web_fetch", "skill"}
+
+# Tools only the root orchestrator may touch. Children get them mounted by the
+# shared composition, so each role's deny list must name them explicitly.
+ORCHESTRATOR_TOOLS = {
+    "workflow", "ralph",                                # fan-out loops
+    "send_message", "interrupt_agent", "list_agents",   # child-control
+    "create_goal", "update_goal", "get_goal",           # Decision 10: one task-level goal
+    "todo_write",                                       # Decision 10
+    "ask_user_question",                                # unattended contract
+    "exit_plan_mode",                                   # children are never in plan mode
+}
+
+
+def composition_rows(text):
+    """Yield (row_id, body) for every 4-space-indented composition row."""
+    for part in re.split(r"\n    - id: ", text)[1:]:
+        row_id = part.split("\n", 1)[0].strip()
+        yield row_id, part
+
+
+def tool_name_of(body):
+    m = re.search(r"toolName:\s*(\S+)", body)
+    return m.group(1) if m else None
+
+
+def deny_of(body):
+    m = re.search(r"deny:\s*\[([^\]]*)\]", body)
+    if not m:
+        return set()
+    return {t.strip() for t in m.group(1).split(",") if t.strip()}
 
 PAPER_TEX = r"""\documentclass{article}
 \usepackage{amsmath}
