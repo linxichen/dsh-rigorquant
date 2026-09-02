@@ -259,6 +259,17 @@
           result plus its exact remaining gap — nothing else. A verified
           negative is a closed path: it is neither a premise nor a clue, and
           you must not try to reconstruct what it came from.
+
+          COMPUTE LANE — run all code through the pinned uv lane, never the
+          ambient interpreter: `uv run --frozen --project <env_lane> python
+          ...`, where <env_lane> is `$DSH_HOME/share/rigorquant/env`
+          (`$DSH_HOME` defaults to `~/.dsh`). Installed: numpy, scipy, pandas,
+          sympy, mpmath, cvxpy, hypothesis, jax. Work symbolically first
+          (sympy/mpmath); check any numeric result at high precision (mpmath,
+          50+ digits) before trusting a float. Never `pip install` or
+          `uv sync` anything, and fetch nothing: if the lane lacks a package
+          you need, report that gap as part of your result instead of reaching
+          for the network.
           You cannot delegate further.
           Deliver your findings with the `report` tool before you finish — one
           self-contained call with the concrete result; the agent that started
@@ -314,7 +325,19 @@
           complete derivation or the strongest rigorously proved partial result
           plus its exact remaining gap — nothing else. A verified negative the
           orchestrator passed you is a closed path, not a premise and not a
-          clue. You cannot delegate further.
+          clue.
+
+          COMPUTE LANE — run all code through the pinned uv lane, never the
+          ambient interpreter: `uv run --frozen --project <env_lane> python
+          ...`, where <env_lane> is `$DSH_HOME/share/rigorquant/env`
+          (`$DSH_HOME` defaults to `~/.dsh`). Installed: numpy, scipy, pandas,
+          sympy, mpmath, cvxpy, hypothesis, jax. Work symbolically first
+          (sympy/mpmath); check any numeric result at high precision (mpmath,
+          50+ digits) before trusting a float. Never `pip install` or
+          `uv sync` anything, and fetch nothing: if the lane lacks a package
+          you need, report that gap as part of your result instead of reaching
+          for the network.
+          You cannot delegate further.
           Deliver your derivation with the `report` tool before you finish — one
           self-contained call with the exact result; the agent that started you
           receives only what you report.

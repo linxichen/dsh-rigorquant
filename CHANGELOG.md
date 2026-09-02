@@ -30,6 +30,14 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   delegation set plus the orchestrator-owned set and fails if any delegation
   row mounts without a filter; a budget module pins each landed role's exact
   visible catalog and the spawn-safety invariant.
+- **Blind personas carry the compute-lane block** (`agent.cordis.yml`,
+  `tests/test_blind_deny_list.py`). The oracle and novel personas now include
+  the sanctioned invocation (`uv run --frozen --project <env_lane> python ...`,
+  lane at `$DSH_HOME/share/rigorquant/env`), the installed-package list, the
+  symbolic-first/high-precision rule, and a no-install/no-fetch discipline
+  that converts the bash-network residual hole into an auditable instruction.
+  A consistency test pins the block in both personas and against SKILL.md's
+  documented form.
 
 ### Fixed
 - **Delegation denial lagged the document-adversary row** (`agent-presets/rigorquant/agent.cordis.yml`,

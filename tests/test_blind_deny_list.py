@@ -17,7 +17,7 @@ its own toolName too), mirroring the shipped deny lists.
 import re
 
 from conftest import (BLIND_TOOLS, CORDIS, DELEGATION, ORCHESTRATOR_TOOLS,
-                      composition_rows, deny_of, tool_name_of)
+                      SKILL_DIR, composition_rows, deny_of, tool_name_of)
 
 
 def _persona(body):
@@ -140,6 +140,39 @@ def test_explorer_is_delegation_denied_and_child_scoped():
         assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
         for kept in ("web_search", "web_fetch", "skill"):
             assert kept not in denied, "%s must keep %s (open track)" % (row_id, kept)
+
+
+LANE_INVOCATION = "uv run --frozen --project"
+
+
+def test_blind_personas_carry_the_pinned_compute_lane():
+    """The blind lane's compute leverage must name the sanctioned invocation.
+
+    Blind roles keep bash (C1), so derivation compute reaches them only
+    through the pinned uv lane. Both blind personas must instruct the exact
+    invocation SKILL.md Step 2 sanctions (`uv run --frozen --project ...`),
+    anchor the lane location, and prohibit installs/fetches (the bash-network
+    residual hole is procedural + audited, never called a wall). This pins the
+    persona block against silent removal and against drifting from the skill's
+    documented form.
+    """
+    text = CORDIS.read_text()
+    checked = 0
+    for row_id, body in composition_rows(text):
+        if tool_name_of(body) not in ("subagent_ground_truth", "subagent_novel"):
+            continue
+        persona = _persona(body)
+        checked += 1
+        assert LANE_INVOCATION in persona, \
+            "%s persona lost the compute-lane invocation" % row_id
+        assert "$DSH_HOME/share/rigorquant/env" in persona, \
+            "%s persona lost the lane anchor" % row_id
+        assert "pip install" in persona and "uv sync" in persona, \
+            "%s persona lost the no-install/no-fetch discipline" % row_id
+    assert checked == 2, "both blind rows must exist"
+    skill = (SKILL_DIR / "SKILL.md").read_text()
+    assert LANE_INVOCATION in skill, \
+        "SKILL.md no longer documents the invocation the personas teach"
 
 
 def test_blind_deny_sets_carry_every_delegation_row():
