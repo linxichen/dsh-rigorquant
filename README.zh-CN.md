@@ -18,8 +18,6 @@
 RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一个上下文隔离的
 多智能体研究实验室：
 
-- **J-Space** 作为推理时认知控制层，被整体集成到根 persona、每个子智能体角色
-  与 plan mode：工作台门控、账本、接缝刷新、稠密内轨/干净外轨。
 - **并行探索者**提出候选方法（`subagent_explorer`，空白上下文）。
 - **离网思考者（OffGridThinker）**（`subagent_offgrid`）在路线需要隔离时上
   场：只凭模型自身的推理加上计算工具（sympy、numpy、mpmath、Lean 校验器）

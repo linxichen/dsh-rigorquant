@@ -8,6 +8,18 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Fixed
+- **Stale claims the decision record contradicts** (README, README.zh-CN,
+  docs/architecture.md). The READMEs still advertised J-Space as "integral
+  across every persona" after Decision 18 unbundled it (the enforcing test
+  ships in test_repo_consistency.py); the bullet is removed. Architecture's
+  grilled summary carried three pre-amendment statements: item 9's "one model
+  everywhere" (superseded by Decision 16's per-role routing), item 10's
+  "BUDGET → 5 orchestrator rounds" (moved to 3 by Decision 17), and Decision
+  14's C7 "budget is a safety ceiling, never a finish target" (inverted by
+  Decision 17). All three now carry inline amendment notes, the same
+  convention item 8 already used.
+
 ### Changed
 - **Roles renamed: Oracle → DoubleChecker; the novelty toggle becomes its own
   agent, OffGridThinker; the explorer tool is no longer bare `subagent`.**

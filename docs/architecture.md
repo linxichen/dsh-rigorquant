@@ -64,13 +64,20 @@
    driver plus the per-role delegation tools.)*
 9. **Model routing** — one model everywhere (user's choice); reasoning-effort
    knob available per role; independence comes from context separation.
+   *(Superseded by Decision 16: routing is per-role through the
+   rq-model-router plugin — the DoubleChecker and adversary ship
+   `deepseek-v4-pro`@high natively, every other role inherits, and the user
+   overlays choices per role.)*
 10. **Lifecycle** — PASS → auto-implement under branch/worktree + frozen write
     scope + rollback, then proceed; BLOCKED → same exact gap 3 consecutive
     rounds → deliver strongest derivation + exact gap; UNKNOWN → recorded when
     neither proof nor counterexample lands; BUDGET → 5 orchestrator rounds →
     checkpoint + report. One task-level goal (no per-sub-problem goals); budget
     fields (`max_cost_usd`, `max_wall_minutes`) may be set. Resuming across a
-    session needs one human turn.
+    session needs one human turn. *(Amended by Decision 17: the BUDGET trip
+    moved from 5 to **3** orchestrator rounds, and the auto-implement safety
+    mechanics live in the skill's references/lifecycle.md — frozen write scope,
+    target tests, rollback path.)*
 11. **Publishing** — repo distributes a bundle (package.json
     `dsh.bundle.patch` + cordis.patch.yml registering the skill), an agent
     preset + bundled skill (install.sh), MIT, `dsh-plugin` GitHub topic —
@@ -145,7 +152,7 @@ bound by, and they outlive any particular gate:
 | C4 | The literature lane briefs the orchestrator; the orchestrator passes the off-grid lane **negatives only — never hints, never semi-positives**. |
 | C5 | A fully-settled sub-problem gets no off-grid lane (the answer is a citation). A fully-impossible one gets no off-grid lane either (the answer is the impossibility, recorded as `status: "impossible"` with its math-lane escalation). |
 | C6 | Paywall bypass is permitted and author-hosted copies are first-class. Retrieval is tiered; mirrors are **user-supplied and disabled by default**, with the legal basis recorded by the user. |
-| C7 | Thoroughness beats speed; 10+ hours per run is acceptable. The budget is a resume-able safety ceiling, never a finish target. |
+| C7 | Thoroughness beats speed; 10+ hours per run is acceptable. The budget is a resume-able safety ceiling, never a finish target. *(Amended by Decision 17: budgets are now **finish targets**, bounded by default — a line concludes at the budget with the strongest completed dossier and its remaining checklist items open; exceeding it is an explicit, recorded escalation.)* |
 
 **The membrane, as edges.** This is the complete set of crossings; anything not
 listed does not cross:

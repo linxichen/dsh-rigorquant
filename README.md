@@ -19,9 +19,6 @@ computational econ/finance.
 RigorQuant is an agent preset + bundled skills that turns one DSH session into a
 context-isolated multi-agent research lab:
 
-- **J-Space** is used integrally across the root persona, every subagent role,
-  and plan mode as the inference-time cognitive-control layer (workspace gate,
-  ledger, seam refresh, dense inner / clean outer registers).
 - **Parallel explorers** propose candidate methods (`subagent_explorer`, blank
   context).
 - An **OffGridThinker** (`subagent_offgrid`) works off the grid when a route
