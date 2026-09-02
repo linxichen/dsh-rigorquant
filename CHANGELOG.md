@@ -11,6 +11,7 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ### Changed
 - **Roles renamed: Oracle → DoubleChecker; the novelty toggle becomes its own
   agent, OffGridThinker; the explorer tool is no longer bare `subagent`.**
+  (Design record: docs/architecture.md, Decision 24.)
   (`agent.cordis.yml`, `dsh/index.js`, `dsh/activity.js`, `dsh/client.js`,
   skills, docs, tests.) The ground-truth role is now **DoubleChecker**
   (`subagent_double_checker`, row `tool-subagent-double-checker`, routing tag

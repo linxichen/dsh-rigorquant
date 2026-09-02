@@ -345,7 +345,7 @@ For econ/finance/portfolio studies, the empirical gates in check-battery.md
 (temporal train/test splits, leakage, survivorship, multiple-hypothesis,
 costs/turnover, regime sensitivity) are mandatory, not optional.
 
-## Novelty toggle (isolation)
+## Off-grid toggle (OffGridThinker)
 
 If the open method track produces no closed form / invariant / bound that
 survives its own re-derivation after a bounded number of attempts, flip the

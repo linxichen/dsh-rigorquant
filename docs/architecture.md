@@ -180,6 +180,14 @@ per-role network or filesystem scope exists in the spawn provider:
 - **Bash-curl.** The blind lane keeps `bash`; nothing prevents it from curling
   `export.arxiv.org`. The math adversary audits for it — a blind output that
   cites or recalls an external result it could not have derived is flagged.
+- **Mounted checker-lane search** (named with Decision 24). The OffGridThinker
+  must not fetch known results, but a mounted jacobian/Lean lane reaches every
+  child (plugin-optional tools cannot appear in a static deny list —
+  `tools.restrict` throws on unmounted names). Procedural rule, stated in the
+  persona: a checker lane may verify a derivation the agent made itself; its
+  find/search operations are off-limits, and the agent must say which checks
+  it ran. Same audit as bash-curl — an off-grid output that leans on a lemma
+  it could not have derived is flagged.
 - **Cross-lane filesystem read.** A blind child could read `literature/` or a
   sibling's `interim/lit/`. Same class as the ground-truth hole the repository
   review named; per-line directories and a root-only merge are conventions,
@@ -496,6 +504,65 @@ via `tests/preset_sync_probe.cjs` (first sync, quiet rerun, replace-on-bump,
 venv-survival, no venv leakage, kept-local edits, damage restore);
 `test_repo_consistency.py` pins the wiring (row mounted, export resolves,
 exclusions named).
+
+## Decision 24 — role identity: DoubleChecker, OffGridThinker, `subagent_explorer`
+
+Three renames landed together because they are one decision about what a role
+name must carry: the name is protocol. Every delegation tool is model-facing,
+and the model reads the tool name as part of the brief.
+
+- **Oracle → DoubleChecker.** "Oracle" claims an authority the role does not
+  have — an oracle vouches, and nothing in this framework vouches. The role's
+  contract is narrower and its name now states it: re-derive the load-bearing
+  claim **twice, by genuinely different means**, in epistemic isolation.
+  Identity moves with it: tool `subagent_double_checker`, row
+  `tool-subagent-double-checker`, tag `[[rq:role=doublechecker]]`, settings
+  keys `doublechecker{Primary,Fallback}` (the native `agentOptions` primary
+  and the router's `NATIVE_PRIMARY` map move too). The "ground-truth track"
+  KEEPS its name — it names what the track produces (independently derived
+  reference targets for the check gates), not the agent that runs it.
+- **The novelty toggle becomes its own agent: OffGridThinker** (was "explorer
+  in full Jin isolation", sharing the explorer's tool label and portrait).
+  The coupling understated the role: its boundary is not "an explorer told to
+  ignore the web" but **other people's results** — no web, no literature, no
+  other agents' drafts — while raw model intelligence plus the full compute
+  lane (sympy/numpy/mpmath/cvxpy/hypothesis/jax) is not merely allowed but
+  expected in every derivation. Identity: tool `subagent_offgrid`, tag
+  `[[rq:role=offgrid]]`, settings keys `offgrid{Primary,Fallback}`, own
+  persona, own portrait. One residual hole joins the Decision 14 list, same
+  class as bash-curl: a mounted checker lane (jacobian/Lean) reaches this
+  child too (plugin-optional tools cannot be named in a static deny list —
+  `tools.restrict` throws on unmounted names), so the persona states the rule
+  procedurally — a checker lane may VERIFY a derivation the agent made
+  itself; its find/search operations (fetching known results) are
+  off-limits, and it must say which checks it ran.
+- **`subagent` → `subagent_explorer`.** The open explorer's delegation tool
+  carried no role name, so a persona drift or a copy-pasted deny entry could
+  hide behind the generic name. Every delegation tool now names its role:
+  `subagent_explorer`, `subagent_offgrid`, `subagent_double_checker`,
+  `subagent_adversary`, `subagent_lit_line`, `subagent_lit_adversary`,
+  `subagent_document_adversary`.
+- **Migration.** Role-key renames change the `rigorquant-models` settings
+  fields; old `oracle*`/`novel*` user-layer entries are ignored (a stale
+  field is a dead setting, not a wrong route — the native/inherit defaults
+  govern until re-entered). The activity monitor's best-effort `labelRole`
+  keeps mapping legacy `gt-`/`ground truth` one-shot labels to the
+  DoubleChecker, so runs started before the rename still light up correctly.
+- **The activity pillbox is a hub-and-spoke map.** The previous five-stage
+  DAG drew handoffs that do not exist — `explorer → oracle`,
+  `lit-adversary → adversary` — implying role-to-role channels that would
+  break producer≠checker if they were real. The topology actually enforced is
+  a hub: the orchestrator is the only role that sees every brief and every
+  report, and no two children ever exchange anything. The map now renders
+  that (root at the center, seven spokes in call order), and a consistency
+  test pins the structure and forbids the stage-DAG constants from
+  returning.
+
+Tests: `test_repo_consistency.py` pins tag↔row identity, the fixed-tier
+`agentOptions` rows, and the hub-and-spoke topology; `conftest.py`'s
+`BLIND_TOOLS`/`DELEGATION` sets and `test_role_tool_budgets.py`'s budgets
+follow the new tool names; the router and client-bundle probes exercise the
+renamed settings keys end to end.
 
 ## Repo map
 

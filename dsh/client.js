@@ -1539,8 +1539,8 @@ function ActivityPanel(props) {
       status: captain?.status ?? 'idle',
     })]
     for (const member of lab.members ?? []) {
-      // Roster rows show only live agents; the graph (below) paints the full
-      // role pipeline from the same roster including just-completed ones.
+      // Roster rows show only live agents; the hub map (below) paints the
+      // full role set from the same roster including just-completed ones.
       if (member.disposed) continue
       rows.push(R.createElement(ActivityRow, {
         key: `${lab.id}:${member.sessionId}`,
@@ -1599,7 +1599,7 @@ function ActivityPanel(props) {
           },
         }, `${lab.summary?.working ?? 0} ${t('working')} · ${lab.summary?.idle ?? 0} ${t('idle')}`)),
       R.createElement(RoleGraph, {
-        key: `${lab.id}:pipeline`,
+        key: `${lab.id}:rolemap`,
         lab,
         t,
       }),

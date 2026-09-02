@@ -118,7 +118,7 @@ def test_a_subagent_with_recent_activity_lights_up_without_a_running_status(prob
 
 def test_a_disposed_subagent_stays_in_the_roster_but_drops_from_the_live_summary(probe):
     """A finished (disposed) one-shot subagent must remain in the roster as
-    idle so the pipeline graph keeps its role, while the live-team summary
+    idle so the hub map keeps its role, while the live-team summary
     counts only still-present agents."""
     disposed = probe["snapshotDisposed"]
     promoted = next(lab for lab in disposed["labs"] if lab["id"] == "lab-2")

@@ -173,7 +173,7 @@ async function main() {
     verdict.snapshot = JSON.parse(body)
   }
   // Dispose the one-shot subagent, then re-read: it must stay in the roster as
-  // idle (so the pipeline graph keeps the role) while the live-team summary
+  // idle (so the hub map keeps the role) while the live-team summary
   // counts only the still-present agents.
   emit('agent/disposed', { agent: oneShotChild })
   if (activityRoute !== undefined) {
