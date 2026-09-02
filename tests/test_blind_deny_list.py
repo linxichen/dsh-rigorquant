@@ -132,6 +132,30 @@ def test_document_adversary_is_delegation_denied():
             "%s must keep web_search/web_fetch denied" % row_id
 
 
+def test_adversary_is_delegation_denied_web_blind_and_skill_capable():
+    """The math adversary audits offline; the battery lives in the skill.
+
+    Its verdict gates auto-implementation, so it rests only on derivation and
+    computation the adversary itself ran: web is denied (a cited page would
+    enter the PASS gate unaudited), `skill` stays (check-battery procedures,
+    tolerances, audit schema), and the child-scope set is denied like every
+    other role.
+    """
+    text = CORDIS.read_text()
+    adv_rows = {rn: _deny(b) for rn, b in _rows(text)
+                if _tool_name(b) == "subagent_adversary"}
+    assert set(adv_rows) == {"tool-subagent-adversary"}, \
+        "the adversary row must exist"
+    for row_id, denied in adv_rows.items():
+        missing = sorted(DELEGATION - denied)
+        assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
+        missing = sorted(ORCHESTRATOR_TOOLS - denied)
+        assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
+        assert "web_search" in denied and "web_fetch" in denied, \
+            "%s must keep web_search/web_fetch denied" % row_id
+        assert "skill" not in denied, "%s must keep skill (check battery)" % row_id
+
+
 def test_explorer_is_delegation_denied_and_child_scoped():
     """The open-track explorer keeps web and `skill`, and nothing orchestrator-owned.
 
@@ -169,3 +193,12 @@ def test_blind_deny_sets_carry_every_delegation_row():
         "delegation toolName(s) %r are mounted by the composition but absent "
         "from BLIND_TOOLS/DELEGATION; extend the set and every delegation "
         "deny list" % missing_from_set)
+    # End-state invariant: every spawn row ships a complete toolFilter. A row
+    # mounted without one puts the whole catalog (its own spawn tool included)
+    # in front of the child at depth 1.
+    unfiltered = sorted(row_id for row_id, body in _rows(text)
+                        if _tool_name(body) in delegation_rows and not _deny(body))
+    assert not unfiltered, (
+        "delegation row(s) %r mount without a toolFilter deny list; every "
+        "child-facing delegation row must deny DELEGATION (and, unless the "
+        "role is deliberately excepted, ORCHESTRATOR_TOOLS and web)" % unfiltered)

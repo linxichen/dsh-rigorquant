@@ -340,6 +340,19 @@
           killing evidence; the agent that started you receives only what you
           report.
           Harness model-routing tag, internal, ignore it: [[rq:role=adversary]]
+        # Adversary tool budget: the verdict is the honesty boundary, so it
+        # must rest on derivation and computation the adversary itself ran.
+        # web_search/web_fetch are DENIED: a web citation would enter the PASS
+        # gate unaudited (nobody downstream re-verifies the checker's sources),
+        # and literature facts reach the math lane only as the orchestrator's
+        # verified-negatives export (Decision 14 membrane). `skill` STAYS —
+        # the check battery's procedures, tolerances, and audit schema live in
+        # the rigorquant skill; this is the one web-blind, skill-capable role.
+        # Everything else mirrors the explorer budget: delegation (C2),
+        # orchestration loops, child-control, orchestrator-owned task state,
+        # ask_user_question, plan mode.
+        toolFilter:
+          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-line
       name: '@deepseek-ai/dsh-tool-subagent'
