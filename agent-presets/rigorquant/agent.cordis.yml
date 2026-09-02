@@ -264,8 +264,15 @@
           self-contained call with the concrete result; the agent that started
           you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=novel]]
+        # Novel tool budget: identical isolation to the oracle (C1/C2 — web,
+        # `skill`, and delegation denied; derivation compute rides on bash and
+        # the pinned uv lane, numpy/scipy/sympy/... need no catalog entry).
+        # Adds the child-scope standard: child-control tools, orchestrator-owned
+        # task state (goal trio + todo_write, Decision 10), ask_user_question
+        # (unattended contract), plan mode. Kept: bash + fs six (own scratch
+        # directory, seed recording), report (delivery), job trio.
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-ground-truth
       name: '@deepseek-ai/dsh-tool-subagent'

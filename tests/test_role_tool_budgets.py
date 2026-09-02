@@ -64,8 +64,7 @@ GUARANTEED = frozenset({
 # toolName -> the exact visible set a spawned child of that role must see.
 # Kept sets, not deny sets: a budget change is a reviewable diff in this table.
 # A role enters this table only when its budget lands through persona review;
-# until then it is covered by the universal invariants below. (Oracle/novel
-# are next: their proposal is the blind lane minus the orchestrator-owned set.)
+# until then it is covered by the universal invariants below.
 BUDGETS = {
     # explorer: open track — web for known-result checks; skill carries the
     # working procedure.
@@ -79,6 +78,10 @@ BUDGETS = {
     # (numpy/scipy/sympy/...) need no catalog entry of their own.
     "subagent_ground_truth": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
                                            | {"web_search", "web_fetch", "skill"}),
+    # novel: the explorer under the novelty toggle — same isolation as the
+    # oracle. Compute leverage is bash + the pinned lane, not catalog entries.
+    "subagent_novel": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
+                                    | {"web_search", "web_fetch", "skill"}),
 }
 
 # Roles whose budgets are landed and therefore pinned EXACTLY by this module.
