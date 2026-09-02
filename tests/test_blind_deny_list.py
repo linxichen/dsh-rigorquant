@@ -96,8 +96,12 @@ def test_document_adversary_is_delegation_denied():
     for row_id, denied in doc_rows.items():
         missing = sorted(DELEGATION - denied)
         assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
+        missing = sorted(ORCHESTRATOR_TOOLS - denied)
+        assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
         assert "web_search" in denied and "web_fetch" in denied, \
             "%s must keep web_search/web_fetch denied" % row_id
+        assert "write" not in denied, \
+            "%s must keep write: rq_check reads the verdict from the record" % row_id
 
 
 def test_adversary_is_delegation_denied_web_blind_and_skill_capable():

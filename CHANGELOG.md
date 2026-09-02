@@ -23,10 +23,12 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   roles stay web/skill-denied; the document adversary keeps web denied.
   Static lists only name tools every deployment mounts (a static deny of a
   plugin-optional tool would throw at child spawn); deployment-optional noise
-  (ssh/import/image tools) is left to the barebone assembly filter. Explorer,
-  lit-line, and lit-adversary land at 13 first-class tools (open retrieval
-  and proposal roles: web, skills, bash, and background sweeps kept per
-  review); adversary 11; blind roles 10.
+  (ssh/import/image tools) is left to the barebone assembly filter. All seven
+  roles are landed: explorer, lit-line, and lit-adversary at 13 first-class
+  tools (open retrieval and proposal roles: web, skills, bash, and background
+  sweeps kept per review); adversary and doc-adversary at 11 (web denied; the
+  doc-adversary keeps write because rq_check reads its verdict file from the
+  record); blind roles at 10.
   A consistency test asserts each role's deny list against the derived
   delegation set plus the orchestrator-owned set and fails if any delegation
   row mounts without a filter; a budget module pins each landed role's exact

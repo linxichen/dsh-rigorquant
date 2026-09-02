@@ -484,8 +484,17 @@
           motivation gap, or audience mismatch) so a human reader can act on it.
           The agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=doc-adversary]]
+        # Document-adversary tool budget: audits LOCAL deliverables, so web
+        # stays denied (its own long-standing policy). `write` is load-bearing,
+        # not a convenience: rq_check reads the verdict from the record
+        # (audits/document-adversary-<name>.md), never from the transcript --
+        # Decision 13's "a study may not vouch for itself" is what REQUIRES
+        # this role's write access. `skill` kept per the non-blind pattern
+        # (weakest case: the checklist is inline in the persona); the job trio
+        # rides with bash (denying jobs while bash keeps run_in_background
+        # makes background runs uncollectable).
         toolFilter:
-          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'

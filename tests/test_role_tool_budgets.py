@@ -89,6 +89,10 @@ BUDGETS = {
     # stay; only delegation and orchestrator-owned state are denied.
     "subagent_lit_line": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
     "subagent_lit_adversary": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
+    # document adversary: audits local deliverables — web denied (own policy),
+    # write is load-bearing (rq_check reads the verdict file from the record).
+    "subagent_document_adversary": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
+                                                 | {"web_search", "web_fetch"}),
 }
 
 # Roles whose budgets are landed and therefore pinned EXACTLY by this module.
