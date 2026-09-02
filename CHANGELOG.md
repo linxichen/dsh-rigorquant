@@ -23,11 +23,12 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   roles stay web/skill-denied; the document adversary keeps web denied.
   Static lists only name tools every deployment mounts (a static deny of a
   plugin-optional tool would throw at child spawn); deployment-optional noise
-  (ssh/import/image tools) is left to the barebone assembly filter. Explorer
-  and adversary land first: 41 → 13 and 41 → 12 visible tools. A consistency
-  test asserts each role's deny list against the derived delegation set plus
-  the orchestrator-owned set, and fails if any delegation row mounts without
-  a filter.
+  (ssh/import/image tools) is left to the barebone assembly filter. Explorer,
+  adversary, and oracle land: 13, 11, and 10 first-class tools respectively.
+  A consistency test asserts each role's deny list against the derived
+  delegation set plus the orchestrator-owned set and fails if any delegation
+  row mounts without a filter; a budget module pins each landed role's exact
+  visible catalog and the spawn-safety invariant.
 
 ### Fixed
 - **Delegation denial lagged the document-adversary row** (`agent-presets/rigorquant/agent.cordis.yml`,

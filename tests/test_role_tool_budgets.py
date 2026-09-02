@@ -74,6 +74,11 @@ BUDGETS = {
     # unaudited); skill stays (the check battery lives there).
     "subagent_adversary": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
                                         | {"web_search", "web_fetch"}),
+    # blind lane: C1/C2 — no web, no skill, delegation denied outright. The
+    # compute lane rides on bash (C1's kept capability), so derivation tools
+    # (numpy/scipy/sympy/...) need no catalog entry of their own.
+    "subagent_ground_truth": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
+                                           | {"web_search", "web_fetch", "skill"}),
 }
 
 # Roles whose budgets are landed and therefore pinned EXACTLY by this module.

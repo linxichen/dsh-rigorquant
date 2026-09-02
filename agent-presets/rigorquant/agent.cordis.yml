@@ -312,8 +312,15 @@
           self-contained call with the exact result; the agent that started you
           receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=oracle]]
+        # Oracle tool budget: C1/C2 already deny web, `skill`, and delegation
+        # outright (the blind lane). This adds the child-scope standard set:
+        # child-control tools (a depth-1 oracle has no children), the
+        # orchestrator-owned task state (goal trio + todo_write, Decision 10),
+        # ask_user_question (unattended contract), and plan mode. Kept:
+        # bash + fs six (scratch derivation, seed recording, brute-force
+        # numeric tracks), report (delivery), job trio (long background runs).
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
