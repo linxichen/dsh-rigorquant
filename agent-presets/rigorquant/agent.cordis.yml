@@ -412,8 +412,14 @@
           Deliver your load-bearing findings with the `report` tool before you
           finish; the agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-line]]
+        # Literature line budget (review verdicts): an open retrieval role —
+        # web_search/web_fetch, `skill` (arxiv + academic-paper-search are
+        # load-bearing), bash (retrieval scripting), and the job trio for
+        # background sweeps all stay. Denied: delegation (C2), orchestration
+        # loops, child-control, orchestrator-owned task state, ask_user_question
+        # (unattended contract), plan mode.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -437,8 +443,11 @@
           Deliver each claim verdict with the `report` tool before you finish;
           the agent that started you receives only what you report.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-adversary]]
+        # Literature adversary budget: mirrors the line budget (review
+        # verdicts) — web stays (independent re-retrieval is the job), skill
+        # and bash stay, job trio stays. Same child-scope denials.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph]
+          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, subagent_fork, workflow, ralph, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-doc-adversary
       name: '@deepseek-ai/dsh-tool-subagent'

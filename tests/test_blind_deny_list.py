@@ -79,8 +79,11 @@ def test_lit_roles_are_delegation_denied_leaves_that_keep_web():
     for row_id, denied in lit_rows.items():
         missing = sorted(DELEGATION - denied)
         assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
-        assert "web_search" not in denied and "web_fetch" not in denied, \
-            "%s must keep web_search/web_fetch for retrieval" % row_id
+        missing = sorted(ORCHESTRATOR_TOOLS - denied)
+        assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
+        for kept in ("web_search", "web_fetch", "skill", "bash"):
+            assert kept not in denied, \
+                "%s must keep %s (open retrieval role)" % (row_id, kept)
 
 
 def test_document_adversary_is_delegation_denied():

@@ -80,8 +80,15 @@ BUDGETS = {
                                            | {"web_search", "web_fetch", "skill"}),
     # novel: the explorer under the novelty toggle — same isolation as the
     # oracle. Compute leverage is bash + the pinned lane, not catalog entries.
+    # novel: the explorer under the novelty toggle — same isolation as the
+    # oracle. Compute leverage is bash + the pinned lane, not catalog entries.
     "subagent_novel": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
                                     | {"web_search", "web_fetch", "skill"}),
+    # literature pair: open retrieval roles (review verdicts) — web, the
+    # vendored retrieval skills, bash (scripting), and background sweeps all
+    # stay; only delegation and orchestrator-owned state are denied.
+    "subagent_lit_line": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
+    "subagent_lit_adversary": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
 }
 
 # Roles whose budgets are landed and therefore pinned EXACTLY by this module.
