@@ -2,8 +2,8 @@
 
 The README activity view is rendered by a browser floater (`shell.overlay`),
 and the data it shows comes from this host half: role agents observed from the
-events the core already publishes, served as a JSON snapshot plus the six
-docs/figs portraits over /plugins/dsh-rigorquant/... — the same HTTP surface
+events the core already publishes, served as a JSON snapshot plus the
+docs/figs role portraits over /plugins/dsh-rigorquant/... — the same HTTP surface
 dsh-agent-teams uses for its activity panel.
 
 These checks pin the load-bearing properties against a real execution of the
@@ -80,7 +80,7 @@ def test_snapshot_reports_the_lab_and_live_roles(probe):
     assert lab["summary"] == {"total": 2, "working": 2, "idle": 0}
     assert lab["captain"]["label"] == "Orchestrator"
     assert lab["members"][0]["label"] == "Explorer"
-    assert lab["members"][0]["tool"] == "subagent"
+    assert lab["members"][0]["tool"] == "subagent_explorer"
     assert lab["members"][0]["status"] == "running"
 
 
@@ -112,7 +112,7 @@ def test_a_subagent_with_recent_activity_lights_up_without_a_running_status(prob
     labs = probe["snapshot"]["labs"]
     promoted = next(lab for lab in labs if lab["id"] == "lab-2")
     member = next(m for m in promoted["members"] if m["sessionId"] == "child-shot-2")
-    assert member["role"] == "oracle"
+    assert member["role"] == "doublechecker"
     assert member["status"] == "running"
 
 

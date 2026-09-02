@@ -3,9 +3,10 @@ name: literature
 description: >
   RigorQuant literature lane: walled, grad-student-style citation-graph
   traversal per research line, an independent literature adversary for validity
-  + freshness, and the verified-negative membrane that keeps the novel lane
-  un-anchored. Load for known/novel intake, deep literature review, or when the
-  orchestrator needs 'what is settled / impossible / open / current'.
+  + freshness, and the verified-negative membrane that keeps the off-grid
+  lane (the OffGridThinker) un-anchored. Load for known/novel intake, deep
+  literature review, or when the orchestrator needs 'what is settled /
+  impossible / open / current'.
 ---
 
 # Literature lane — operating procedure
@@ -17,7 +18,7 @@ enforcement.
 
 ## The membrane (non-negotiable)
 
-Only VERIFIED NEGATIVES cross to the novel lane. A verified negative is a
+Only VERIFIED NEGATIVES cross to the off-grid lane. A verified negative is a
 mathematically proven impossibility (category 'impossible'), independently
 re-retrieved by the lit-adversary, judged load-bearing for an active
 sub-problem. It is transmitted provenance-stripped ("closed path, not a
@@ -60,8 +61,8 @@ schemas/known-results.schema.json), keyed by sub-problem id, each entry
 settled | impossible | superseded | open with sources. Also write, all four
 under literature/ and all four validator-enforced:
 
-- negative-exports.json — the provenance-stripped constraints sent to the novel
-  lane (schema: schemas/negative-exports.schema.json). Every export must trace
+- negative-exports.json — the provenance-stripped constraints sent to the
+  off-grid lane (schema: schemas/negative-exports.schema.json). Every export must trace
   to an `impossible` entry with a verified-current source, and that entry must
   carry `negative_export: true`: the map and the exports file record ONE fact.
 - completeness.json — the per-line checklist (schema:
@@ -74,10 +75,11 @@ under literature/ and all four validator-enforced:
   sweep is mandatory at intake: the only way past it is `phase: "skipped"` with
   the user's verbatim assertion in `skip_reason`.
 
-Transmission to the novel lane is by tool, not by tone: call `subagent_novel`
-(web, `skill`, and delegation denied in the composition) and pass the
-constraint text only. If a sub-problem's ANSWER is the impossibility, mark it
-`status: "impossible"` in study.json and record the math lane's acceptance in
+Transmission to the off-grid lane is by tool, not by tone: call
+`subagent_offgrid` (the OffGridThinker; web, `skill`, and delegation denied in
+the composition) and pass the constraint text only. If a sub-problem's ANSWER
+is the impossibility, mark it `status: "impossible"` in study.json and record
+the math lane's acceptance in
 the entry's `escalation` path — the literature lane certifies that the
 literature says X, never that X is true.
 

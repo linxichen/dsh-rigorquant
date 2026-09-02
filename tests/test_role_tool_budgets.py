@@ -57,8 +57,8 @@ GUARANTEED = frozenset({
     # (subagent_fork, workflow, ralph, workflow-worker-thread) are disabled
     # outright and mount nothing, so they appear neither here nor in any deny
     # list (tools.restrict throws on unmounted names).
-    "subagent", "subagent_ground_truth", "subagent_adversary",
-    "subagent_novel", "subagent_lit_line", "subagent_lit_adversary",
+    "subagent_explorer", "subagent_double_checker", "subagent_adversary",
+    "subagent_offgrid", "subagent_lit_line", "subagent_lit_adversary",
     "subagent_document_adversary",
 })
 
@@ -69,7 +69,7 @@ GUARANTEED = frozenset({
 BUDGETS = {
     # explorer: open track — web for known-result checks; skill carries the
     # working procedure.
-    "subagent": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
+    "subagent_explorer": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
     # adversary: web-blind verdict (a cited page would enter the PASS gate
     # unaudited); skill stays (the check battery lives there).
     "subagent_adversary": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
@@ -77,14 +77,14 @@ BUDGETS = {
     # blind lane: C1/C2 — no web, no skill, delegation denied outright. The
     # compute lane rides on bash (C1's kept capability), so derivation tools
     # (numpy/scipy/sympy/...) need no catalog entry of their own.
-    "subagent_ground_truth": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
-                                           | {"web_search", "web_fetch", "skill"}),
-    # novel: the explorer under the novelty toggle — same isolation as the
-    # oracle. Compute leverage is bash + the pinned lane, not catalog entries.
-    # novel: the explorer under the novelty toggle — same isolation as the
-    # oracle. Compute leverage is bash + the pinned lane, not catalog entries.
-    "subagent_novel": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
-                                    | {"web_search", "web_fetch", "skill"}),
+    "subagent_double_checker": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
+                                             | {"web_search", "web_fetch", "skill"}),
+    # offgrid (OffGridThinker): its own delegation row, decoupled from the
+    # explorer — the boundary is other people's results, not tools. Same
+    # isolation as the DoubleChecker; compute leverage is bash + the pinned
+    # lane (sympy/numpy/... need no catalog entry).
+    "subagent_offgrid": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
+                                      | {"web_search", "web_fetch", "skill"}),
     # literature pair: open retrieval roles (review verdicts) — web, the
     # vendored retrieval skills, bash (scripting), and background sweeps all
     # stay; only delegation and orchestrator-owned state are denied.
@@ -99,7 +99,7 @@ BUDGETS = {
 # Roles whose budgets are landed and therefore pinned EXACTLY by this module.
 LANDED_BUDGETS = frozenset(BUDGETS)
 
-BLIND_LANED = {"subagent_ground_truth", "subagent_novel"}
+BLIND_LANED = {"subagent_double_checker", "subagent_offgrid"}
 
 
 def _spawn_rows(text):

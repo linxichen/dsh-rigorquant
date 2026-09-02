@@ -43,13 +43,15 @@
    analytic mean must shrink (≈ C/√N) as N grows. Seeded, environment-pinned
    replay — not portable bit-identity.
 7. **Isolation** — track-split: method track open (existing results allowed),
-   ground-truth track re-derives; orchestrator-detected novelty toggle flips
-   the method track to full Jin isolation (no web, no prior context, no local
-   files). These are procedural separations; only context isolation is
-   harness-enforced.
+   ground-truth track re-derives; the orchestrator-detected off-grid toggle
+   hands the route to the OffGridThinker, a separate agent whose only boundary
+   is other people's results (no web, no prior context, no local files; the
+   compute lane stays). These are procedural separations; only context
+   isolation is harness-enforced.
 8. **Multi-agent mechanism** — DSH-native: per-role delegation tools
-   (`subagent` explorer, `subagent_ground_truth` oracle with `web_search`
-   denied, `subagent_adversary`; each `maxDepth: 1`, which permits exactly one
+   (`subagent_explorer` explorer, `subagent_offgrid` OffGridThinker and
+   `subagent_double_checker` DoubleChecker, both web-denied,
+   `subagent_adversary`; each `maxDepth: 1`, which permits exactly one
    level of delegation — a child is always at depth ≥ 1, so `maxDepth: 0` would
    block delegation entirely) + `workflow` fan-out with
    JSON schemas + goal-round driver; registry/journal files are the cross-round
@@ -120,7 +122,7 @@ they bind every future change to the checker:
 
 A new literature-research lane answers "what is settled / impossible / open /
 current" before compute is spent, and a membrane exports ONLY verified negatives
-(proven impossibilities) to the novel lane so it stays un-anchored. The lane is
+(proven impossibilities) to the off-grid lane so it stays un-anchored. The lane is
 a grad-student-style citation-graph traversal (backward references + forward
 citations + related work + surveys), walled per line, with an independent
 literature adversary that re-retrieves each load-bearing claim and certifies
@@ -138,10 +140,10 @@ bound by, and they outlive any particular gate:
 | # | Constraint |
 |---|---|
 | C1 | The blind lane keeps `bash`. Blindness is **tool-enforced** for web_search/web_fetch and delegation, **procedural + audited** for no-curl and no-cross-lane-read. Never described as a "wall"; the residual holes are named below. |
-| C2 | The blind lane gets **delegation denied outright**, not merely capped by depth. Blind = the ground-truth oracle (always) + the explorer after the novelty toggle. A per-role network sandbox in DSH core is the future upgrade path. |
+| C2 | The blind lane gets **delegation denied outright**, not merely capped by depth. Blind = the DoubleChecker (always) + the OffGridThinker (the off-grid toggle). A per-role network sandbox in DSH core is the future upgrade path. |
 | C3 | A **verified negative** is a *mathematically proven* impossibility, falsehood, or known-intractability. Expert opinion, "big names think it unlikely", and the absence of a known result are NOT negatives. |
-| C4 | The literature lane briefs the orchestrator; the orchestrator passes the novel lane **negatives only — never hints, never semi-positives**. |
-| C5 | A fully-settled sub-problem gets no novel lane (the answer is a citation). A fully-impossible one gets no novel lane either (the answer is the impossibility, recorded as `status: "impossible"` with its math-lane escalation). |
+| C4 | The literature lane briefs the orchestrator; the orchestrator passes the off-grid lane **negatives only — never hints, never semi-positives**. |
+| C5 | A fully-settled sub-problem gets no off-grid lane (the answer is a citation). A fully-impossible one gets no off-grid lane either (the answer is the impossibility, recorded as `status: "impossible"` with its math-lane escalation). |
 | C6 | Paywall bypass is permitted and author-hosted copies are first-class. Retrieval is tiered; mirrors are **user-supplied and disabled by default**, with the legal basis recorded by the user. |
 | C7 | Thoroughness beats speed; 10+ hours per run is acceptable. The budget is a resume-able safety ceiling, never a finish target. |
 
@@ -150,10 +152,10 @@ listed does not cross:
 
 ```
 orchestrator ──line hypotheses──▶ lit line-agent (walled)
-lit line-agent ──dossier──▶ orchestrator (interim/, never read by the novel lane)
+lit line-agent ──dossier──▶ orchestrator (interim/, never read by the off-grid lane)
 orchestrator ──claims list──▶ lit adversary (NOT the dossier prose)
 lit adversary ──verdict──▶ orchestrator
-orchestrator ──verified negatives (provenance-stripped)──▶ novel lane
+orchestrator ──verified negatives (provenance-stripped)──▶ off-grid lane
 ```
 
 Open status never crosses (transmitting "this is open" is a hint), settled
@@ -209,13 +211,13 @@ the literature roles load them by name. `install.sh` therefore copies both to
 `$DSH_HOME/skills/` in both install modes and removes them on `--uninstall`,
 while the preset keeps its own copies under
 `agent-presets/rigorquant/skills/` so a checkout is self-contained. The blind
-roles deny `skill` outright, so a global install never widens what the novel
-lane can reach.
+roles deny `skill` outright, so a global install never widens what the
+off-grid lane can reach.
 
 ## Decision 16 — role-routed models (the rq-model-router plugin)
 
 The preset used to run every agent on one model: children inherit the parent's
-route, so the session default (flash@high) powered the oracle and the
+route, so the session default (flash@high) powered the DoubleChecker and the
 adversary too. The economics point both ways — most of the agent volume is
 divergent exploration and retrieval where flash@high is the right price, while
 the two proof-critical roles are exactly where a weak model burns the most
@@ -232,7 +234,7 @@ composition.
   inheritance (children) only when the user configured an override; otherwise
   the fixed-tier tool row's native `agentOptions` remains authoritative.
   DSH 0.1.2 now carries `reasoningEffort` in that native channel, so it is no
-  longer necessary to rewrite the shipped oracle/adversary primary on every
+  longer necessary to rewrite the shipped DoubleChecker/adversary primary on every
   request.
 - **Role identity.** Every role persona carries a machine-readable tag
   `[[rq:role=<role>]]`. Continuable children persist the persona in their
@@ -254,14 +256,14 @@ composition.
   namespace (user layer of `settings.yaml`); the browser half renders the
   card in the Plugins settings tab, keyed by that namespace, with model and
   effort dropdowns from the live provider catalog.
-- **Shipped defaults.** Oracle and adversary: `deepseek-v4-pro`@high with a
+- **Shipped defaults.** DoubleChecker and adversary: `deepseek-v4-pro`@high with a
   `deepseek-v4-flash`@low fallback (a fallback is a degrade lane, not a second
   full-price route). Every other role: inherit. Defaults
   assume the `deepseek-official` catalog; a deployment without it overrides
   the row config or the card, and a default that cannot route degrades
   through the same fallback lane (or fails loudly if the fallback cannot
   either).
-- **0.1.2 native defaults.** `tool-subagent-ground-truth` and
+- **0.1.2 native defaults.** `tool-subagent-double-checker` and
   `tool-subagent-adversary` now declare those fixed primary choices through
   the builtin `agentOptions` channel, including `reasoningEffort`. The router
   reads the raw user layer so a reset returns to that native route instead of
@@ -314,7 +316,7 @@ escalation is an explicit recorded act.**
 The j-space cognition suite shipped inside this preset (skill directory,
 install.sh wiring, and an inline j-space protocol paragraph in every persona).
 It is the user's separate distribution and adds a hard external dependency to
-every rigorquant session — including the blind roles (`novel`, `oracle`),
+every rigorquant session — including the blind roles (`offgrid`, `doublechecker`),
 which deny the `skill` tool and can never load it, so the inline block was
 pure prompt tax on every one of their requests. Decision: **j-space lives in
 its own branch, not here.** The skill directory, its install/uninstall lines,

@@ -22,10 +22,14 @@ context-isolated multi-agent research lab:
 - **J-Space** is used integrally across the root persona, every subagent role,
   and plan mode as the inference-time cognitive-control layer (workspace gate,
   ledger, seam refresh, dense inner / clean outer registers).
-- **Parallel explorers** propose candidate methods (`subagent`, blank context).
+- **Parallel explorers** propose candidate methods (`subagent_explorer`, blank
+  context).
+- An **OffGridThinker** (`subagent_offgrid`) works off the grid when a route
+  must be isolated: raw model intelligence plus compute tools (sympy, numpy,
+  mpmath, Lean checkers) — no web, no literature, no other agents' results.
 - A **ground-truth track** re-derives the analytic closed forms, invariants, and
   bounds for simplified cases — twice, by different means (two independent
-  `subagent_ground_truth` calls).
+  `subagent_double_checker` calls).
 - An **adversary** eliminates routes by counterexample only.
 - A **four-part check battery** (closed-form equality, exact invariants,
   analytic bounds, statistical hardening) runs BEFORE numerical implementation.
@@ -52,9 +56,10 @@ session. Crossing a session boundary disarms the goal; one human turn
 
 ## The research team — and how it works
 
-Six roles, each a separate tool with its own powers and limits. The separation is
-enforced by the composition, so **the producer never checks its own work** — an idea
-dies only on a concrete counterexample, never on style or vibes.
+Eight roles around one hub, each a separate tool with its own powers and limits.
+The Orchestrator is the only role that sees every report; the separation is
+enforced by the composition, so **the producer never checks its own work** — an
+idea dies only on a concrete counterexample, never on style or vibes.
 
 <img src="docs/figs/avatar-orchestrator.png" align="left" width="200" alt="Orchestrator">
 
@@ -65,14 +70,21 @@ dies only on a concrete counterexample, never on style or vibes.
 
 <img src="docs/figs/avatar-explorer.png" align="left" width="200" alt="Explorer">
 
-**Explorer** · `subagent` — blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected.
+**Explorer** · `subagent_explorer` — blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected.
 
 <br clear="left">
 
 
-<img src="docs/figs/avatar-oracle.png" align="left" width="200" alt="Oracle">
+<img src="docs/figs/avatar-offgrid.png" align="left" width="200" alt="OffGridThinker">
 
-**Oracle** · `subagent_ground_truth` — blind (no web, no skills, no delegation, no drafts). Re-derives the load-bearing claims from first principles, twice by different means.
+**OffGridThinker** · `subagent_offgrid` — the off-grid lane. Raw model intelligence plus the pinned compute lane (sympy, numpy, mpmath, cvxpy, hypothesis, jax; Lean checkers when provisioned) — and nothing else: no web, no skills, no delegation, no other agents' results. Its own agent, not an Explorer variant: isolation is the identity.
+
+<br clear="left">
+
+
+<img src="docs/figs/avatar-doublechecker.png" align="left" width="200" alt="DoubleChecker">
+
+**DoubleChecker** · `subagent_double_checker` — blind (no web, no skills, no delegation, no drafts). Re-derives the load-bearing claims from first principles, twice by different means.
 
 <br clear="left">
 
@@ -113,8 +125,9 @@ the conversation column, so the workspace rail and right-docked panels stay
 clear), expanding into a panel that shows, for the **current session's lab
 only** (never other sessions, and only while the current session is a
 RigorQuant one), the
-**five-move stage** the run is on, a compact role-pipeline graph, a
-working/idle roster of the six roles with
+**five-move stage** the run is on, a hub-and-spoke role map (the Orchestrator
+at the hub, every role it can delegate to as a spoke), a
+working/idle roster with
 their `docs/figs/` portraits, each role's last action, and a newest-first
 activity feed. It is pure observation — it reads the events the core already
 publishes and serves a JSON snapshot + portraits over
@@ -130,7 +143,7 @@ panel is only visible in a running web session) — adapted from the live
 activity panel of [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
 — the picture in
 [its README](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)
-— showing RigorQuant's own six roles at a fan-out moment. The panel SVG is
+— showing RigorQuant's own eight roles at a fan-out moment. The panel SVG is
 generated from [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js).
 
 > **Attribution.** The activity-panel design is adapted from
@@ -144,7 +157,7 @@ generated from [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activit
 
 1. **Promise** — record the original question verbatim, split it into sub-problems with crisp criteria, pick hand-checkable simplified cases, and pin seeds, tolerances and the schema/validator digests.
 2. **Fan out** — blank-context explorers and literature lines run in parallel; most are never told the favored approach.
-3. **Ground-truth it** — blind oracles re-derive the load-bearing claims without seeing anyone's draft; two independent derivations for anything the study rests on.
+3. **Ground-truth it** — the blind DoubleChecker re-derives the load-bearing claims without seeing anyone's draft; two independent derivations for anything the study rests on.
 4. **Attack it** — the adversary runs the four-gate battery, then hunts counterexamples; divergent tracks are lined up as an adjudication docket.
 5. **Certify & ship** — the validator checks nothing is missing; the paper and slides are assembled from validated records, never written fresh.
 
@@ -216,18 +229,18 @@ via the skill's `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian
 ## Role-routed models (rq-model-router)
 
 The bundled plugin gives each RigorQuant role a model + reasoning-effort
-policy, with one fallback per role. The oracle and adversary tool rows use DSH
-0.1.2's native `agentOptions` for their shipped primary (`deepseek-v4-pro` @
-`high`); the router only overlays explicit Settings choices and fallback
-retries. Configure overrides in **Settings → Plugins → RigorQuant model
+policy, with one fallback per role. The DoubleChecker and adversary tool rows
+use DSH 0.1.2's native `agentOptions` for their shipped primary
+(`deepseek-v4-pro` @ `high`); the router only overlays explicit Settings
+choices and fallback retries. Configure overrides in **Settings → Plugins → RigorQuant model
 routing**: the last saved selection persists (settings user layer). Shipped
 defaults:
 
 | Role | Primary | Fallback |
 | --- | --- | --- |
-| Ground-truth oracle | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
+| DoubleChecker | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
 | Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
-| Root, explorers, literature/document roles | inherit (root follows the chatbox picker) | — |
+| Root, explorers, OffGridThinker, literature/document roles | inherit (root follows the chatbox picker) | — |
 
 On a terminal primary failure (no adapter / HTTP 4xx, including the official
 quota response `1308` / “Usage limit reached”) the role degrades to its

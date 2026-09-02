@@ -21,7 +21,7 @@
         "claim": { "type": "string" },
         "negative_export": {
           "type": "boolean",
-          "description": "true when this impossible entry was exported to the novel lane as a provenance-stripped constraint"
+          "description": "true when this impossible entry was exported to the off-grid lane as a provenance-stripped constraint"
         },
         "escalation": {
           "type": "string",

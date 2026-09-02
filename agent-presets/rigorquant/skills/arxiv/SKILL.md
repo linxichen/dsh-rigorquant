@@ -289,7 +289,7 @@ Vendored verbatim from NousResearch/hermes-agent skills/research/arxiv (MIT,
 author: Hermes Agent). Two mechanical mappings for DeepSeek Harness:
 
 - web_extract(urls=[...]) maps to the DSH web_fetch tool (enabled in the
-  RigorQuant preset; the blind novel lane denies it).
+  RigorQuant preset; the blind off-grid lane denies it).
 - 'python scripts/search_arxiv.py' runs as
   'python3 <this skill's dir>/scripts/search_arxiv.py'.
 

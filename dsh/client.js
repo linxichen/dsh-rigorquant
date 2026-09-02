@@ -27,13 +27,13 @@
 window.__ModuleLoader__.load({ id: 'dsh-rigorquant', factory: (require) => {
 
 const CARD_KEY = 'rigorquant-models'
-const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
+const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 const SLOTS = ['Primary', 'Fallback']
 const EFFORTS = ['off', 'high', 'max']
 // Invocation frequency per role: the badge tone follows the level, the label
 // comes from the locale copy (`roleFreq.<role>`).
 const ROLE_FREQ = {
-  root: 'high', explorer: 'high', novel: 'low', oracle: 'medium',
+  root: 'high', explorer: 'high', offgrid: 'low', doublechecker: 'medium',
   adversary: 'medium', 'lit-line': 'low', 'lit-adversary': 'low',
   'doc-adversary': 'low',
 }
@@ -99,7 +99,7 @@ const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings'
 const copy = {
   en: {
     title: 'RigorQuant model routing',
-    description: 'Per-role model overrides and fallbacks for RigorQuant sessions. Native tool defaults supply oracle and adversary; root follows the chatbox picker, and other roles inherit their session model.',
+    description: 'Per-role model overrides and fallbacks for RigorQuant sessions. Native tool defaults supply the DoubleChecker and adversary; root follows the chatbox picker, and other roles inherit their session model.',
     inherit: 'Inherit',
     none: 'None',
     effortInherit: 'Default',
@@ -117,24 +117,24 @@ const copy = {
     catalogFailed: 'Model catalog unavailable — check connection',
     'role.root': 'Root orchestrator',
     'role.explorer': 'Explorer (method track)',
-    'role.novel': 'Explorer (novelty isolation)',
-    'role.oracle': 'Ground-truth oracle',
+    'role.offgrid': 'OffGridThinker (off-grid derivation)',
+    'role.doublechecker': 'DoubleChecker',
     'role.adversary': 'Adversary',
     'role.lit-line': 'Literature line',
     'role.lit-adversary': 'Literature adversary',
     'role.doc-adversary': 'Document adversary',
     'roleDesc.root': 'Runs the whole study: plans, delegates to every role, checkpoints, and synthesizes.',
     'roleDesc.explorer': 'Proposes candidate methods and routes with exact statements; spawned in parallel batches at each proposal stage.',
-    'roleDesc.novel': 'Derives from the problem statement only — no prior context, no web. The novelty-isolation lane for critical routes.',
-    'roleDesc.oracle': 'Re-derives closed forms, invariants, and bounds from first principles, twice by different means.',
+    'roleDesc.offgrid': 'Derives from the problem statement with raw model intelligence plus compute tools (sympy/numpy/…) — no web, no literature, no other agents\' results.',
+    'roleDesc.doublechecker': 'Re-derives closed forms, invariants, and bounds from first principles, twice by different means.',
     'roleDesc.adversary': 'Audits candidate methods and the checks themselves; eliminates routes only by concrete counterexample.',
     'roleDesc.lit-line': 'Traverses one research line (backward/forward citations) and writes a bounded dossier.',
     'roleDesc.lit-adversary': 'Independently re-retrieves and verifies load-bearing literature claims (validity and freshness).',
     'roleDesc.doc-adversary': 'Audits finished deliverables for self-completeness: every jargon term, symbol, and abbreviation used is defined.',
     'roleFreq.root': 'Frequent',
     'roleFreq.explorer': 'Frequent',
-    'roleFreq.novel': 'Rare',
-    'roleFreq.oracle': 'Common',
+    'roleFreq.offgrid': 'Rare',
+    'roleFreq.doublechecker': 'Common',
     'roleFreq.adversary': 'Common',
     'roleFreq.lit-line': 'Rare',
     'roleFreq.lit-adversary': 'Rare',
@@ -142,7 +142,7 @@ const copy = {
   },
   zh: {
     title: 'RigorQuant 角色模型路由',
-    description: '为 RigorQuant 会话配置每个角色的模型覆盖与回退。oracle 与 adversary 使用原生工具默认值；root 跟随聊天框选择器，其他选择“继承”的角色沿用会话模型。',
+    description: '为 RigorQuant 会话配置每个角色的模型覆盖与回退。DoubleChecker 与 adversary 使用原生工具默认值；root 跟随聊天框选择器，其他选择“继承”的角色沿用会话模型。',
     inherit: '继承',
     none: '无',
     effortInherit: '默认',
@@ -160,24 +160,24 @@ const copy = {
     catalogFailed: '模型目录不可用——请检查连接',
     'role.root': '根编排者',
     'role.explorer': '探索者（方法线）',
-    'role.novel': '探索者（新颖性隔离）',
-    'role.oracle': '真值预言机',
+    'role.offgrid': '离网思考者（OffGridThinker）',
+    'role.doublechecker': '双重复核（DoubleChecker）',
     'role.adversary': '对抗审计',
     'role.lit-line': '文献主线',
     'role.lit-adversary': '文献对抗',
     'role.doc-adversary': '文档对抗',
     'roleDesc.root': '运行整个研究：规划、向各角色派发、检查点与综合。',
     'roleDesc.explorer': '提出候选方法与路径（含精确陈述），在每个提案阶段以并行批次派出。',
-    'roleDesc.novel': '仅基于问题陈述推导——无前序上下文、无网络。关键路径的新颖性隔离通道。',
-    'roleDesc.oracle': '从第一性原理重新推导闭式解、不变量与界，以两种不同方式各做一次。',
+    'roleDesc.offgrid': '仅凭模型自身的推理与计算工具（sympy/numpy/…）从问题陈述推导——无网络、无文献、不使用他人的结果。',
+    'roleDesc.doublechecker': '从第一性原理重新推导闭式解、不变量与界，以两种不同方式各做一次。',
     'roleDesc.adversary': '审计候选方法与检查本身；仅以具体反例消除路径。',
     'roleDesc.lit-line': '遍历一条研究线（前向/后向引用）并产出有界档案。',
     'roleDesc.lit-adversary': '独立重新检索并核验关键文献论断（有效性与时效性）。',
     'roleDesc.doc-adversary': '审计最终交付物的自足性：所用的每个专业术语、符号与缩写都应有定义。',
     'roleFreq.root': '频繁',
     'roleFreq.explorer': '频繁',
-    'roleFreq.novel': '少见',
-    'roleFreq.oracle': '常见',
+    'roleFreq.offgrid': '少见',
+    'roleFreq.doublechecker': '常见',
     'roleFreq.adversary': '常见',
     'roleFreq.lit-line': '少见',
     'roleFreq.lit-adversary': '少见',
@@ -822,11 +822,11 @@ const POLL_MS = 2000
 const ROLE_DEF_CLIENT = {
   root: { label: 'Orchestrator', avatar: 'avatar-orchestrator.png' },
   explorer: { label: 'Explorer', avatar: 'avatar-explorer.png' },
-  novel: { label: 'Explorer', avatar: 'avatar-explorer.png' },
-  oracle: { label: 'Oracle', avatar: 'avatar-oracle.png' },
+  offgrid: { label: 'OffGrid', avatar: 'avatar-offgrid.png' },
+  doublechecker: { label: 'DoubleChecker', avatar: 'avatar-doublechecker.png' },
   adversary: { label: 'Adversary', avatar: 'avatar-adversary.png' },
   'lit-line': { label: 'Literature', avatar: 'avatar-literature.png' },
-  // Compact for the 96px DAG node; the roster caption shows the full
+  // Compact for the 96px hub-map node; the roster caption shows the full
   // "Literature adversary" from the host ROLE_DEF.
   'lit-adversary': { label: 'Lit adversary', avatar: 'avatar-literature-adversary.png' },
   'doc-adversary': { label: 'Doc adversary', avatar: 'avatar-document-adversary.png' },
@@ -1221,38 +1221,32 @@ function ActivityRow(props) {
     right)
 }
 
-// ---- role pipeline graph -------------------------------------------------
+// ---- role hub-and-spoke map ----------------------------------------------
 // The RigorQuant preset has no durable task DAG (unlike dsh-agent-teams'
-// scheduler), but its eight roles form a fixed handoff pipeline. Render it as
-// the same compact dependency graph: columns are stages, nodes are roles
-// colored by live status, edges are the role handoffs.
+// scheduler) and no role-to-role handoffs either: the root orchestrator is the
+// HUB. It spawns every role, holds every brief, receives every report, and
+// re-delegates — two child roles never talk directly. Render that honestly as
+// a hub-and-spoke map instead of a stage DAG: the orchestrator in the middle,
+// the seven child roles as spokes around it, each spoke colored by live
+// status and ordered the way the orchestrator actually calls them
+// (proposal → retrieval → re-derivation → audit → certification).
 
-const RQ_NODE_WIDTH = 96
+const RQ_NODE_WIDTH = 88
 const RQ_NODE_HEIGHT = 28
-const RQ_H_GAP = 10
-const RQ_LVL_GAP = 44
+const RQ_HUB_WIDTH = 104
+// Spoke ellipse: sized so the graph (296px) fits the panel body at its default
+// docked width and only barely bleeds at PANEL_MIN_WIDTH, and so the two
+// lowest spokes (an odd count puts no spoke at the bottom center) stay clear
+// of each other: their centers are 2 * RQ_SPOKE_RX * sin(pi/7) = 90px apart,
+// more than RQ_NODE_WIDTH.
+const RQ_SPOKE_RX = 104
+const RQ_SPOKE_RY = 86
 
-// Vertical topology: stages stack top-to-bottom (more room vertically than
-// horizontally in the panel), each stage spreads its simultaneous roles
-// across the width. Nodes are roles; edges are the handoff flow downward.
-const RQ_LEVELS = [
-  ['root'],
-  ['explorer', 'novel', 'lit-line'],
-  ['oracle', 'lit-adversary'],
-  ['adversary'],
-  ['doc-adversary'],
-]
-
-const RQ_PIPELINE_EDGES = [
-  ['root', 'explorer'], ['root', 'novel'], ['root', 'lit-line'],
-  ['explorer', 'oracle'], ['novel', 'oracle'],
-  ['oracle', 'adversary'],
-  ['lit-line', 'lit-adversary'],
-  // Optional loop-back: the literature adversary independently re-verifies the
-  // load-bearing claims, and its verdicts feed the main adversarial audit.
-  // Dashed to mark it as an optional/conditional handoff, not a strict stage.
-  ['lit-adversary', 'adversary', 'dashed'],
-  ['adversary', 'doc-adversary'],
+const RQ_HUB = 'root'
+const RQ_SPOKES = [
+  'explorer', 'offgrid', 'lit-line',
+  'doublechecker', 'adversary', 'lit-adversary',
+  'doc-adversary',
 ]
 
 // ---- panel geometry ------------------------------------------------------
@@ -1375,41 +1369,41 @@ function roleStatusOf(lab, role) {
 function RoleGraph(props) {
   const R = React()
   const { lab, t } = props
-  const maxLevelNodes = Math.max(...RQ_LEVELS.map((level) => level.length))
-  const graphWidth = maxLevelNodes * RQ_NODE_WIDTH + (maxLevelNodes - 1) * RQ_H_GAP
-  const graphHeight = (RQ_LEVELS.length - 1) * (RQ_NODE_HEIGHT + RQ_LVL_GAP) + RQ_NODE_HEIGHT
-  const positions = new Map()
-  for (let levelIndex = 0; levelIndex < RQ_LEVELS.length; levelIndex += 1) {
-    const roles = RQ_LEVELS[levelIndex]
-    const groupWidth = roles.length * RQ_NODE_WIDTH + (roles.length - 1) * RQ_H_GAP
-    const startX = (graphWidth - groupWidth) / 2
-    const y = levelIndex * (RQ_NODE_HEIGHT + RQ_LVL_GAP)
-    for (let i = 0; i < roles.length; i += 1) {
-      positions.set(roles[i], { x: startX + i * (RQ_NODE_WIDTH + RQ_H_GAP), y })
-    }
-  }
-  const edges = RQ_PIPELINE_EDGES.map((edge) => {
-    const [from, to, line] = edge
-    const source = positions.get(from)
-    const target = positions.get(to)
-    if (source === undefined || target === undefined) return null
-    const x1 = source.x + RQ_NODE_WIDTH / 2
-    const y1 = source.y + RQ_NODE_HEIGHT
-    const x2 = target.x + RQ_NODE_WIDTH / 2
-    const y2 = target.y
-    const bend = Math.max(10, (y2 - y1) / 2)
-    const dashed = line === 'dashed'
-    return R.createElement('path', {
-      key: `${from}:${to}`,
-      d: `M${x1} ${y1}C${x1} ${y1 + bend},${x2} ${y2 - bend},${x2} ${y2}`,
-      fill: 'none',
-      stroke: dashed ? 'var(--dsw-alias-label-tertiary)' : 'var(--dsw-alias-border-l2)',
-      strokeWidth: 1.5,
-      ...(dashed ? { strokeDasharray: '4 3' } : {}),
+  // Ellipse geometry: the hub sits at the center, spokes on the ellipse. The
+  // map is a fixed-size island centered in the panel body, so the widest spoke
+  // pair never clips even at PANEL_MIN_WIDTH.
+  const graphWidth = 2 * RQ_SPOKE_RX + RQ_NODE_WIDTH
+  const graphHeight = 2 * RQ_SPOKE_RY + RQ_NODE_HEIGHT
+  const hubX = graphWidth / 2
+  const hubY = graphHeight / 2
+  const positions = new Map([[RQ_HUB, { x: hubX - RQ_HUB_WIDTH / 2, y: hubY - RQ_NODE_HEIGHT / 2 }]])
+  RQ_SPOKES.forEach((role, i) => {
+    // Start at the top and walk clockwise: proposal roles, retrieval, the
+    // blind re-derivation, the audits, and certification last.
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / RQ_SPOKES.length
+    positions.set(role, {
+      x: hubX + RQ_SPOKE_RX * Math.cos(angle) - RQ_NODE_WIDTH / 2,
+      y: hubY + RQ_SPOKE_RY * Math.sin(angle) - RQ_NODE_HEIGHT / 2,
     })
-  }).filter(Boolean)
+  })
+  // One spoke per child role: a straight line from the hub to the spoke. The
+  // node boxes paint over both endpoints, so the lines run center to center.
+  // A running spoke tints its line with the live tone; every other spoke stays
+  // at the panel hairline.
+  const edges = RQ_SPOKES.map((role) => {
+    const pos = positions.get(role)
+    const running = roleStatusOf(lab, role) === 'running'
+    return R.createElement('line', {
+      key: RQ_HUB + ':' + role,
+      x1: hubX, y1: hubY,
+      x2: pos.x + RQ_NODE_WIDTH / 2, y2: pos.y + RQ_NODE_HEIGHT / 2,
+      stroke: running ? 'var(--dsw-alias-state-business-primary)' : 'var(--dsw-alias-border-l2)',
+      strokeWidth: running ? 1.5 : 1,
+      opacity: running ? 0.9 : 1,
+    })
+  })
 
-  const nodes = RQ_LEVELS.flat().map((role) => {
+  const nodeOf = (role, isHub) => {
     const status = roleStatusOf(lab, role)
     const def = ROLE_DEF_CLIENT[role]
     const pos = positions.get(role)
@@ -1422,34 +1416,39 @@ function RoleGraph(props) {
       key: role,
       'data-role': role,
       'data-status': status,
-      title: `${def?.label ?? role} · ${status === 'running' ? t('working') : status === 'idle' ? t('idle') : t('pending')}`,
+      title: (def?.label ?? role) + ' · ' + (status === 'running' ? t('working') : status === 'idle' ? t('idle') : t('pending')),
       style: {
         position: 'absolute', left: pos.x, top: pos.y,
-        width: RQ_NODE_WIDTH, height: RQ_NODE_HEIGHT,
+        width: isHub ? RQ_HUB_WIDTH : RQ_NODE_WIDTH, height: RQ_NODE_HEIGHT,
         boxSizing: 'border-box', borderRadius: 7, padding: '0 7px',
         display: 'flex', alignItems: 'center', gap: 5,
         fontSize: 10, fontWeight: 600,
-        border: `1px solid ${status === 'pending' ? 'var(--dsw-alias-border-l2)' : tone}`,
-        background: status === 'pending' ? 'transparent' : 'var(--dsw-alias-bg-layer-2)',
+        // The hub reads heavier than any spoke: it is the only role that sees
+        // every other role's report.
+        border: (isHub ? 1.5 : 1) + 'px solid ' + (status === 'pending' && !isHub ? 'var(--dsw-alias-border-l2)' : tone),
+        background: status === 'pending' && !isHub ? 'transparent' : 'var(--dsw-alias-bg-layer-2)',
         color: tone,
         whiteSpace: 'nowrap', overflow: 'hidden',
       },
     },
       // The role's docs/figs portrait, so working roles are recognizable.
       R.createElement('img', {
-        src: `/plugins/dsh-rigorquant/avatar/${def?.avatar}`,
+        src: '/plugins/dsh-rigorquant/avatar/' + (def?.avatar ?? ''),
         alt: '',
         style: {
           flex: 'none', width: 16, height: 16, borderRadius: 4,
           objectFit: 'cover', objectPosition: 'top center',
           background: 'var(--dsw-alias-bg-module-platform)',
-          opacity: status === 'pending' ? 0.45 : 1,
+          opacity: status === 'pending' && !isHub ? 0.45 : 1,
         },
       }),
       R.createElement('span', {
         style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
       }, def?.label ?? role))
-  })
+  }
+
+  const nodes = [nodeOf(RQ_HUB, true),
+    ...RQ_SPOKES.map((role) => nodeOf(role, false))]
 
   return R.createElement('div', {
     style: {

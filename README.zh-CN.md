@@ -20,9 +20,12 @@ RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一
 
 - **J-Space** 作为推理时认知控制层，被整体集成到根 persona、每个子智能体角色
   与 plan mode：工作台门控、账本、接缝刷新、稠密内轨/干净外轨。
-- **并行探索者**提出候选方法（`subagent`，空白上下文）。
+- **并行探索者**提出候选方法（`subagent_explorer`，空白上下文）。
+- **离网思考者（OffGridThinker）**（`subagent_offgrid`）在路线需要隔离时上
+  场：只凭模型自身的推理加上计算工具（sympy、numpy、mpmath、Lean 校验器）
+  ——无网络、无文献、不使用他人的结果。
 - **真值轨道**独立重推导简化情形下的解析闭式解、不变量与界——用两种不同手段
-  各推一遍（两次独立的 `subagent_ground_truth` 调用）。
+  各推一遍（两次独立的 `subagent_double_checker` 调用）。
 - **对抗者**只凭反例淘汰路线。
 - **四项检验**（闭式解相等、精确不变量、解析界、统计强化）在数值实现
   **之前**运行。
@@ -46,7 +49,7 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 ## 研究团队——以及它如何运作
 
-六个角色，每个都是独立的工具，各有能力边界。这种分离由组合本身强制，因此**生产者绝不自查自己的成果**——一个想法只会死于具体反例，绝不因风格或感觉而死。
+一个枢纽周围的八个角色，每个都是独立的工具，各有能力边界。编排者是唯一能看到所有汇报的角色；这种分离由组合本身强制，因此**生产者绝不自查自己的成果**——一个想法只会死于具体反例，绝不因风格或感觉而死。
 
 <img src="docs/figs/avatar-orchestrator.png" align="left" width="200" alt="Orchestrator">
 
@@ -57,14 +60,21 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 <img src="docs/figs/avatar-explorer.png" align="left" width="200" alt="Explorer">
 
-**探索者** · `subagent`——白纸上下文、刻意发散。给出引理、方程、构造与带精确陈述的候选方法；拒绝状态汇报式输出。
+**探索者** · `subagent_explorer`——白纸上下文、刻意发散。给出引理、方程、构造与带精确陈述的候选方法；拒绝状态汇报式输出。
 
 <br clear="left">
 
 
-<img src="docs/figs/avatar-oracle.png" align="left" width="200" alt="Oracle">
+<img src="docs/figs/avatar-offgrid.png" align="left" width="200" alt="OffGridThinker">
 
-**神谕** · `subagent_ground_truth`——盲态（无联网、无技能、无委派、无草稿）。从第一性原理把关键命题重推两遍，方法各异。
+**离网思考者（OffGridThinker）** · `subagent_offgrid`——离网通道。只凭模型自身的推理加上固定的计算通道（sympy、numpy、mpmath、cvxpy、hypothesis、jax；已配置时还有 Lean 校验器）——除此之外什么都没有：无联网、无技能、无委派、不使用他人的结果。它是独立的智能体，不是探索者的变体：隔离即身份。
+
+<br clear="left">
+
+
+<img src="docs/figs/avatar-doublechecker.png" align="left" width="200" alt="DoubleChecker">
+
+**双重复核（DoubleChecker）** · `subagent_double_checker`——盲态（无联网、无技能、无委派、无草稿）。从第一性原理把关键命题重推两遍，方法各异。
 
 <br clear="left">
 
@@ -102,8 +112,9 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 `shell.overlay` 悬浮件）：RigorQuant 会话运行期间，主窗口右侧垂直居中处会
 出现一个小圆点气泡（跟随会话列，避开左侧工作区与右侧停靠的面板），点开后
 **只显示当前会话对应的实验室**（不会显示其他会话，且仅当当前会话是
-RigorQuant 会话时），展示**五步循环所处阶段**、紧凑的角色流水线图、六个角色
-的执行/空闲花名册（含 `docs/figs/` 中的角色头像）、每个角色的最近动作，以及
+RigorQuant 会话时），展示**五步循环所处阶段**、枢纽-辐条式角色地图（编排者居中，可委派的每个
+角色为一根辐条）、各角色的执行/空闲花名册（含 `docs/figs/` 中的角色头像）、
+每个角色的最近动作，以及
 按时间倒序的动态流。它纯属观察——只读取核心已发布的事件，并在
 `/plugins/dsh-rigorquant/...` 上提供 JSON 快照与头像，不改变任何工具、
 路由或模型。颜色全部使用 `--dsw-alias` 令牌，因此自动跟随外壳自身的
@@ -116,7 +127,7 @@ RigorQuant 会话时），展示**五步循环所处阶段**、紧凑的角色�
 上图是同款设计的读者友好静态渲染（实时面板只在运行中的 web 会话里可见），
 改绘自
 [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
-的实时活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身六个角色在"扇出"时刻的状态。面板
+的实时活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身八个角色在"扇出"时刻的状态。面板
 SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) 生成。
 
 > **署名。** 活动面板设计改编自
@@ -129,7 +140,7 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 
 1. **承诺**——逐字记录原始问题，拆成带明确判据的子问题，挑手算可验的简化情形，钉死种子、容差与 schema／校验器摘要。
 2. **扇出**——白纸上下文的探索者与文献线并行运行；大多数不会被告知偏好的路线。
-3. **求真**——盲态神谕不看草稿地重推承重命题；凡研究赖以立足之处，必须有两份独立推导。
+3. **求真**——盲态的 DoubleChecker 不看草稿地重推承重命题；凡研究赖以立足之处，必须有两份独立推导。
 4. **攻击**——对抗者先跑四关检验，再找反例；分歧的轨道先排成一份裁定案卷。
 5. **认证并交付**——校验器确认无遗漏；论文与幻灯由已验证记录装配，绝不现写。
 
@@ -190,16 +201,16 @@ boot-sync 行落盘——两者写入的字节一致，最后运行者持有该�
 ## 角色模型路由（rq-model-router）
 
 内置插件为每个 RigorQuant 角色制定模型与推理强度策略，每个角色各有一个
-回退模型。oracle 与 adversary 的工具行使用 DSH 0.1.2 原生的
+回退模型。DoubleChecker 与 adversary 的工具行使用 DSH 0.1.2 原生的
 `agentOptions` 提供已发布的主选（`deepseek-v4-pro` @ `high`）；路由器只
 覆盖设置中明确的选择，并处理回退重试。配置入口：**设置 → 插件 →
 RigorQuant 模型路由**；最后一次保存的选择会持久化（写入设置用户层）。默认配置：
 
 | 角色 | 主选 | 回退 |
 | --- | --- | --- |
-| 真值预言机 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
+| 双重复核（DoubleChecker） | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
 | 对抗审计 | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
-| 根编排者、探索者、文献/文档角色 | 继承（root 跟随聊天框选择器） | — |
+| 根编排者、探索者、离网思考者、文献/文档角色 | 继承（root 跟随聊天框选择器） | — |
 
 主选路由遇到终止性失败（无适配器 / HTTP 4xx；包括官方额度响应
 `1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他

@@ -3,8 +3,8 @@
 // One settings namespace (`rigorquant-models`) maps every RigorQuant role to a
 // primary model and a per-role fallback model, each with its own reasoning
 // effort. DSH 0.1.2's native `agentOptions` supplies the shipped primary for
-// fixed-tier roles (oracle/adversary); this router rewrites only an explicit
-// user override or an active fallback. The `agent/request` waterfall remains
+// fixed-tier roles (DoubleChecker/adversary); this router rewrites only an
+// explicit user override or an active fallback. The `agent/request` waterfall remains
 // the small policy overlay that makes live settings and fallback possible.
 //
 // Role identity comes from the preset itself: every role persona in
@@ -39,12 +39,12 @@ const TAG = /\[\[rq:role=([a-z-]+)\]\]/
 /** The persona slot's reserved section name (dsh-system-prompt contract). */
 const PERSONA_SECTION = 'deployment:persona'
 /** Every routable role, in card order. */
-export const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
+export const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 /** Tool row → role, for the repo-consistency test and the docs to stay honest. */
 export const ROLE_TOOLS = {
-  explorer: 'subagent',
-  novel: 'subagent_novel',
-  oracle: 'subagent_ground_truth',
+  explorer: 'subagent_explorer',
+  offgrid: 'subagent_offgrid',
+  doublechecker: 'subagent_double_checker',
   adversary: 'subagent_adversary',
   'lit-line': 'subagent_lit_line',
   'lit-adversary': 'subagent_lit_adversary',
@@ -74,7 +74,7 @@ const DEFAULT_FALLBACK = Object.freeze({ provider: 'deepseek-official', model: '
 // tool-subagent rows. Keeping the map here lets the fallback policy recognize
 // a failure of the native route without rewriting that route on every request.
 const NATIVE_PRIMARY = Object.freeze({
-  oracle: DEFAULT_PRIMARY,
+  doublechecker: DEFAULT_PRIMARY,
   adversary: DEFAULT_PRIMARY,
 })
 
@@ -84,8 +84,8 @@ const Config = z.object({
   defaults: SettingsSchema.default({
     // The shipped tier matrix: proof-critical roles on pro with a flash
     // fallback; every other role absent (inherit the session model).
-    oraclePrimary: DEFAULT_PRIMARY,
-    oracleFallback: DEFAULT_FALLBACK,
+    doublecheckerPrimary: DEFAULT_PRIMARY,
+    doublecheckerFallback: DEFAULT_FALLBACK,
     adversaryPrimary: DEFAULT_PRIMARY,
     adversaryFallback: DEFAULT_FALLBACK,
   }),
@@ -155,7 +155,7 @@ function apply(ctx, config) {
 
   // `settings.get()` is the resolved section, so it cannot distinguish a
   // user override from the composition base. That distinction matters now:
-  // the oracle/adversary rows carry their shipped primary through native
+  // the DoubleChecker/adversary rows carry their shipped primary through native
   // `agentOptions`; the router must not rewrite those native requests on every
   // step. Keep a detached raw user section and refresh it on every document
   // change, including a reset whose resolved value happens to stay equal to

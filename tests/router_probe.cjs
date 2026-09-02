@@ -1,7 +1,7 @@
 // Exercises dsh/index.js against a small host-context stub.
 //
 // The probe is intentionally centered on the 0.1.2 migration seam:
-// - the native oracle primary must pass through without an unconditional
+// - the native DoubleChecker primary must pass through without an unconditional
 //   agent/request rewrite;
 // - a raw user primary must still override that native route;
 // - a native-primary terminal failure must enter the custom fallback lane;
@@ -73,8 +73,8 @@ async function main() {
   const mod = loadHostModule(modulePath)
   const listeners = new Map()
   const section = {
-    oraclePrimary: clone(DEFAULT_PRIMARY),
-    oracleFallback: clone(DEFAULT_FALLBACK),
+    doublecheckerPrimary: clone(DEFAULT_PRIMARY),
+    doublecheckerFallback: clone(DEFAULT_FALLBACK),
     adversaryPrimary: clone(DEFAULT_PRIMARY),
     adversaryFallback: clone(DEFAULT_FALLBACK),
   }
@@ -123,16 +123,16 @@ async function main() {
     defaults: section,
   })
 
-  const oracle = makeAgent('oracle-1', 'oracle')
+  const doublechecker = makeAgent('doublechecker-1', 'doublechecker')
   const explorer = makeAgent('explorer-1', 'explorer')
   const nativeRoute = clone(DEFAULT_PRIMARY)
 
   // No user primary: the route already resolved by native agentOptions must
   // pass through unchanged.
   equal(
-    await waterfall('agent/request', { agent: oracle }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
     nativeRoute,
-    'native oracle default',
+    'native doublechecker default',
   )
   const inheritedRoute = {
     provider: 'parent-provider', model: 'parent-model', reasoningEffort: 'medium',
@@ -145,12 +145,12 @@ async function main() {
 
   // A raw user primary is an intentional override. Omitting effort clears the
   // inherited value, matching the native model-selection contract.
-  user = { oraclePrimary: { provider: 'custom-provider', model: 'custom-model' } }
+  user = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model' } }
   await emit('settings/document-updated', NS, 1)
   equal(
-    await waterfall('agent/request', { agent: oracle }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
     { provider: 'custom-provider', model: 'custom-model' },
-    'explicit oracle override',
+    'explicit doublechecker override',
   )
 
   // Resetting the raw user field returns to native agentOptions rather than to
@@ -158,33 +158,33 @@ async function main() {
   user = {}
   await emit('settings/document-updated', NS, 2)
   equal(
-    await waterfall('agent/request', { agent: oracle }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
     nativeRoute,
-    'reset oracle override',
+    'reset doublechecker override',
   )
 
   // The native primary still participates in the custom fallback policy. A
   // terminal failure requests exactly one retry, and the retry uses the
   // configured fallback route.
   const action = await waterfall('agent/request-error', {
-    agent: oracle,
+    agent: doublechecker,
     provider: DEFAULT_PRIMARY.provider,
     failure: { code: 'NO_ADAPTER', message: 'test failure' },
   }, undefined)
   equal(action, { kind: 'retry' }, 'native primary failure action')
   equal(
-    await waterfall('agent/request', { agent: oracle }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
     DEFAULT_FALLBACK,
     'fallback retry route',
   )
   assert(logs.length === 1 && logs[0].includes('degraded to deepseek-official/deepseek-v4-flash'), 'fallback log')
 
-  await emit('session/event', oracle.session, {
+  await emit('session/event', doublechecker.session, {
     type: 'assistant/message',
     data: { message: { source: clone(DEFAULT_FALLBACK) } },
   })
   equal(
-    await waterfall('agent/request', { agent: oracle }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
     nativeRoute,
     'primary restored after fallback success',
   )
@@ -193,13 +193,13 @@ async function main() {
   // usage-limit text without a normalized numeric status. It is terminal for
   // this primary and must take the same one-shot fallback lane as a normal 429.
   const quotaAction = await waterfall('agent/request-error', {
-    agent: oracle,
+    agent: doublechecker,
     provider: DEFAULT_PRIMARY.provider,
     failure: { code: '1308', message: 'Usage limit reached for 5 hour.' },
   }, undefined)
   equal(quotaAction, { kind: 'retry' }, 'usage-limit fallback action')
   equal(
-    await waterfall('agent/request', { agent: oracle }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
     DEFAULT_FALLBACK,
     'usage-limit fallback route',
   )

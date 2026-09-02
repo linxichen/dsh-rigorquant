@@ -1,8 +1,9 @@
 """Delegation-denial is tool-denied, not just prompt-asked.
 
-docs/architecture.md Decision 14 (C1, C2): the blind roles (ground-truth oracle,
-novel explorer) must deny web_search, web_fetch, skill, and every delegation
-tool in the composition itself, and every other role that denies delegation
+docs/architecture.md Decision 14 (C1, C2): the blind roles (the DoubleChecker,
+the OffGridThinker) must deny web_search, web_fetch, skill, and every
+delegation tool in the composition itself, and every other role that denies
+delegation
 (literature line/adversary, document adversary) must deny the same delegation
 set. This is the one piece of the lane's isolation that IS enforceable; the
 residual bash-curl and filesystem holes are documented as procedural, and named
@@ -33,8 +34,8 @@ def test_fetch_is_enabled():
 def test_blind_roles_deny_web_skill_and_delegation():
     text = CORDIS.read_text()
     blind_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
-                  if tool_name_of(b) in ("subagent_ground_truth", "subagent_novel")}
-    assert set(blind_rows) == {"tool-subagent-ground-truth", "tool-subagent-novel"}, \
+                  if tool_name_of(b) in ("subagent_double_checker", "subagent_offgrid")}
+    assert set(blind_rows) == {"tool-subagent-double-checker", "tool-subagent-offgrid"}, \
         "both blind rows must exist"
     for row_id, denied in blind_rows.items():
         missing = sorted(BLIND_TOOLS - denied)
@@ -55,7 +56,7 @@ def test_blind_personas_carry_the_protocol_they_cannot_load():
     """
     text = CORDIS.read_text()
     for row_id, body in composition_rows(text):
-        if tool_name_of(body) not in ("subagent_ground_truth", "subagent_novel"):
+        if tool_name_of(body) not in ("subagent_double_checker", "subagent_offgrid"):
             continue
         persona = _persona(body).lower()
         assert len(persona) > 800, (
@@ -131,15 +132,15 @@ def test_adversary_is_delegation_denied_web_blind_and_skill_capable():
 def test_explorer_is_delegation_denied_and_child_scoped():
     """The open-track explorer keeps web and `skill`, and nothing orchestrator-owned.
 
-    The method track is open (web stays for known-result checks; the novelty
-    toggle lives on the separate subagent_novel row), and `skill` stays because
+    The method track is open (web stays for known-result checks; off-grid
+    isolation lives on the separate subagent_offgrid row), and `skill` stays because
     the rigorquant skill carries the working procedure. Everything else the
     root owns is denied: delegation, orchestration loops, child-control, task
     state, ask_user_question, plan mode.
     """
     text = CORDIS.read_text()
-    explorer_rows = {rn: deny_of(b) for rn, b in composition_rows(text) if tool_name_of(b) == "subagent"}
-    assert set(explorer_rows) == {"tool-subagent"}, "the explorer row must exist"
+    explorer_rows = {rn: deny_of(b) for rn, b in composition_rows(text) if tool_name_of(b) == "subagent_explorer"}
+    assert set(explorer_rows) == {"tool-subagent-explorer"}, "the explorer row must exist"
     for row_id, denied in explorer_rows.items():
         missing = sorted(DELEGATION - denied)
         assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
@@ -166,7 +167,7 @@ def test_blind_personas_carry_the_pinned_compute_lane():
     text = CORDIS.read_text()
     checked = 0
     for row_id, body in composition_rows(text):
-        if tool_name_of(body) not in ("subagent_ground_truth", "subagent_novel"):
+        if tool_name_of(body) not in ("subagent_double_checker", "subagent_offgrid"):
             continue
         persona = _persona(body)
         checked += 1

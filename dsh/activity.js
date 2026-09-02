@@ -3,7 +3,7 @@
 // One live panel for a RigorQuant research lab: which role agents are running,
 // what they last did, and a short event feed — served to the browser floater
 // (dsh/client.js, `shell.overlay`) as a JSON snapshot over the profile's own
-// HTTP route, plus the six role portraits out of docs/figs/.
+// HTTP route, plus the role portraits out of docs/figs/.
 //
 // The panel is PURE MONITORING: every side effect in this module is read-only
 // observation of events the core already publishes (session events, agent
@@ -32,21 +32,21 @@ const PRESET_ID = 'rigorquant'
 
 /** Persona tag the preset stamps into every role persona (same as the router). */
 const TAG = /\[\[rq:role=([a-z-]+)\]\]/
-const ROLES = ['root', 'explorer', 'novel', 'oracle', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
+const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 
 /** role → display name, tool name, and docs/figs portrait file. */
 export const ROLE_DEF = {
-  root:      { label: 'Orchestrator', tool: 'root persona',            avatar: 'avatar-orchestrator.png' },
-  explorer:  { label: 'Explorer',     tool: 'subagent',                avatar: 'avatar-explorer.png' },
-  novel:     { label: 'Explorer',     tool: 'subagent_novel',          avatar: 'avatar-explorer.png' },
-  oracle:    { label: 'Oracle',       tool: 'subagent_ground_truth',   avatar: 'avatar-oracle.png' },
-  adversary: { label: 'Adversary',    tool: 'subagent_adversary',      avatar: 'avatar-adversary.png' },
-  'lit-line':     { label: 'Literature', tool: 'subagent_lit_line',    avatar: 'avatar-literature.png' },
-  // Roster/caption label: full and unambiguous (the DAG node uses a shorter
-  // variant in ROLE_DEF_CLIENT because of node width).
+  root:      { label: 'Orchestrator',   tool: 'root persona',                avatar: 'avatar-orchestrator.png' },
+  explorer:  { label: 'Explorer',       tool: 'subagent_explorer',           avatar: 'avatar-explorer.png' },
+  offgrid:   { label: 'OffGridThinker', tool: 'subagent_offgrid',            avatar: 'avatar-offgrid.png' },
+  doublechecker: { label: 'DoubleChecker', tool: 'subagent_double_checker',   avatar: 'avatar-doublechecker.png' },
+  adversary: { label: 'Adversary',      tool: 'subagent_adversary',          avatar: 'avatar-adversary.png' },
+  'lit-line':     { label: 'Literature', tool: 'subagent_lit_line',           avatar: 'avatar-literature.png' },
+  // Roster/caption label: full and unambiguous (the hub-and-spoke node uses a
+  // shorter variant in ROLE_DEF_CLIENT because of node width).
   'lit-adversary': { label: 'Literature adversary', tool: 'subagent_lit_adversary', avatar: 'avatar-literature-adversary.png' },
   'doc-adversary': { label: 'Document',  tool: 'subagent_document_adversary', avatar: 'avatar-document-adversary.png' },
-  validator: { label: 'Validator',    tool: 'rq_check.py',             avatar: 'avatar-validator.png' },
+  validator: { label: 'Validator',    tool: 'rq_check.py',                 avatar: 'avatar-validator.png' },
 }
 
 const FEED_AVATAR_FILES = new Set(Object.values(ROLE_DEF).map((def) => def.avatar))
@@ -71,7 +71,10 @@ function labelRole(label) {
   if (l.includes('lit line') || l.includes('literature line')) return 'lit-line'
   if (l.includes('lit adversary') || l.includes('lit-adversary')
     || l.includes('literature adversary') || l.includes('literature verif')) return 'lit-adversary'
-  if (/^gt[- ]/.test(l) || l.includes('ground truth') || l.includes('ground-truth')) return 'oracle'
+  // 'gt-'/'ground truth' labels predate the DoubleChecker rename and still map.
+  if (/^gt[- ]/.test(l) || l.includes('ground truth') || l.includes('ground-truth')) return 'doublechecker'
+  if (l.includes('double check') || l.includes('double-check') || l.includes('doublecheck')) return 'doublechecker'
+  if (l.includes('off grid') || l.includes('off-grid') || l.includes('offgrid')) return 'offgrid'
   if (l.includes('adversary')) return 'adversary'
   if (l.includes('explorer')) return 'explorer'
   return null
@@ -105,7 +108,7 @@ function textOf(blocks, limit = 90) {
 function stageOf(tools) {
   let stage = 'promise'
   for (const tool of tools) {
-    if (/subagent_ground_truth/.test(tool)) stage = 'ground truth'
+    if (/subagent_double_checker/.test(tool)) stage = 'ground truth'
     else if (/subagent_adversary/.test(tool)) stage = 'attack'
     else if (/subagent_document_adversary/.test(tool)) stage = 'certify'
     else if (/subagent/.test(tool)) stage = 'fan out'

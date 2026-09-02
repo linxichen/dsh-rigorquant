@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
   <title id="title">dsh-rigorquant</title>
-  <desc id="desc">One DeepSeek Harness session becomes a context-isolated research team: a captain orchestrator, blank-context explorers, blind ground-truth oracles, a counterexample-only adversary, a literature lane, and an evidence validator — the five-move loop.</desc>
+  <desc id="desc">One DeepSeek Harness session becomes a context-isolated research team: a captain orchestrator, blank-context explorers, off-grid thinkers, blind double-checkers, a counterexample-only adversary, a literature lane, and an evidence validator — the five-move loop.</desc>
 
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
@@ -39,7 +39,7 @@
       <g>
         <rect x="912" y="61" width="222" height="50" rx="12" fill="#101F33" stroke="#2B4567"/>
         <circle cx="936" cy="86" r="8" fill="#4F8CFF"/>
-        <text x="955" y="82" fill="#F4F8FF" font-size="15" font-weight="700">ORACLE</text>
+        <text x="955" y="82" fill="#F4F8FF" font-size="15" font-weight="700">DOUBLECHECKER</text>
         <text x="955" y="101" fill="#7F98BB" font-size="12">re-derive claims, blind</text>
       </g>
       <g>

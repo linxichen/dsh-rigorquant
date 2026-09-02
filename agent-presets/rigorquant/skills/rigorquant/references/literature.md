@@ -2,16 +2,16 @@
 
 The literature lane answers "what is settled / impossible / open / current"
 before compute is spent, and exports ONLY verified negatives (proven
-impossibilities) to the novel lane. Locked constraints, membrane edges, and
+impossibilities) to the off-grid lane. Locked constraints, membrane edges, and
 named residual holes: docs/architecture.md Decision 14. Field procedure: load
 the literature skill (skills/literature/SKILL.md).
 
 Key facts (summary only):
 
-- Membrane: only 'impossible' entries, provenance-stripped, cross to the novel
-  lane; 'open' and 'settled' never cross. The receiving role is
-  `subagent_novel`, whose web/`skill`/delegation deny list is in the
-  composition — never an open role asked to pretend.
+- Membrane: only 'impossible' entries, provenance-stripped, cross to the
+  off-grid lane; 'open' and 'settled' never cross. The receiving role is
+  `subagent_offgrid` (the OffGridThinker), whose web/`skill`/delegation deny
+  list is in the composition — never an open role asked to pretend.
 - Roles: subagent_lit_line (walled traversal) and subagent_lit_adversary
   (independent validity + freshness) — both delegation-denied leaves.
 - Artifacts: literature/known-results.json (verified, committed),

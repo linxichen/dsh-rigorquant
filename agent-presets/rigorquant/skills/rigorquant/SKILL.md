@@ -198,14 +198,14 @@ owning decision: docs/architecture.md Decision 14.
 
 Each orchestrator round = fan-out → ground truth → adversary → synthesize.
 
-1. **Fan-out (explorers, method track, OPEN):** launch 1–2 `subagent` calls in
-   one message (the explorer role; blank context). Diversify the portfolio
+1. **Fan-out (explorers, method track, OPEN):** launch 1–2 `subagent_explorer`
+   calls in one message (the explorer role; blank context). Diversify the portfolio
    (formulations, invariants, reductions, algebraic viewpoints, structural
    inductions, decompositions, embeddings, extremal arguments, computational
    sanity checks). Do not tell most of them the favored approach. Require
    concrete outputs: lemmas, equations, constructions, candidate methods with
    exact statements — reject status reports and "routine".
-2. **Ground-truth track (semi-isolated):** launch `subagent_ground_truth`
+2. **Ground-truth track (semi-isolated):** launch `subagent_double_checker`
    calls that receive ONLY the problem statement and the simplified case, each
    assigned a different means (one symbolic derivation, one independent
    brute-force/special-case computation). Two independent calls are mandatory
@@ -350,14 +350,17 @@ costs/turnover, regime sensitivity) are mandatory, not optional.
 If the open method track produces no closed form / invariant / bound that
 survives its own re-derivation after a bounded number of attempts, flip the
 method track to **full Jin isolation**: no web, no prior context, no local
-files; work from axioms and computation. Do not assume an affirmative result
-exists — prove it or find a counterexample.
+files, no one else's results — raw model intelligence plus compute tools only.
+Do not assume an affirmative result exists — prove it or find a counterexample.
 
-The toggle is a **different tool, not a different instruction**: call
-`subagent_novel` instead of `subagent`. That row (like `subagent_ground_truth`)
-denies `web_search`, `web_fetch`, `skill` and every delegation tool, so the
-isolation is enforced by the composition rather than by asking an open role to
-pretend. Never re-use `subagent` with "please ignore the web".
+The toggle is a **different agent, not a different instruction**: call
+`subagent_offgrid` — the OffGridThinker — instead of `subagent_explorer`. That
+row (like `subagent_double_checker`) denies `web_search`, `web_fetch`, `skill`
+and every delegation tool, so the isolation is enforced by the composition
+rather than by asking an open role to pretend. The boundary is results, not
+tools: OffGridThinker keeps the pinned compute lane (sympy/numpy/mpmath, Lean
+checkers when provisioned) and loses the literature. Never re-use
+`subagent_explorer` with "please ignore the web".
 
 The only thing you may pass a blind role beyond the problem statement and its
 simplified cases is the **verified-negatives list** from the literature lane,

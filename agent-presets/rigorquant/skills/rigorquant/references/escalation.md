@@ -58,7 +58,7 @@ scripts/provision-lean.sh). See mcp/jacobian.md for details.
 
 ## Lane 2 — isolated proof subagent (full Jin protocol)
 
-When jacobian lacks the operation: launch ONE `subagent_ground_truth` with the
+When jacobian lacks the operation: launch ONE `subagent_double_checker` with the
 Jin prompt (protocol.md), isolated (no web/context). Do **not** assume an
 affirmative result exists — ask it to return either a complete derivation of
 the claim or a concrete counterexample / its exact gap. The claim is settled

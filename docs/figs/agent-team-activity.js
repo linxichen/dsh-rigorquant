@@ -105,9 +105,10 @@ const membersHeadY = HEADER_H + TEAM_H + PROG_H + 6 // head text baseline
 const membersTop = membersHeadY + 26 // first row avatar top
 
 const MEMBERS = [
-  { png: 'avatar-explorer.png', name: 'Explorer', tool: 'subagent', status: 'working · t2 — candidate methods, parallel batches', tag: 't2', busy: true },
+  { png: 'avatar-explorer.png', name: 'Explorer', tool: 'subagent_explorer', status: 'working · t2 — candidate methods, parallel batches', tag: 't2', busy: true },
+  { png: 'avatar-offgrid.png', name: 'OffGridThinker', tool: 'subagent_offgrid', status: 'working · t2 — off-grid derivation, compute only', tag: 't2', busy: true },
   { png: 'avatar-literature.png', name: 'Literature', tool: 'subagent_lit_line', status: 'working · t2 — citation-graph sweep, both ways', tag: 't2', busy: true },
-  { png: 'avatar-oracle.png', name: 'Oracle', tool: 'subagent_ground_truth', status: 'on standby · t3 — blind re-derivation, two ways', tag: 't3', busy: false },
+  { png: 'avatar-doublechecker.png', name: 'DoubleChecker', tool: 'subagent_double_checker', status: 'on standby · t3 — blind re-derivation, two ways', tag: 't3', busy: false },
   { png: 'avatar-adversary.png', name: 'Adversary', tool: 'subagent_adversary', status: 'on standby · t4 — battery + counterexamples', tag: 't4', busy: false },
   { png: 'avatar-document-adversary.png', name: 'Document', tool: 'subagent_document_adversary', status: 'on standby · t5 — self-completeness audit', tag: 't5', busy: false },
   { png: 'avatar-validator.png', name: 'Validator', tool: 'rq_check.py', status: 'on standby · t5 — evidence gate / PASS', tag: 't5', busy: false },
@@ -155,12 +156,12 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.
 
   <!-- team card -->
   <text x="16" y="${HEADER_H + 26}" font-family="${C.sans}" font-size="16" font-weight="700" fill="${C.text}">rigorquant research lab</text>
-  <text x="414" y="${HEADER_H + 25}" text-anchor="end" font-family="${C.sans}" font-size="11.5" fill="${C.text3}">7 members · 0/5 phases · 0 messages</text>
+  <text x="414" y="${HEADER_H + 25}" text-anchor="end" font-family="${C.sans}" font-size="11.5" fill="${C.text3}">8 members · 0/5 phases · 0 messages</text>
   <g>
     ${avatar('cap', 16, HEADER_H + 40, 76, 56, 10, PNG('avatar-orchestrator.png'))}
     <circle cx="106" cy="${HEADER_H + 48}" r="3" fill="${C.blue}"/>
     <text x="115" y="${HEADER_H + 52}" font-family="${C.sans}" font-size="13" font-weight="600" fill="${C.text}">CAPTAIN · Orchestrator</text>
-    <text x="106" y="${HEADER_H + 71}" font-family="${C.sans}" font-size="11" fill="${C.text3}">root persona — dispatched 5 rounds to 7 members</text>
+    <text x="106" y="${HEADER_H + 71}" font-family="${C.sans}" font-size="11" fill="${C.text3}">root persona — dispatched 5 rounds to 8 members</text>
     <rect x="336" y="${HEADER_H + 38}" width="78" height="21" rx="10.5" fill="${C.pill}" stroke="${C.pillBorder}"/>
     <text x="375" y="${HEADER_H + 52}" text-anchor="middle" font-family="${C.sans}" font-size="11" font-weight="600" fill="${C.pillText}">2 in progress</text>
   </g>
@@ -181,7 +182,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.
   <text x="290" y="${HEADER_H + TEAM_H + 55}" font-family="${C.sans}" font-size="11" fill="${C.text3}">delivered · 0</text>
 
   <!-- members -->
-  <text x="16" y="${membersHeadY}" font-family="${C.sans}" font-size="13" font-weight="650" fill="${C.text}">Members · 6</text>
+  <text x="16" y="${membersHeadY}" font-family="${C.sans}" font-size="13" font-weight="650" fill="${C.text}">Members · 7</text>
   <text x="414" y="${membersHeadY}" text-anchor="end" font-family="${C.sans}" font-size="11" fill="${C.text3}">collapse</text>
   <path d="M390 ${membersHeadY - 7}l3.5 3.5 3.5 -3.5" fill="none" stroke="${C.text3}" stroke-width="1.4"/>
 ${membersSvg}

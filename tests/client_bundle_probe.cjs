@@ -204,8 +204,8 @@ if (verdict.applyIsFunction) {
       bind: () => ({
         getSnapshot: () => ({
           status: 'ready', writable: true, mode: 'host', revision: 1,
-          value: { oraclePrimary: { provider: 'deepseek', model: 'v4-pro' } },
-          base: { oraclePrimary: { provider: 'deepseek', model: 'v4-pro' } },
+          value: { doublecheckerPrimary: { provider: 'deepseek', model: 'v4-pro' } },
+          base: { doublecheckerPrimary: { provider: 'deepseek', model: 'v4-pro' } },
           user: userLayer,
         }),
         subscribe: () => () => {},
@@ -337,7 +337,7 @@ async function exerciseDraft() {
   verdict.draft.afterDiscard = read().fields[FIELD].overridden
 
   // A role the plugin ships a base default for reads as inherited, not empty.
-  verdict.draft.inheritedOracle = read().fields.oraclePrimary.inherited
+  verdict.draft.inheritedDoubleChecker = read().fields.doublecheckerPrimary.inherited
 
   face.stage(FIELD, CHOICE)
   await face.save()

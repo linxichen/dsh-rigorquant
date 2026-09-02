@@ -40,7 +40,7 @@
 
     # Live team-activity monitor + browser floater (README "The team, live").
     # Pure observation: it tracks role agents from events the core already
-    # publishes, then serves a JSON snapshot plus the six role portraits to
+    # publishes, then serves a JSON snapshot plus the role portraits to
     # the browser `shell.overlay` panel over /plugins/dsh-rigorquant/... — the
     # same surface dsh-agent-teams uses for its activity panel. Webless
     # profiles never mount webServer, so the routes register lazily via

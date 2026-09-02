@@ -162,12 +162,12 @@ def test_every_role_persona_carries_its_router_tag():
     """The model router identifies roles by [[rq:role=X]] in the persona.
 
     A persona that loses its tag silently falls back to the session model —
-    the oracle running on flash is exactly the failure this pins out.
+    the DoubleChecker running on flash is exactly the failure this pins out.
     """
     roles = {
-        "tool-subagent": "explorer",
-        "tool-subagent-novel": "novel",
-        "tool-subagent-ground-truth": "oracle",
+        "tool-subagent-explorer": "explorer",
+        "tool-subagent-offgrid": "offgrid",
+        "tool-subagent-double-checker": "doublechecker",
         "tool-subagent-adversary": "adversary",
         "tool-subagent-lit-line": "lit-line",
         "tool-subagent-lit-adversary": "lit-adversary",
@@ -191,12 +191,12 @@ def test_fixed_tier_roles_delegate_their_primary_to_native_agent_options():
     """The native 0.1.2 child route owns shipped primary defaults.
 
     The host router still owns live overrides and fallback retries, but a normal
-    oracle/adversary request must be able to use the tool row's agentOptions
-    without an unconditional agent/request rewrite.
+    DoubleChecker/adversary request must be able to use the tool row's
+    agentOptions without an unconditional agent/request rewrite.
     """
     preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
     blocks = dict(_preset_blocks(preset))
-    for row_id in ("tool-subagent-ground-truth", "tool-subagent-adversary"):
+    for row_id in ("tool-subagent-double-checker", "tool-subagent-adversary"):
         block = blocks.get(row_id)
         assert block is not None, "preset lost the fixed-tier row %s" % row_id
         assert re.search(
@@ -256,20 +256,32 @@ def test_effort_select_uses_the_models_real_supported_levels():
         "switching models must discard an effort the new route rejects")
 
 
-def test_activity_dag_labels_literature_adversary_distinctly():
-    """The pillbox DAG must not call the literature adversary 'Literature'.
+def test_activity_hub_map_is_hub_and_spoke():
+    """The pillbox role map must be a hub-and-spoke, not a stage DAG.
 
-    The literature advisor is a node distinct from the literature lane, and the
-    optional loop-back edge from it to the main adversary is dashed.
+    The root orchestrator is the only hub: every child role is a spoke
+    connected to it, and there are no role-to-role edges (reports flow through
+    the root). The literature advisor is a spoke distinct from the literature
+    lane.
     """
     host = (REPO / "dsh" / "activity.js").read_text()
     client = (REPO / "dsh" / "client.js").read_text()
-    # Roster (host) keeps the full name; the narrow DAG node uses a compact one.
+    # Roster (host) keeps the full name; the narrow hub-map node uses a compact
+    # one.
     assert "'lit-adversary': { label: 'Literature adversary'" in host
     assert "'lit-adversary': { label: 'Lit adversary'" in client
-    # The optional verification loop-back exists and is dashed.
-    assert "['lit-adversary', 'adversary', 'dashed']" in client
-    assert "strokeDasharray: '4 3'" in client
+    # Hub-and-spoke topology: one hub, seven spokes, one line per spoke, and
+    # no handoff edges between spokes.
+    assert "const RQ_HUB = 'root'" in client
+    spokes = re.search(r"const RQ_SPOKES = \[(.*?)\]", client, re.DOTALL)
+    assert spokes, "the hub map lost its spoke list"
+    spoke_roles = re.findall(r"'([a-z-]+)'", spokes.group(1))
+    assert len(spoke_roles) == 7 and "root" not in spoke_roles, spoke_roles
+    assert spoke_roles == sorted(set(spoke_roles), key=spoke_roles.index), \
+        "a spoke is listed twice"
+    assert "RQ_SPOKES.map((role)" in client, "spokes must render from the list"
+    assert "RQ_LEVELS" not in client and "RQ_PIPELINE_EDGES" not in client, (
+        "the stage DAG survived the hub-and-spoke rewrite")
 
 
 def test_router_native_defaults_overrides_and_fallback_round_trip():
@@ -523,7 +535,7 @@ def _spawned_role_tool_names():
 def test_the_shipped_procedure_names_every_delegation_role():
     """A walled role nothing routes work to is enforcement no one can reach.
 
-    `subagent_novel` existed in the composition while every shipped procedure
+    `subagent_offgrid` existed in the composition while every shipped procedure
     still told the orchestrator to re-use the open explorer under the novelty
     toggle -- the role was unreachable by instruction.
     """

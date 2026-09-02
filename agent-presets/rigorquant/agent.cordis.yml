@@ -44,8 +44,9 @@
       subagents is enforced by the harness (a spawned child never sees the
       parent conversation). Web access, filesystem scope, recursion, and
       producer≠checker are NOT harness-enforced — they are procedural, backed by
-      the per-role delegation tools (subagent, subagent_ground_truth,
-      subagent_adversary) and the adversary. Do not call these a "wall".
+      the per-role delegation tools (subagent_explorer, subagent_offgrid,
+      subagent_double_checker, subagent_adversary) and the adversary. Do not
+      call these a "wall".
 
       UNATTENDED, stated precisely: the framework runs unattended WITHIN one
       live session. Crossing a session boundary disarms the goal, and one human
@@ -185,18 +186,18 @@
     # `maxDepth: 1` allows exactly one level: the
     # root orchestrates children, and each child inherits these same rows and
     # cannot delegate further (its own child would be depth 2 > 1).
-    # Blind roles (ground-truth, novel explorer) deny web_search, web_fetch,
+    # Blind roles (DoubleChecker, OffGridThinker) deny web_search, web_fetch,
     # `skill`, and every delegation tool, so their isolation is tool-enforced
     # for web + delegation. Filesystem scope and `bash`-curl are NOT enforceable
     # with the spawn provider: a spawned child always shares the workspace and
     # its shell can still curl — those boundaries are procedural + audited, never
     # called a wall (see the persona's ISOLATION paragraph and the named residual
     # holes under Decision 14 in docs/architecture.md).
-    - id: tool-subagent
+    - id: tool-subagent-explorer
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
         provider: spawn
-        toolName: subagent
+        toolName: subagent_explorer
         backgroundMode: continuable
         maxDepth: 1
         persona: >-
@@ -227,24 +228,29 @@
         # deployment-optional noise (ssh_*/import_*/image tools) is trimmed by
         # the barebone assembly filter, never here.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
-    - id: tool-subagent-novel
+    - id: tool-subagent-offgrid
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
         provider: spawn
-        toolName: subagent_novel
+        toolName: subagent_offgrid
         backgroundMode: continuable
         maxDepth: 1
         persona: >-
-          You are a RigorQuant explorer in full Jin isolation (the novelty
-          toggle). Work only from the problem statement, its simplified cases,
-          and the verified-negatives list the orchestrator passed you — never
-          from prior context, the web, or another agent's drafts. Propose one
+          You are a RigorQuant OffGridThinker. You work OFF THE GRID: raw
+          model intelligence plus compute tools, and nothing else. The one
+          boundary that defines you is that you do not use other people's
+          results — no web, no literature, no other agent's drafts. Work only
+          from the problem statement, its simplified cases, and the
+          verified-negatives list the orchestrator passed you. Propose one
           candidate method or route for the sub-problem.
 
-          You have no web access, no delegation, and you cannot load skills:
-          this persona is your whole protocol, so follow it literally.
+          Compute is your leverage, not a substitute for thought: sympy,
+          numpy, mpmath and the rest of the compute lane below are expected in
+          every derivation. You have no web access, no delegation, and you
+          cannot load skills — the lane is your whole toolkit and this persona
+          is your whole protocol, so follow it literally.
 
           (1) Do NOT assume an affirmative result exists — construct it, or
           produce a concrete counterexample, or report an explicit `unknown`.
@@ -272,27 +278,33 @@
           50+ digits) before trusting a float. Never `pip install` or
           `uv sync` anything, and fetch nothing: if the lane lacks a package
           you need, report that gap as part of your result instead of reaching
-          for the network.
+          for the network. If a checker lane (jacobian/Lean) is mounted, you
+          may use it to CHECK a derivation you already made yourself — never
+          to fetch a known result (its find/search operations are off-limits
+          to you); say which checks you ran.
           You cannot delegate further.
           Deliver your findings with the `report` tool before you finish — one
           self-contained call with the concrete result; the agent that started
           you receives only what you report.
-          Harness model-routing tag, internal, ignore it: [[rq:role=novel]]
-        # Novel tool budget: identical isolation to the oracle (C1/C2 — web,
-        # `skill`, and delegation denied; derivation compute rides on bash and
-        # the pinned uv lane, numpy/scipy/sympy/... need no catalog entry).
-        # Adds the child-scope standard: child-control tools, orchestrator-owned
-        # task state (goal trio + todo_write, Decision 10), ask_user_question
-        # (unattended contract), plan mode. Kept: bash + fs six (own scratch
-        # directory, seed recording), report (delivery), job trio.
+          Harness model-routing tag, internal, ignore it: [[rq:role=offgrid]]
+        # OffGridThinker tool budget. Its own delegation row — the role is not
+        # an explorer variant: isolation is the identity, so the tool carries
+        # the role name like every other delegation tool. Identical isolation
+        # to the DoubleChecker (C1/C2 — web, `skill`, and delegation denied;
+        # derivation compute rides on bash and the pinned uv lane,
+        # numpy/scipy/sympy/... need no catalog entry). Adds the child-scope
+        # standard: child-control tools, orchestrator-owned task state (goal
+        # trio + todo_write, Decision 10), ask_user_question (unattended
+        # contract), plan mode. Kept: bash + fs six (own scratch directory,
+        # seed recording), report (delivery), job trio.
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, skill, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
-    - id: tool-subagent-ground-truth
+    - id: tool-subagent-double-checker
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
         provider: spawn
-        toolName: subagent_ground_truth
+        toolName: subagent_double_checker
         backgroundMode: continuable
         maxDepth: 1
         # DSH 0.1.2 native child defaults: the router leaves this primary
@@ -302,7 +314,7 @@
           model: deepseek-v4-pro
           reasoningEffort: high
         persona: >-
-          You are a RigorQuant oracle working in epistemic isolation. Given a
+          You are a RigorQuant DoubleChecker working in epistemic isolation. Given a
           target (a closed form, invariant, or bound to re-derive, or an
           unproven claim to settle), derive it from first principles and
           standard results you already know — re-derive rather than
@@ -344,16 +356,17 @@
           Deliver your derivation with the `report` tool before you finish — one
           self-contained call with the exact result; the agent that started you
           receives only what you report.
-          Harness model-routing tag, internal, ignore it: [[rq:role=oracle]]
-        # Oracle tool budget: C1/C2 already deny web, `skill`, and delegation
-        # outright (the blind lane). This adds the child-scope standard set:
-        # child-control tools (a depth-1 oracle has no children), the
-        # orchestrator-owned task state (goal trio + todo_write, Decision 10),
-        # ask_user_question (unattended contract), and plan mode. Kept:
-        # bash + fs six (scratch derivation, seed recording, brute-force
-        # numeric tracks), report (delivery), job trio (long background runs).
+          Harness model-routing tag, internal, ignore it: [[rq:role=doublechecker]]
+        # DoubleChecker tool budget: C1/C2 already deny web, `skill`, and
+        # delegation outright (the blind lane). This adds the child-scope
+        # standard set: child-control tools (a depth-1 DoubleChecker has no
+        # children), the orchestrator-owned task state (goal trio + todo_write,
+        # Decision 10), ask_user_question (unattended contract), and plan
+        # mode. Kept: bash + fs six (scratch derivation, seed recording,
+        # brute-force numeric tracks), report (delivery), job trio (long
+        # background runs).
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, skill, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -392,7 +405,7 @@
         # orchestration loops, child-control, orchestrator-owned task state,
         # ask_user_question, plan mode.
         toolFilter:
-          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-line
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -422,7 +435,7 @@
         # loops, child-control, orchestrator-owned task state, ask_user_question
         # (unattended contract), plan mode.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -450,7 +463,7 @@
         # verdicts) — web stays (independent re-retrieval is the job), skill
         # and bash stay, job trio stays. Same child-scope denials.
         toolFilter:
-          deny: [subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-doc-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -497,7 +510,7 @@
         # rides with bash (denying jobs while bash keeps run_in_background
         # makes background runs uncollectable).
         toolFilter:
-          deny: [web_search, web_fetch, subagent, subagent_ground_truth, subagent_adversary, subagent_novel, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     # Fork is DISABLED (feature/subagent-context): a fork child inherits the
     # parent's completed-turn conversation by design — exactly the context

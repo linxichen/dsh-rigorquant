@@ -45,8 +45,8 @@ CORDIS = REPO / "agent-presets/rigorquant/agent.cordis.yml"
 # mounted nor deniable; tools.restrict throws on unmounted names.)
 BLIND_TOOLS = {
     "web_search", "web_fetch", "skill",
-    "subagent", "subagent_ground_truth", "subagent_adversary",
-    "subagent_novel", "subagent_lit_line", "subagent_lit_adversary",
+    "subagent_explorer", "subagent_double_checker", "subagent_adversary",
+    "subagent_offgrid", "subagent_lit_line", "subagent_lit_adversary",
     "subagent_document_adversary",
 }
 DELEGATION = BLIND_TOOLS - {"web_search", "web_fetch", "skill"}

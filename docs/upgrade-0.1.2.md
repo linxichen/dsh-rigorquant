@@ -33,7 +33,7 @@ cannot mount:
 | One-time token in launch URL for network web access | None — access is local `127.0.0.1`; no network-URL workflow in README/docs. |
 | "Code Mode" renamed to "PTC mode" | None — this repo uses `dsh-plan-mode`, unrelated. |
 | Legacy `connection.api.llm.models` facade unavailable in the 0.1.2 client | **Fixed:** the RigorQuant card now declares `remote` and calls the public `remote.session.modelCatalog()` Remote; `remote.settings.describe()` replaces the paired legacy schema request. |
-| `agentOptions.reasoningEffort` added to `dsh-tool-subagent` | **Required floor:** the upgraded preset now uses this field for oracle/adversary native defaults; the installer rejects DSH < 0.1.2-alpha.1. |
+| `agentOptions.reasoningEffort` added to `dsh-tool-subagent` | **Required floor:** the upgraded preset now uses this field for DoubleChecker/adversary native defaults; the installer rejects DSH < 0.1.2-alpha.1. |
 | Public WebFetch enabled by default (SSRF-guarded, no per-request approval) | **Behavior change, not a break** — this repo already uses the builtin `dsh-tool-web`; the change only relaxes gating. |
 
 ### Verified-compatible surface (checked against `dsh-v0.1.2-alpha.1` source)
@@ -65,7 +65,7 @@ Everything below still exists in 0.1.2 with the same contract the code relies on
 - Client floater geometry: `shell.overlay` list slot and `[data-shell-overlay]` (`packages/client/ui-layout/src/client/AppFrame.tsx:210-211`) and `[data-phase='active']` must still exist — **verified present** in 0.1.2.
 
 > Implementation: the preset now uses native `agentOptions` for its fixed-tier
-> oracle/adversary primaries, while the router remains the live override and
+> DoubleChecker/adversary primaries, while the router remains the live override and
 > fallback overlay. `README.md`, `README.zh-CN.md`, and `install.sh` now pin and
 > enforce DSH >= 0.1.2-alpha.1; the direct `dsh plugin add` path documents the
 > same preflight because it does not invoke `install.sh`. The new host probe plus
@@ -103,7 +103,7 @@ What **is** genuinely new in 0.1.2 (`packages/subagent/tool-subagent/src/model-s
 - A `list-models` tool so the model can enumerate the allowed routes.
 
 **Implementation in this repository:**
-1. `tool-subagent-ground-truth` and `tool-subagent-adversary` now declare
+1. `tool-subagent-double-checker` and `tool-subagent-adversary` now declare
    `agentOptions.provider/model/reasoningEffort` in
    `agent-presets/rigorquant/agent.cordis.yml`. The router reads the raw settings
    user layer and leaves those native primary requests unchanged when there is

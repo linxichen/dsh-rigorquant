@@ -248,7 +248,7 @@ def test_staging_records_an_override_and_discard_drops_it(verdict):
 
 def test_a_cleared_field_reports_what_it_falls_back_to(verdict):
     """Roles the plugin ships a base default for must not read as empty."""
-    assert verdict["draft"]["inheritedOracle"] == {"provider": "deepseek", "model": "v4-pro"}
+    assert verdict["draft"]["inheritedDoubleChecker"] == {"provider": "deepseek", "model": "v4-pro"}
 
 
 def test_save_turns_the_draft_into_scope_path_ops(verdict):

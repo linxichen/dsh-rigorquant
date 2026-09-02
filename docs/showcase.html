@@ -68,7 +68,7 @@ h2{font-size:clamp(24px,3.6vw,32px);margin:0 0 10px;line-height:1.22}
 .role .head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .tile{width:76px;height:76px;border-radius:14px;overflow:hidden;flex:0 0 auto;padding:0}
 .tile img,.inter .chip img,.q .qh .chip img{width:100%;height:100%;object-fit:cover;display:block}
-.tile-orch{background:#e7efe6}.tile-exp{background:#e0ece7}.tile-orc{background:#e7e9f1}
+.tile-orch{background:#e7efe6}.tile-exp{background:#e0ece7}.tile-off{background:#ece7e0}.tile-orc{background:#e7e9f1}
 .tile-adv{background:#e5e7ea}.tile-lit{background:#efeade}.tile-val{background:#e6eaee}
 .role h3{font-size:16px;margin:0;font-weight:600}
 .role .t{font-family:var(--mono);font-size:12px;color:var(--accent);margin:2px 0 0}
@@ -187,12 +187,17 @@ footer .mono{font-size:12px}
         <span class="zh">扇出工作、综合结果、写状态。受四条铁律约束：生产者≠检查者；只凭反例淘汰；随机运行必记种子；承重命题不许空谈。</span></p></div>
 
       <div class="role"><div class="head"><span class="tile tile-exp"><img src="figs/avatar-explorer.png" alt="Explorer"></span>
-        <div><h3><span class="en">Explorer</span><span class="zh">探索者</span></h3><div class="t mono">subagent</div></div></div>
+        <div><h3><span class="en">Explorer</span><span class="zh">探索者</span></h3><div class="t mono">subagent_explorer</div></div></div>
         <p><span class="en">Blank-context, divergent. Proposes lemmas, equations, candidate methods with exact statements. Status reports are rejected.</span>
         <span class="zh">白纸上下文、刻意发散。给出引理、方程、带精确陈述的候选方法；拒绝状态汇报式的输出。</span></p></div>
 
-      <div class="role"><div class="head"><span class="tile tile-orc"><img src="figs/avatar-oracle.png" alt="Oracle"></span>
-        <div><h3><span class="en">Oracle</span><span class="zh">神谕</span></h3><div class="t mono">subagent_ground_truth</div></div></div>
+      <div class="role"><div class="head"><span class="tile tile-off"><img src="figs/avatar-offgrid.png" alt="OffGridThinker"></span>
+        <div><h3><span class="en">OffGridThinker</span><span class="zh">离网思考者</span></h3><div class="t mono">subagent_offgrid</div></div></div>
+        <p><span class="en">Off the grid of other people's results: raw model intelligence plus the compute lane (sympy, numpy, Lean checkers) — no web, no literature, no drafts. Its own agent, not an Explorer variant.</span>
+        <span class="zh">脱离他人结果之网：只凭模型推理与计算通道（sympy、numpy、Lean 校验器）——无联网、无文献、无草稿。独立智能体，不是探索者的变体。</span></p></div>
+
+      <div class="role"><div class="head"><span class="tile tile-orc"><img src="figs/avatar-doublechecker.png" alt="DoubleChecker"></span>
+        <div><h3><span class="en">DoubleChecker</span><span class="zh">双重复核</span></h3><div class="t mono">subagent_double_checker</div></div></div>
         <p><span class="en">Blind — no web, no skills, no delegation, no drafts. Re-derives the hard claims from first principles, twice by different means.</span>
         <span class="zh">盲态 —— 无联网、无技能、无委派、无草稿。从第一性原理把关键命题重推两遍，方法各异。</span></p></div>
 
@@ -232,10 +237,10 @@ footer .mono{font-size:12px}
 
       <div class="step"><div class="top"><span class="no">03</span><div>
         <p class="tt"><span class="en">Ground-truth it</span><span class="zh">求真</span></p>
-        <p class="dd"><span class="en">Blind oracles re-derive the load-bearing claims without seeing anyone's draft. Two independent derivations for anything the study rests on.</span>
-        <span class="zh">盲态神谕不看草稿地重推承重命题；凡研究赖以立足之处，必须有两份独立推导。</span></p>
+        <p class="dd"><span class="en">The blind DoubleChecker re-derives the load-bearing claims without seeing anyone's draft. Two independent derivations for anything the study rests on.</span>
+        <span class="zh">盲态的双重复核不看草稿地重推承重命题；凡研究赖以立足之处，必须有两份独立推导。</span></p>
       </div></div>
-        <div class="inter"><span class="chip tile-orc"><img src="figs/avatar-oracle.png" alt="Oracle"></span>
+        <div class="inter"><span class="chip tile-orc"><img src="figs/avatar-doublechecker.png" alt="DoubleChecker"></span>
           <span class="iso mono"><span class="en">isolated · blind</span><span class="zh">隔离 · 盲态</span></span></div></div>
 
       <div class="step"><div class="top"><span class="no">04</span><div>
@@ -244,7 +249,7 @@ footer .mono{font-size:12px}
         <span class="zh">对抗者先跑四关检验，再找反例。分歧的轨道会先被排成一份裁定案卷。</span></p>
       </div></div>
         <div class="inter"><span class="chip tile-exp"><img src="figs/avatar-explorer.png" alt="Explorer"></span><span class="flow">+</span>
-          <span class="chip tile-orc"><img src="figs/avatar-oracle.png" alt="Oracle"></span><span class="flow">→</span>
+          <span class="chip tile-orc"><img src="figs/avatar-doublechecker.png" alt="DoubleChecker"></span><span class="flow">→</span>
           <span class="chip tile-adv"><img src="figs/avatar-adversary.png" alt="Adversary"></span>
           <span class="cap mono"><span class="en">adversary attacks both tracks</span><span class="zh">对抗者攻击两条轨道</span></span></div></div>
 
@@ -306,7 +311,7 @@ DR = 1 + Σᵢ (wᵢσᵢ/σₚ)(1 − ρᵢ,ₚ)   (same x-sigma-rho ingredient
     </div>
 
     <div class="q pass">
-      <div class="qh"><span class="chip tile-orc"><img src="figs/avatar-oracle.png" alt="Oracle"></span><b>journal.md</b> · round 1 · <span class="en">two independent means</span><span class="zh">两种独立手段</span><span class="step ok">ground truth</span></div>
+      <div class="qh"><span class="chip tile-orc"><img src="figs/avatar-doublechecker.png" alt="DoubleChecker"></span><b>journal.md</b> · round 1 · <span class="en">two independent means</span><span class="zh">两种独立手段</span><span class="step ok">ground truth</span></div>
       <p class="qt">All four tracks returned and CONVERGE.
 GT-symbolic + GT-analytic (two independent means) both derive … 33 exact symbolic checks + 5 numeric tables all pass.
 Orchestrator independently re-verified the deficiency attribution + CFR identities (sympy exact + numpy n=8): all residuals ≤ 4.4e-16.</p>
@@ -364,7 +369,7 @@ elementary one-line consequence of the two Euler identities and is very likely k
     </div>
 
     <div class="q pass">
-      <div class="qh"><span class="chip tile-orc"><img src="figs/avatar-oracle.png" alt="Oracle"></span><b>derivations/</b> · GT-A symbolic vs GT-B numerical<span class="step ok">ground truth</span></div>
+      <div class="qh"><span class="chip tile-orc"><img src="figs/avatar-doublechecker.png" alt="DoubleChecker"></span><b>derivations/</b> · GT-A symbolic vs GT-B numerical<span class="step ok">ground truth</span></div>
       <p class="qt">cash-leg Euler residual : r_f exactly   |  0.0150000000000 at r_f = 0.015
 crossover horizon h* = z²w′Σw/(w′μ)² : 16.909646588 (95%), 33.824340194 (99%)
 Kish ESS at H=252 : (1+λ)/(1−λ)   |  727.1187590387</p>

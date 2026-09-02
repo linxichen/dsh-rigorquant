@@ -14,8 +14,9 @@ Primary sources:
    explicit `unknown` if neither lands. (For `known` sub-problems the method
    track stays open — building on existing analytical results is an explicit
    goal.) Isolation is **routed, not requested**: the blind roles are
-   `subagent_novel` (the novelty toggle) and `subagent_ground_truth` (the
-   oracle), and both deny `web_search`, `web_fetch`, `skill` and every
+   `subagent_offgrid` (the OffGridThinker — raw model intelligence plus
+   compute tools, no one else's results) and `subagent_double_checker` (the
+   DoubleChecker), and both deny `web_search`, `web_fetch`, `skill` and every
    delegation tool in the composition itself. Never ask an open role to
    *pretend* it has no web — call the walled role instead. What that buys is
    partial and must be stated so: context isolation and the web/delegation deny
@@ -56,9 +57,9 @@ Primary sources:
 
 ## The round cycle in full
 
-1. Explorers fan out (blank-context `subagent` calls).
+1. Explorers fan out (blank-context `subagent_explorer` calls).
 2. Ground-truth track re-derives the check targets twice, independently (two
-   separate `subagent_ground_truth` calls, different means).
+   separate `subagent_double_checker` calls, different means).
 3. Adversary audits both tracks, runs the battery, hunts counterexamples.
 4. Root synthesizes: registry update → block/redirect decisions → PASS or
    relaunch (with new redirections; never an identical relaunch).

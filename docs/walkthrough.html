@@ -253,9 +253,9 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
         <code class="inl">baseUrl</code>, so the operating procedure travels with the preset.</span>
         <span class="zh"><b>技能注册表 + <code class="inl">skill</code> 工具</b>—— 预设把技能根目录锚定在自己的 <code class="inl">baseUrl</code> 上，操作规程随预设一起走。</span></li>
       <li><span class="en"><b>Per-role delegation</b> — the same row (<code class="inl">@deepseek-ai/dsh-tool-subagent</code>) mounted
-        six times with different personas, <code class="inl">toolFilter.deny</code> lists and <code class="inl">maxDepth</code>;
+        seven times with different personas, <code class="inl">toolFilter.deny</code> lists and <code class="inl">maxDepth</code>;
         spawned children never see the parent conversation (context isolation is harness-enforced).</span>
-        <span class="zh"><b>按角色委派</b>—— 同一行（<code class="inl">@deepseek-ai/dsh-tool-subagent</code>）以六种不同人格、不同的 <code class="inl">toolFilter.deny</code> 与 <code class="inl">maxDepth</code> 挂载六次；派生的子代理永远看不到父会话（上下文隔离由 Harness 强制）。</span></li>
+        <span class="zh"><b>按角色委派</b>—— 同一行（<code class="inl">@deepseek-ai/dsh-tool-subagent</code>）以七种不同人格、不同的 <code class="inl">toolFilter.deny</code> 与 <code class="inl">maxDepth</code> 挂载七次；派生的子代理永远看不到父会话（上下文隔离由 Harness 强制）。</span></li>
       <li><span class="en"><b>Goal loop</b> — one task-level goal relaunches the orchestrator every round inside the live session.</span>
         <span class="zh"><b>目标循环</b>—— 单个任务级目标在活会话内每轮重新拉起编排者。</span></li>
       <li><span class="en"><b>Compaction + tool-result pruner</b> — tuned to fire earlier (60% of context window) and retain less
@@ -282,10 +282,11 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
       <li><span class="en"><b>The <code class="inl">rigorquant</code> skill</b> — the operating procedure: Steps 0–2b, the round loop,
         the stage order, the check battery, escalation triggers, anti-patterns, lifecycle.</span>
         <span class="zh"><b><code class="inl">rigorquant</code> 技能</b>—— 操作规程：步骤 0–2b、轮循环、阶段顺序、检验组、升级触发条件、反模式清单、生命周期。</span></li>
-      <li><span class="en"><b>Six role tools out of one row</b> — explorer / novel(blind) / oracle(blind) / adversary /
-        lit-line / lit-adversary, each a separate model-facing tool so producer ≠ checker is enforced by
+      <li><span class="en"><b>Seven role tools out of one row</b> — explorer / OffGridThinker(off-grid, blind) /
+        DoubleChecker(blind) / adversary / lit-line / lit-adversary / doc-adversary, each a separate
+        model-facing tool so producer ≠ checker is enforced by
         <em>which tool runs</em>, not by asking nicely.</span>
-        <span class="zh"><b>一行变六个角色工具</b>—— 探索者／盲态新方法者／盲态真值神谕／对抗者／文献线代理／文献对抗者。每个都是独立的模型可见工具，「生产者≠检查者」因此由<em>调用哪个工具</em>来强制，而不是靠口头请求。</span></li>
+        <span class="zh"><b>一行变七个角色工具</b>—— 探索者／离网思考者（离网、盲态）／双重复核（盲态）／对抗者／文献线代理／文献对抗者／文档对抗者。每个都是独立的模型可见工具，「生产者≠检查者」因此由<em>调用哪个工具</em>来强制，而不是靠口头请求。</span></li>
       <li><span class="en"><b>The meta-validator</b> <code class="inl">rq_check.py</code> + JSON Schemas it loads itself
         (“one validator, one schema”) — the honesty boundary that reads the audit record, never <code class="inl">study.json</code>.</span>
         <span class="zh"><b>元校验器</b> <code class="inl">rq_check.py</code> 及其自行加载的 JSON Schema（「一份校验器、一份 schema」）—— 这是诚实性边界：只读审计记录，绝不读 <code class="inl">study.json</code> 自证。</span></li>
@@ -313,7 +314,7 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
 <!-- ============================================================ 2 -->
 <section id="s-cast">
   <div class="snum en">Section 2</div><div class="snum zh">第 2 节</div>
-  <h2><span class="en">The cast: six role tools and a root</span><span class="zh">角色表：六个角色工具加一个根</span></h2>
+  <h2><span class="en">The cast: seven role tools and a root</span><span class="zh">角色表：七个角色工具加一个根</span></h2>
   <p>
     <span class="en">Isolation in this framework is mostly <b>procedural, enforced by tool choice</b>: a blind role is blind
     because its tool denies the eyes, not because a prompt asked it to pretend. Only context isolation is
@@ -330,19 +331,19 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
       <th><span class="en">Router default</span><span class="zh">路由默认</span></th>
     </tr></thead>
     <tbody>
-      <tr><td class="mono">subagent</td>
+      <tr><td class="mono">subagent_explorer</td>
         <td><span class="en">Explorer, open method track — lemmas, equations, constructions; status reports rejected</span>
           <span class="zh">探索者，开放方法轨道 —— 交付引理、方程、构造；拒绝状态汇报式输出</span></td>
         <td class="allow"><span class="en">nothing (web allowed)</span><span class="zh">无（可联网）</span></td>
         <td class="mono">1</td><td><span class="en">inherit</span><span class="zh">继承</span></td></tr>
-      <tr><td class="mono">subagent_novel</td>
-        <td><span class="en">Explorer after the novelty toggle — full Jin isolation, works from axioms + computation only</span>
-          <span class="zh">新颖性开关后的探索者 —— 完全金氏隔离，只从公理与计算出发</span></td>
+      <tr><td class="mono">subagent_offgrid</td>
+        <td><span class="en">OffGridThinker — off the grid of other people's results: raw model intelligence + compute tools only</span>
+          <span class="zh">离网思考者 —— 不用他人的结果：只凭模型推理与计算工具</span></td>
         <td class="deny mono">web_search, web_fetch, skill,<br>+ <span class="en">all delegation</span><span class="zh">所有委派工具</span></td>
         <td class="mono">1</td><td><span class="en">inherit</span><span class="zh">继承</span></td></tr>
-      <tr><td class="mono">subagent_ground_truth</td>
-        <td><span class="en">Oracle — re-derives targets from first principles, never sees drafts</span>
-          <span class="zh">真值神谕 —— 从第一性原理重新推导目标，从不看别人的草稿</span></td>
+      <tr><td class="mono">subagent_double_checker</td>
+        <td><span class="en">DoubleChecker — re-derives targets from first principles, never sees drafts</span>
+          <span class="zh">双重复核 —— 从第一性原理重新推导目标，从不看别人的草稿</span></td>
         <td class="deny mono">web_search, web_fetch, skill,<br>+ <span class="en">all delegation</span><span class="zh">所有委派工具</span></td>
         <td class="mono">1</td><td class="mono">v4-pro@high<br><span class="en">fallback flash@low</span><span class="zh">回退 flash@low</span></td></tr>
       <tr><td class="mono">subagent_adversary</td>
@@ -558,7 +559,7 @@ uv run --frozen --project $DSH_HOME/share/rigorquant/env python &lt;script.py&gt
       <span class="en">Walled citation-graph traversal per line (backward references, forward citations, related work, surveys) produces
       dossiers in <code class="inl">interim/lit/</code>. The orchestrator hands the literature adversary a <b>claims list only</b> — never the
       producing agent's prose — and it must re-retrieve every source itself, certifying validity <em>and</em> freshness
-      (version, venue, retraction, supersession). What crosses to the novel lane is restricted to
+      (version, venue, retraction, supersession). What crosses to the off-grid lane is restricted to
       <b>verified negatives</b>: mathematically proven impossibilities, provenance-stripped. “This is open” never crosses —
       transmitting openness is a hint. A locked constraint table (C1–C7) and named residual holes back this up in
       <a href="architecture.md">architecture.md</a> Decision 14.</span>
@@ -638,10 +639,10 @@ USE4L   252                   5        504                    2        168</pre>
         <tbody>
           <tr><td class="mono">subagent_lit_line</td><td class="num">7</td><td><span class="en">walled literature lines</span><span class="zh">封闭文献线</span></td></tr>
           <tr><td class="mono">subagent_lit_adversary</td><td class="num">2</td><td><span class="en">re-retrieve every claim from the claims list only</span><span class="zh">只凭主张清单逐条重取来源</span></td></tr>
-          <tr><td class="mono">subagent_ground_truth</td><td class="num">5</td><td><span class="en">derive answers blind to each other and to explorers</span><span class="zh">彼此互盲、对探索者盲态地推导答案</span></td></tr>
-          <tr><td class="mono">subagent <span class="en">(open)</span><span class="zh">（开放）</span></td><td class="num">4</td><td><span class="en">divergent exploration + mechanical assembly</span><span class="zh">发散探索 ＋ 机械装配任务</span></td></tr>
+          <tr><td class="mono">subagent_double_checker</td><td class="num">5</td><td><span class="en">derive answers blind to each other and to explorers</span><span class="zh">彼此互盲、对探索者盲态地推导答案</span></td></tr>
+          <tr><td class="mono">subagent_explorer <span class="en">(open)</span><span class="zh">（开放）</span></td><td class="num">4</td><td><span class="en">divergent exploration + mechanical assembly</span><span class="zh">发散探索 ＋ 机械装配任务</span></td></tr>
           <tr><td class="mono">subagent_adversary</td><td class="num">3</td><td><span class="en">counterexample hunts: method, decomposition, spec</span><span class="zh">反例狩猎：方法、分解、规范</span></td></tr>
-          <tr><td class="mono">subagent <span class="en">(repair)</span><span class="zh">（修复）</span></td><td class="num">1</td><td><span class="en">apply an audited repair</span><span class="zh">执行一项已审计的修复</span></td></tr>
+          <tr><td class="mono">subagent_explorer <span class="en">(repair)</span><span class="zh">（修复）</span></td><td class="num">1</td><td><span class="en">apply an audited repair</span><span class="zh">执行一项已审计的修复</span></td></tr>
         </tbody>
       </table>
       <p><span class="en">And in the DR study, the open explorer delivered the study's key result in round 1 — the deficiency attribution
@@ -662,18 +663,18 @@ USE4L   252                   5        504                    2        168</pre>
     </div>
     <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
       <p>
-      <span class="en">Blindness is tool-enforced: the oracle's deny list removes <code class="inl">web_search</code>, <code class="inl">web_fetch</code>,
+      <span class="en">Blindness is tool-enforced: the DoubleChecker's deny list removes <code class="inl">web_search</code>, <code class="inl">web_fetch</code>,
       <code class="inl">skill</code> and every delegation tool; context isolation keeps it from seeing drafts. Its compute happens through
       <code class="inl">bash</code> under the pinned lane.</span>
-      <span class="zh">盲态由工具强制：真值神谕的 deny 列表移除了 <code class="inl">web_search</code>、<code class="inl">web_fetch</code>、<code class="inl">skill</code> 和一切委派工具；上下文隔离使它看不到草稿。它的计算经由钉死通道下的 <code class="inl">bash</code> 完成。</span></p>
+      <span class="zh">盲态由工具强制：双重复核的 deny 列表移除了 <code class="inl">web_search</code>、<code class="inl">web_fetch</code>、<code class="inl">skill</code> 和一切委派工具；上下文隔离使它看不到草稿。它的计算经由钉死通道下的 <code class="inl">bash</code> 完成。</span></p>
     </div>
     <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
       <p>
-      <span class="en">Oracles receive <b>only the problem statement and the simplified case</b>. Load-bearing claims get two independent
+      <span class="en">DoubleCheckers receive <b>only the problem statement and the simplified case</b>. Load-bearing claims get two independent
       derivations by genuinely different instruments (symbolic CAS vs numeric-without-CAS) — never one agent doing both
       “independent” versions. Disagreement is a finding, not an error to smooth over. Derivations land in
       <code class="inl">derivations/</code>.</span>
-      <span class="zh">真值神谕<b>只拿到问题陈述和简化情形</b>。承重命题必须用真正不同的手段各推一遍（符号代数 vs 禁用 CAS 的纯数值）—— 绝不允许同一个代理扮演两个「独立」推导。分歧是发现，不是需要抹平的误差。推导落入 <code class="inl">derivations/</code>。</span></p>
+      <span class="zh">双重复核<b>只拿到问题陈述和简化情形</b>。承重命题必须用真正不同的手段各推一遍（符号代数 vs 禁用 CAS 的纯数值）—— 绝不允许同一个代理扮演两个「独立」推导。分歧是发现，不是需要抹平的误差。推导落入 <code class="inl">derivations/</code>。</span></p>
     </div>
     <div class="band evid"><span class="blab en">Evidence — agreement becomes load-bearing (VaR §7)</span>
       <span class="blab zh">证据层 —— 一致性成为承重结构（VaR §7）</span>

@@ -119,7 +119,7 @@ async function main() {
     })
     emit('session/event', rootAgent.session, {
       type: 'tool/call', time: 3000,
-      data: { name: 'subagent_ground_truth', arguments: '{}' },
+      data: { name: 'subagent_double_checker', arguments: '{}' },
     })
     // One-shot subagent under the promoted lab: the captain's subagent_lit_line
     // tool call queues the role, then the child arrives with only an opaque
@@ -131,7 +131,7 @@ async function main() {
     emit('agent/created', { agent: oneShotChild })
     emit('agent/status', { agent: oneShotChild, status: 'running' })
     // A second one-shot subagent that NEVER surfaces a running agent status:
-    // its role (oracle, from the descriptor label) must still light up because
+    // its role (doublechecker, from the descriptor label) must still light up because
     // it emitted session activity just now (the RECENT_ACTIVE_MS fallback).
     const shot2 = {
       id: 'child-shot-2',

@@ -9,6 +9,36 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [Unreleased]
 
 ### Changed
+- **Roles renamed: Oracle → DoubleChecker; the novelty toggle becomes its own
+  agent, OffGridThinker; the explorer tool is no longer bare `subagent`.**
+  (`agent.cordis.yml`, `dsh/index.js`, `dsh/activity.js`, `dsh/client.js`,
+  skills, docs, tests.) The ground-truth role is now **DoubleChecker**
+  (`subagent_double_checker`, row `tool-subagent-double-checker`, routing tag
+  `[[rq:role=doublechecker]]`, settings keys `doublecheckerPrimary`/`Fallback`)
+  — the name says what it does: re-derive the claim twice by different means.
+  The old `subagent_novel` row is now the **OffGridThinker** (`subagent_offgrid`,
+  tag `[[rq:role=offgrid]]`, settings keys `offgridPrimary`/`Fallback`), a role
+  in its own right instead of an Explorer variant: its one boundary is other
+  people's results — no web, no literature, no other agents' drafts — while the
+  pinned compute lane (sympy/numpy/mpmath/cvxpy/hypothesis/jax, Lean checkers
+  when provisioned) stays fully available for derivation. The open explorer's
+  delegation tool is now `subagent_explorer` (row `tool-subagent-explorer`)
+  rather than the generic `subagent`, so every delegation tool carries its role
+  name. Deployments with saved per-role overrides in the `rigorquant-models`
+  namespace should re-enter them under the new keys (the old `oracle*`/`novel*`
+  fields are simply ignored).
+- **The activity pillbox role map is a hub-and-spoke, not a stage DAG**
+  (`dsh/client.js`, `tests/test_repo_consistency.py`). The orchestrator is the
+  only hub — it spawns every role and receives every report, and two child
+  roles never hand off to each other — so the map now shows the root at the
+  center with the seven child roles as spokes (ordered proposal → retrieval →
+  re-derivation → audit → certification), each spoke tinted while its role is
+  running. The shoehorned five-stage DAG and its dashed loop-back edge are
+  gone.
+- **Role portraits** (`docs/figs/`). `avatar-oracle.png` is replaced by
+  `avatar-doublechecker.png`, and the OffGridThinker gets its own portrait
+  (`avatar-offgrid.png`) instead of sharing the explorer's. Regenerated the
+  activity-panel SVG (now eight roles) and updated the hero banner caption.
 - **Per-role tool budgets for delegation children** (`agent-presets/rigorquant/agent.cordis.yml`,
   `tests/test_blind_deny_list.py`). Every role now carries an explicit
   `toolFilter` that removes the tool schemas it must never touch from the
