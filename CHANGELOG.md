@@ -8,6 +8,8 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-02
+
 ### Added
 - **95% validator coverage gate** (`.githooks/pre-commit`, `.coveragerc`, CI).
   The checked-in git hook runs the full suite with `RQ_COVERAGE=1`; each
