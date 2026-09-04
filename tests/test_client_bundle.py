@@ -265,6 +265,26 @@ def test_clearing_an_override_unsets_rather_than_writing_a_blank(verdict):
     assert draft["afterReset"] is False
 
 
+def test_effort_dropdown_offers_only_the_models_real_surfaces(verdict):
+    """Every effort select renders exactly what the chosen model supports.
+
+    The probe's one catalog model carries no reasoning metadata, so every
+    effort select (8 roles x 2 slots) must offer only "Default" — never a
+    generic [off, high, max] vocabulary, which is how a route with no
+    reasoning surface once got saved with an effort every turn on it refused.
+    A stored effort the model does not list stays visible but disabled.
+    """
+    assert "effortDropdownError" not in verdict, verdict.get("effortDropdownError")
+    assert verdict["effortSelectCount"] == 16, verdict.get("effortSelectCount")
+    assert verdict["effortSelectsDefaultOnly"] is True
+    stale = verdict["staleEffortOptions"]
+    assert stale is not None, "a stored unsupported effort must stay visible (disabled)"
+    assert stale[0] == {"value": "", "label": "effortInherit", "disabled": False}
+    assert stale[1] == {
+        "value": "high", "label": "high · effortUnsupported", "disabled": True,
+    }
+
+
 def test_settings_namespace_is_writable_by_the_host():
     """dsh brands namespaces with /^[a-z][a-z0-9-]*$/ — kebab-case, no dots.
 

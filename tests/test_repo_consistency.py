@@ -239,21 +239,39 @@ def test_agent_teams_geometry_attribution_keeps_the_upstream_mit_notice():
 
 
 def test_effort_select_uses_the_models_real_supported_levels():
-    """The effort dropdown must not hard-code [high, max] globally.
+    """Only a model's real effort surfaces may be selectable — anywhere.
 
-    A model that does not support a given reasoning effort (e.g. some routes
-    reject "high") must not be offered that level, and switching to such a
-    model must not carry a now-invalid effort forward.
+    A model with no reasoning metadata takes no explicit effort at all, so the
+    card must not fall back to a generic [high, max] vocabulary there: that is
+    how a route like zai/glm-5.3-flash got saved with an effort and every turn
+    on it died in UNSUPPORTED_REASONING_EFFORT. Switching models must keep an
+    effort only when the new surface lists it, and the host router must drop a
+    stored effort the exact route refuses — falling back to the model's
+    default level — because the LLM service rejects such a request before any
+    provider I/O, so the failure never reaches agent/request-error.
     """
     client = (REPO / "dsh" / "client.js").read_text()
     # The catalog keeps each model's reasoning effort surface.
     assert "efforts: (model.reasoning?.efforts ?? [])" in client, (
         "the card drops model reasoning efforts instead of keeping them")
-    assert "defaultEffort: model.reasoning?.defaultEffort" in client
-    # The effort select filters on the chosen model's surfaces, not a constant.
-    assert "const supported = (efforts?.length ?? 0) > 0" in client
-    assert "targetEfforts.some((effort) => effort.id" in client, (
-        "switching models must discard an effort the new route rejects")
+    # No generic vocabulary: a model with no surfaces offers "Default" only.
+    assert "const EFFORTS" not in client, (
+        "the hard-coded effort vocabulary must not come back")
+    assert "const supported = efforts ?? []" in client
+    # A stored effort the chosen model no longer lists stays visible but
+    # disabled — honest display, never re-selectable.
+    assert "const stale = stored !== ''" in client
+    assert "disabled: true" in client
+    # Switching models requires exact membership on the target surface.
+    assert "targetEfforts.some((effort) => effort.id === choice?.reasoningEffort)" in client, (
+        "switching models must discard an effort the new route does not list")
+    # The host router consults the route's real effort metadata and demotes a
+    # refused effort to the model default level.
+    host = (REPO / "dsh" / "index.js").read_text()
+    assert "resolveModelInfo" in host, (
+        "the router must consult the model's real effort metadata")
+    assert "falling back to the model default level" in host, (
+        "the demotion must be diagnosable in the host log")
 
 
 def test_activity_hub_map_is_hub_and_spoke():
@@ -298,6 +316,15 @@ def test_router_native_defaults_overrides_and_fallback_round_trip():
     )
     verdict = json.loads(out.stdout)
     assert verdict["ok"] is True
+    # The effort fallback must be exercised end to end: a stored effort the
+    # exact route refuses is demoted to the model's default level (zai/
+    # glm-5.3-flash is the deployment that died in UNSUPPORTED_REASONING_
+    # EFFORT), and the demotion is diagnosable once per route.
+    demotions = [line for line in verdict["logs"] if "falling back to the model default level" in line]
+    assert any("zai/glm-5.3-flash does not support reasoning effort" in line for line in demotions), (
+        "the probe no longer covers the refused-effort demotion")
+    assert any("stub-provider/stub-model" in line for line in demotions), (
+        "the passthrough route must be sanitized too")
 
 
 def test_router_roles_cover_the_tagged_roles_exactly():

@@ -8,6 +8,20 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Fixed
+- **A reasoning effort the exact route refuses no longer kills the turn.**
+  The settings card's effort dropdown fell back to a generic
+  `[off, high, max]` vocabulary whenever the catalog reported no effort
+  surface, so a model with no reasoning metadata (e.g. `zai/glm-5.3-flash`)
+  could be saved with `high` — and every turn routed to it then died in
+  `UNSUPPORTED_REASONING_EFFORT` before any provider I/O. The dropdown now
+  offers only the chosen model's real effort surfaces ("Default" only when it
+  has none; a stored unsupported level renders disabled), switching models
+  keeps an effort only when the new surface lists it, and the host router
+  drops a refused effort at routing time — the model's default level governs,
+  logged once per route. The router probe also runs again (its agent stub
+  predated DSH 0.1.2's `session.snapshotEvents()` rename).
+
 ## [0.4.1] - 2026-09-02
 
 ### Added

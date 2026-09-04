@@ -267,6 +267,17 @@ composition.
   session+role to the role's own fallback and forces exactly one retry. A
   successful assistant step on the fallback — or the TTL (10 min) — restores
   the primary; a failing fallback is never retried again by the router.
+- **Effort fallback to the model default.** A stored choice may carry a
+  reasoning effort the exact route's model refuses — a model with no
+  reasoning surface at all, or one that does not list the saved level. The
+  LLM service rejects such a request before any provider I/O
+  (`UNSUPPORTED_REASONING_EFFORT`) and the turn dies with it — the failure
+  never reaches `agent/request-error` — so the router consults the model's
+  real effort metadata while routing and drops a refused effort: the model's
+  default level governs and the model override stays intact. The card offers
+  only the catalog's real effort surfaces in the first place (a model with no
+  surfaces offers "Default" only; a stored unsupported level renders
+  disabled), so this lane mostly guards stale saved choices.
 - **Persistence and UI.** Choices live in the `rigorquant-models` settings
   namespace (user layer of `settings.yaml`); the browser half renders the
   card in the Plugins settings tab, keyed by that namespace, with model and

@@ -93,7 +93,26 @@ async function main() {
       listeners.get(name).push(handler)
       return () => {}
     },
-    get: () => undefined,
+    get: (name) => (name === 'llm' ? llm : undefined),
+  }
+
+  // Reasoning-effort surfaces the stub `llm` service reports per exact route —
+  // the same metadata the model catalog serves the card from. An empty list is
+  // a model with no reasoning surface (it refuses every explicit effort); a
+  // route absent from the map is unresolvable (the real service throws) and
+  // the router must fail open, leaving the request untouched.
+  const effortSurfaces = {
+    'deepseek-official::deepseek-v4-pro': ['off', 'low', 'medium', 'high'],
+    'deepseek-official::deepseek-v4-flash': ['off', 'low', 'medium', 'high'],
+    'zai::glm-5.3-flash': [],
+    'stub-provider::stub-model': ['low'],
+  }
+  const llm = {
+    resolveModelInfo: async (provider, model) => {
+      const key = `${provider}::${model}`
+      if (!(key in effortSurfaces)) throw new Error(`NO_ADAPTER: ${key}`)
+      return { reasoning: { efforts: effortSurfaces[key].map((id) => ({ id, name: id })) } }
+    },
   }
 
   const emit = async (name, ...args) => {
@@ -104,18 +123,22 @@ async function main() {
     assert(handlers.length === 1, `${name}: expected one router listener`)
     return handlers[0](payload, async () => resolved)
   }
-  const makeAgent = (id, role) => ({
-    id,
-    session: {
+  const makeAgent = (id, role) => {
+    const events = [{
+      type: 'subagent/descriptor',
+      data: { persona: `role [[rq:role=${role}]]` },
+    }]
+    return {
       id,
-      header: { parentSession: 'root-session', agentPreset: NS },
-      events: [{
-        type: 'subagent/descriptor',
-        data: { persona: `role [[rq:role=${role}]]` },
-      }],
-    },
-    ctx: { get: () => undefined },
-  })
+      session: {
+        id,
+        header: { parentSession: 'root-session', agentPreset: NS },
+        // DSH 0.1.2 sessions expose their event log through snapshotEvents().
+        snapshotEvents: () => events,
+      },
+      ctx: { get: () => undefined },
+    }
+  }
 
   mod.apply(ctx, {
     presetId: 'rigorquant',
@@ -204,6 +227,68 @@ async function main() {
     'usage-limit fallback route',
   )
   assert(logs.length === 2 && logs[1].includes('(1308)'), 'usage-limit fallback log')
+
+  // ---- Effort fallback: a reasoning effort the exact route refuses falls
+  // back to the model's default level instead of dying in
+  // UNSUPPORTED_REASONING_EFFORT before any provider I/O.
+
+  // (a) The regression route: a model with NO reasoning surface refuses every
+  // explicit effort. The stored doc-adversary primary keeps its model
+  // override but loses the effort; the inherited route's effort was already
+  // cleared by applyChoice.
+  const docAdversary = makeAgent('doc-adversary-1', 'doc-adversary')
+  user = { 'doc-adversaryPrimary': { provider: 'zai', model: 'glm-5.3-flash', reasoningEffort: 'high' } }
+  await emit('settings/document-updated', NS, 3)
+  equal(
+    await waterfall('agent/request', { agent: docAdversary }, { provider: 'p', model: 'm', reasoningEffort: 'medium' }),
+    { provider: 'zai', model: 'glm-5.3-flash' },
+    'refused effort demoted to the model default',
+  )
+  assert(logs.length === 3 && logs[2].includes('zai/glm-5.3-flash does not support reasoning effort "high"'), 'demotion log')
+
+  // (b) The demotion is stable and logs once per route, not per request.
+  equal(
+    await waterfall('agent/request', { agent: docAdversary }, { provider: 'p', model: 'm', reasoningEffort: 'medium' }),
+    { provider: 'zai', model: 'glm-5.3-flash' },
+    'demotion is stable across requests',
+  )
+  assert(logs.length === 3, 'the demotion log fires once per route')
+
+  // Restore the doublechecker lane from the quota scenario's degrade state.
+  await emit('session/event', doublechecker.session, {
+    type: 'assistant/message',
+    data: { message: { source: clone(DEFAULT_FALLBACK) } },
+  })
+
+  // (c) An effort the model's surface lists is never touched.
+  user = { doublecheckerPrimary: { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' } }
+  await emit('settings/document-updated', NS, 4)
+  equal(
+    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
+    { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' },
+    'listed effort passes through',
+  )
+
+  // (d) An unresolvable route fails open: the effort rides untouched, and the
+  // request path reports the route exactly as it would without the router.
+  user = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model', reasoningEffort: 'high' } }
+  await emit('settings/document-updated', NS, 5)
+  equal(
+    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
+    { provider: 'custom-provider', model: 'custom-model', reasoningEffort: 'high' },
+    'unknown route fails open',
+  )
+
+  // (e) A routed role's inherited (passthrough) route is sanitized too: an
+  // effort the route does not list drops even without any stored choice.
+  const offgrid = makeAgent('offgrid-1', 'offgrid')
+  user = {}
+  await emit('settings/document-updated', NS, 6)
+  equal(
+    await waterfall('agent/request', { agent: offgrid }, { provider: 'stub-provider', model: 'stub-model', reasoningEffort: 'max' }),
+    { provider: 'stub-provider', model: 'stub-model' },
+    'passthrough route drops an unlisted effort',
+  )
 
   process.stdout.write(JSON.stringify({ ok: true, logs }))
 }

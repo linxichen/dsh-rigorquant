@@ -23,6 +23,16 @@
 // step on the fallback — or the TTL — restores the primary. A fallback that
 // also fails is never retried again by this plugin (no retry loop).
 //
+// Effort fallback: a stored choice may carry a reasoning effort the exact
+// route's model does not support — a model with no reasoning surface at all,
+// or one that does not list the saved level. The LLM service rejects such a
+// request before any provider I/O (UNSUPPORTED_REASONING_EFFORT) and the
+// turn dies with it, so the router consults the model's real effort metadata
+// while routing and drops a refused effort: the model's default level
+// governs and the stored choice's model override stays intact. A route whose
+// metadata cannot be resolved fails open — the request path reports it
+// exactly as before.
+//
 // The `root` role applies ONLY to sessions without a parentSession: a spawned
 // workflow worker or ralph child also runs under the rigorquant preset, but it
 // is not the root and inherits its route.
@@ -146,6 +156,62 @@ function apply(ctx, config) {
   const degraded = new Map()
   /** The exact resolved request route, for error-to-primary attribution. */
   const requested = new Map()
+  /** provider::model → Set of the effort ids the model's own metadata lists
+   *  (empty when it takes no explicit effort at all). Failed lookups are never
+   *  cached: a transient registry miss retries on the next request. */
+  const effortSurfaces = new Map()
+  /** Routes whose effort was dropped, so the fallback logs once per route. */
+  const effortFallbacks = new Set()
+
+  /**
+   * The reasoning-effort surface of one exact route, from the same `llm`
+   * service the model catalog serves the card from. `undefined` means the
+   * route could not be resolved (unregistered adapter, unknown model) and the
+   * caller must fail open: the request path reports such a route itself.
+   */
+  async function effortSurface(provider, model) {
+    const key = `${provider}::${model}`
+    const cached = effortSurfaces.get(key)
+    if (cached !== undefined) return cached
+    try {
+      const info = await ctx.get('llm').resolveModelInfo(provider, model)
+      const surface = new Set(info.reasoning?.efforts.map((effort) => effort.id) ?? [])
+      effortSurfaces.set(key, surface)
+      return surface
+    } catch {
+      return undefined
+    }
+  }
+  // Adapter (re)registration — a profile edit, an HMR swap — can change what a
+  // model supports; drop the cache so the next request re-resolves it.
+  ctx.on('llm/adapters-updated', () => {
+    effortSurfaces.clear()
+  })
+
+  /**
+   * Fall back to the model's default effort level when the carried effort is
+   * one the exact route refuses. The LLM service rejects such a request
+   * before any provider I/O and the turn dies with no recovery — the failure
+   * never reaches agent/request-error — so the effort is dropped here, where
+   * routing happens. An empty surface (no reasoning metadata) refuses every
+   * explicit effort; a listed effort passes through untouched.
+   */
+  async function withSupportedEffort(route) {
+    const effort = route?.reasoningEffort
+    if (typeof effort !== 'string' || effort === '') return route
+    const surface = await effortSurface(route.provider, route.model)
+    if (surface === undefined || surface.has(effort)) return route
+    const key = `${route.provider}::${route.model}`
+    if (!effortFallbacks.has(key)) {
+      effortFallbacks.add(key)
+      ctx.logger.info(
+        `rq-model-router: ${route.provider}/${route.model} does not support reasoning`
+        + ` effort "${effort}"; falling back to the model default level`,
+      )
+    }
+    const { reasoningEffort: _refused, ...withoutEffort } = route
+    return withoutEffort
+  }
 
   const section = () => ctx.settings.get(NS)
   const choiceFor = (role, slot) => {
@@ -237,7 +303,7 @@ function apply(ctx, config) {
     const header = agent.session.header
     // The establishing provider appends exactly one descriptor; it is early,
     // but a continuable child's lineage seed can push it past the head.
-    const events = agent.session.events
+    const events = agent.session.snapshotEvents()
     for (let i = 0; i < Math.min(events.length, 64); i += 1) {
       const event = events[i]
       if (event.type === 'subagent/descriptor') {
@@ -278,18 +344,20 @@ function apply(ctx, config) {
       // Do not keep forcing an absent route; let the native/parent route run.
       if (fallback === null) {
         degraded.delete(agentId)
-        return remember(resolved)
+        return remember(await withSupportedEffort(resolved))
       }
       d.provider = fallback.provider
       d.model = fallback.model
-      return remember(applyChoice(resolved, fallback))
+      return remember(await withSupportedEffort(applyChoice(resolved, fallback)))
     }
 
     // A role's fixed shipped default is supplied by the native tool's
     // `agentOptions`. Only an explicit user primary override belongs in this
     // waterfall; otherwise the resolved native/parent route is authoritative.
     const override = userChoiceFor(role, 'Primary')
-    return remember(override === null ? resolved : applyChoice(resolved, override))
+    return remember(await withSupportedEffort(
+      override === null ? resolved : applyChoice(resolved, override),
+    ))
   })
 
   ctx.on('agent/request-error', async (payload, next) => {

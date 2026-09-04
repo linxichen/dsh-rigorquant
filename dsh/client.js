@@ -29,7 +29,6 @@ window.__ModuleLoader__.load({ id: 'dsh-rigorquant', factory: (require) => {
 const CARD_KEY = 'rigorquant-models'
 const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 const SLOTS = ['Primary', 'Fallback']
-const EFFORTS = ['off', 'high', 'max']
 // Invocation frequency per role: the badge tone follows the level, the label
 // comes from the locale copy (`roleFreq.<role>`).
 const ROLE_FREQ = {
@@ -103,6 +102,7 @@ const copy = {
     inherit: 'Inherit',
     none: 'None',
     effortInherit: 'Default',
+    effortUnsupported: 'unsupported',
     save: 'Save',
     discard: 'Discard',
     expand: 'Expand',
@@ -146,6 +146,7 @@ const copy = {
     inherit: '继承',
     none: '无',
     effortInherit: '默认',
+    effortUnsupported: '不支持',
     save: '保存',
     discard: '放弃',
     expand: '展开',
@@ -342,7 +343,6 @@ class RqModelsCardController {
               id: effort.id,
               name: effort.name ?? effort.id,
             })),
-            defaultEffort: model.reasoning?.defaultEffort,
           })),
         }))
         this.catalog = { status: 'ready', providers }
@@ -547,20 +547,26 @@ function Select(props) {
     },
   }, options.map((option) => React().createElement('option', {
     key: option.value, value: option.value,
+    ...option.disabled === true ? { disabled: true } : {},
   }, option.label)))
 }
 
 function EffortSelect(props) {
   const { t, choice, onChange, efforts } = props
-  // Fall back to the generic effort vocabulary only when the catalog did not
-  // report the model's real surfaces (older hosts, or a model with no
-  // reasoning metadata). Otherwise offer exactly what the model supports.
-  const supported = (efforts?.length ?? 0) > 0
-    ? efforts.map((effort) => effort.id)
-    : EFFORTS
+  // Only the chosen model's real effort surfaces are selectable. A model that
+  // reports no reasoning metadata takes NO explicit effort at all — offering a
+  // generic vocabulary there is exactly what stages a level the route refuses
+  // at dispatch — so such a row offers "Default" only. A stored effort the
+  // chosen model no longer lists (saved under an older catalog or a route
+  // that never supported it) stays visible but disabled until a real choice
+  // replaces it; the host router also demotes it at dispatch time.
+  const supported = efforts ?? []
+  const stored = choice?.reasoningEffort ?? ''
+  const stale = stored !== '' && !supported.some((effort) => effort.id === stored)
   const options = [
     { value: '', label: t('effortInherit') },
-    ...supported.map((effort) => ({ value: effort, label: effort })),
+    ...supported.map((effort) => ({ value: effort.id, label: effort.id })),
+    ...stale ? [{ value: stored, label: `${stored} · ${t('effortUnsupported')}`, disabled: true }] : [],
   ]
   return React().createElement(Select, {
     value: choice?.reasoningEffort ?? '',
@@ -603,7 +609,6 @@ function RoleRow(props) {
         value: `${provider.id}::${model.id}`,
         label: `${provider.name} · ${model.name}`,
         efforts: model.efforts,
-        defaultEffort: model.defaultEffort,
       })
     }
   }
@@ -637,14 +642,13 @@ function RoleRow(props) {
       const split = key.split('::')
       const next = { provider: split[0], model: split[1] }
       const targetEfforts = modelByKey.get(key)?.efforts ?? []
-      // Only carry an explicit effort forward if the model keeps supporting it;
-      // otherwise fall back to the model's default (or none) so we never send a
-      // level the route rejects.
-      const effort = typeof choice?.reasoningEffort === 'string' && choice.reasoningEffort !== ''
-        && (targetEfforts.length === 0 || targetEfforts.some((effort) => effort.id === choice.reasoningEffort))
-        ? choice.reasoningEffort
-        : (modelByKey.get(key)?.defaultEffort ?? undefined)
-      if (effort !== undefined) next.reasoningEffort = effort
+      // Carry the previous effort forward only when the new model lists that
+      // exact level. A model without reasoning metadata takes no explicit
+      // effort at all, and an unlisted level is refused at dispatch — both
+      // fall back to the model's default level (no explicit effort).
+      if (targetEfforts.some((effort) => effort.id === choice?.reasoningEffort)) {
+        next.reasoningEffort = choice.reasoningEffort
+      }
       stage(field, next)
     }
     const onEffort = (effort) => {

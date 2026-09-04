@@ -72,16 +72,26 @@ let modelCatalogCalls = 0
 // Mutable persisted user layer: the ops the card emits land here, so a
 // follow-up edit sees the same layering the real seam would show it.
 const userLayer = {}
+/** Scenario-pinned useState value; `undefined` restores the initial value. */
+let useStateOverride
 // Minimal React: enough to run one render pass of a function component and
 // record the element tree. The card only needs createElement plus the hooks it
 // calls; the framework supplies its snapshot through the bound selector hook.
 const react = {
   createElement: (type, props, ...children) => ({
     type: typeof type === 'function' ? (type.name || 'component') : type,
+    // Keep the function itself so a scenario can render one node level deeper
+    // than the framework would: the card's selects are function components.
+    fn: typeof type === 'function' ? type : undefined,
     props: props ?? {},
     children: children.flat(Infinity).filter((child) => child !== null && child !== undefined),
   }),
-  useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+  useState: (initial) => {
+    // A scenario can pin the state (e.g. force the card's `open` disclosure)
+    // because the stub has no re-render loop to update it through.
+    const value = typeof initial === 'function' ? initial() : initial
+    return [useStateOverride !== undefined ? useStateOverride : value, () => {}]
+  },
   useMemo: (factory) => factory(),
   useCallback: (fn) => fn,
   useRef: (initial) => ({ current: initial }),
@@ -425,7 +435,87 @@ async function exerciseDelayedCatalog() {
   verdict.delayedCatalogCalls = delayedCalls
 }
 
-exerciseDraft().catch((error) => {
+// The effort dropdown contract, rendered against a READY catalog. The probe's
+// one catalog model carries no reasoning metadata, so every effort select must
+// offer exactly the "Default" option — never a generic vocabulary (that
+// fallback is what once saved an effort a route refuses, killing every turn on
+// it with UNSUPPORTED_REASONING_EFFORT). A stored effort the model does not
+// list stays visible but disabled: honest display, not re-selectable.
+async function exerciseEffortDropdown() {
+  if (registrations.length === 0) return
+  // The card loads its catalog asynchronously; wait for it to settle.
+  for (let i = 0; i < 100; i += 1) {
+    const status = registrations[0].descriptor.inject().hooks.rqCard.getSnapshot().catalog.status
+    if (status === 'ready' || status === 'failed') break
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  const { component } = registrations[0]
+  const face = registrations[0].descriptor.inject()
+  const props = { t: (key) => key }
+  for (const [name, value] of Object.entries(face)) {
+    if (name === 'hooks') continue
+    props[name] = value
+  }
+  for (const [name, source] of Object.entries(face.hooks ?? {})) {
+    props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
+  }
+  const renderNode = (node) => {
+    if (node === null || typeof node !== 'object') return node
+    // Render one function-component level the framework would: the card's
+    // selects (Select / EffortSelect) are function components, and the stub's
+    // createElement does not invoke them.
+    if (typeof node.fn === 'function') {
+      try {
+        return renderNode(node.fn(node.props))
+      } catch {
+        return null
+      }
+    }
+    return {
+      type: node.type,
+      props: node.props,
+      children: (node.children ?? []).map(renderNode),
+    }
+  }
+  const collectSelects = (node, found = []) => {
+    if (node === null || typeof node !== 'object') return found
+    if (node.type === 'select') {
+      found.push({
+        value: node.props?.value,
+        options: (node.children ?? [])
+          .filter((child) => child !== null && typeof child === 'object' && child.type === 'option')
+          .map((option) => ({
+            value: option.props?.value,
+            label: (option.children ?? []).join(''),
+            disabled: option.props?.disabled === true,
+          })),
+      })
+    }
+    for (const child of node.children ?? []) collectSelects(child, found)
+    return found
+  }
+  const effortSelects = (tree) => collectSelects(renderNode(tree))
+    .filter((select) => select.options.some((option) => option.label === 'effortInherit'))
+  // The card body (the 16 role rows) renders only when the disclosure is open;
+  // pin the stub's useState so this render sees the expanded card.
+  useStateOverride = true
+  try {
+    const cleanTree = component(props)
+    verdict.effortSelectCount = effortSelects(cleanTree).length
+    verdict.effortSelectsDefaultOnly = effortSelects(cleanTree).every((select) =>
+      select.options.length === 1 && select.options[0].value === '' && select.options[0].disabled === false)
+    face.stage('explorerPrimary', { provider: 'deepseek', model: 'v4-pro', reasoningEffort: 'high' })
+    const stale = effortSelects(component(props)).filter((select) => select.value === 'high')
+    verdict.staleEffortOptions = stale.length === 1 ? stale[0].options : null
+  } finally {
+    useStateOverride = undefined
+  }
+  face.discard()
+}
+
+exerciseEffortDropdown().catch((error) => {
+  verdict.effortDropdownError = `${error.name}: ${error.message}`
+}).then(() => exerciseDraft()).catch((error) => {
   verdict.draftError = `${error.name}: ${error.message}`
 }).then(() => exerciseDelayedCatalog()).catch((error) => {
   verdict.delayedCatalogError = `${error.name}: ${error.message}`
