@@ -10,8 +10,9 @@ done since.
 |---|---|---|
 | Version this repo was last verified against | `0.1.2-alpha.1` (dev env `0.1.1-rc.2`) | `docs/upgrade-0.1.2.md:5-6` |
 | Version this repo pins and enforces | `0.1.2-alpha.1` | `install.sh:18`, `README.md:167,197`, `README.zh-CN.md:151,162` |
-| Version **running** in this deployment | `0.1.5-alpha.2` | `dsh --version`; `/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/package.json` |
+| Version **running** in this deployment at study time | `0.1.5-alpha.2` | `dsh --version`; `/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/package.json` |
 | Newest published release | `0.1.5-rc.1` (2026-09-10) | npm `versions`, GitHub release `dsh-v0.1.5-rc.1` |
+| Version **on disk** now | `0.1.5-rc.1` | the install was upgraded after this study; §4.14 records that the alpha.2 → rc.1 delta is version strings for every package touched here, so every verdict below is unchanged |
 
 > **On the "0.1.12" in the request:** no such DSH version exists (npm publishes
 > `0.1.1-rc.2`, `0.1.2-rc.1`, `0.1.3-alpha.*`, `0.1.5-alpha.*`, `0.1.5-rc.1`).
@@ -462,17 +463,23 @@ poll loop into an event-driven one (§5.2). Keep `interrupt_agent` and
   name: '@deepseek-ai/dsh-tool-present'
 ```
 
-Both are **disabled at the host plane** by the web-app bundle
-(`packages/bundle/web-app/cordis.patch.yml:411-415`), so every preset has to
-re-mount them; the shipped `standard` preset does
-(`presets/standard/agent.cordis.yml:95-96, 255`) and RigorQuant does not.
+The two rows are missing for **different** reasons:
 
-- Without `command-goal` there is no `/goal` slash command in a RigorQuant
-  session, even though the goal tools and the round driver are the framework's
-  unattended loop.
-- Without `present` — which **no bundle mounts at all**, only presets do —
-  deliverables land on disk but are never declared, and the 0.1.5 right-Sidebar
-  deliverables UI shows nothing for a RigorQuant session.
+- `command-goal` **is** disabled at the host plane by the web-app bundle
+  (`packages/bundle/web-app/cordis.patch.yml:411-412` disables it; `:414-415`
+  disables `tool-goal`), so every preset must re-mount it. The shipped
+  `standard` preset does (`presets/standard/agent.cordis.yml:95-96`).
+  Without it there is no `/goal` slash command in a RigorQuant session, even
+  though the goal tools and the round driver are the framework's unattended
+  loop.
+- `present` is **not disabled anywhere** — because **no bundle mounts it at
+  all**. Only presets do: `presets/standard/agent.cordis.yml:255`,
+  `presets/ptc/agent.cordis.yml:275`, `presets/cordis/agent.cordis.yml:266`.
+  Neither `dsh-base` nor `dsh-web-app` names `dsh-tool-present` in its patch —
+  `dsh-base` lists it as a dependency only
+  (`packages/bundle/base/package.json:98`). So deliverables land on disk but
+  are never declared, and the 0.1.5 right-Sidebar deliverables UI shows nothing
+  for a RigorQuant session.
 
 Adding `present` also means one sentence in the deliverables skill: call
 `present` after writing the deliverable and before the final response.
@@ -593,9 +600,17 @@ the whole bundle entry fails instead of one card going dead.
 (`dsh/client.js:274-283`). While there, `package.json` `dsh.client.inject` lists
 `@deepseek-ai/dsh-client-runtime`, which no longer ships; the field is
 informational (`packages/util/package-manifest/src/types.ts:52-53`) and unknown
-names are skipped, but the list should name packages that exist
-(`api-remotes`, `api-session-controller`, `client-locale`, `ui-settings`,
-`ui-settings-plugins`).
+names are skipped, but the list should name packages that exist.
+
+**As implemented:** the bogus entry was replaced with
+`@deepseek-ai/dsh-client-ui-renderer` — the package that actually provides the
+`slots` service this card injects (`packages/client/ui-renderer/src/client/registry.ts:134`,
+`super(ctx, 'slots')`). The other five entries (`api-remotes`,
+`api-session-controller`, `client-locale`, `ui-settings`,
+`ui-settings-plugins`) already named real packages and were left alone, so the
+list is now entirely resolvable. `tests/test_client_bundle.py`'s
+`SERVICE_PROVIDERS['slots']` was corrected to match, which is what makes the
+edge list a checked claim rather than a comment.
 
 ### 4.9 MEDIUM — the root role is read from a field upstream now calls stale
 
@@ -875,3 +890,32 @@ cd /tmp/dh-src && git worktree add --detach /tmp/dh-a2 dsh-v0.1.5-alpha.2
    preset header, and update the tests and `docs/architecture.md` (§4.12).
 8. Then adopt: the right-Sidebar activity tab (§3.4), the native catalog and
    projections (§3.1/§3.2), and the preset-`roots` simplification (§3.6).
+
+---
+
+## 8. Independent audit
+
+The finished port was reviewed by **Claude Code 2.1.267** — a different agent
+runtime from the one that wrote it — read-only against commit `66a2ac5`, with
+instructions to *falsify* the "Status: implemented" claim rather than confirm
+it. It found four discrepancies and one staleness issue; all are resolved here.
+
+| Finding | Class | Disposition |
+|---|---|---|
+| §4.8 told the reader to make `dsh.client.inject` name packages that exist but never said what should replace the bogus `dsh-client-runtime`; the port substituted `@deepseek-ai/dsh-client-ui-renderer` (the package that actually provides `slots`), which the study did not record | doc gap | §4.8 now records the substitution with the harness citation (`ui-renderer/src/client/registry.ts:134`) and notes the matching test fix |
+| §4.2 promised "remove the `?? []` so a missing accessor fails loudly", but `dsh/activity.js`'s `ownEventsOf` still ended in `return []` — the silent-empty failure mode survived one layer down | code deviation | `ownEventsOf` now throws when a session exposes neither accessor. The router half (`dsh/index.js`) already failed loudly |
+| §4.4 asserted *"Both are disabled at the host plane by the web-app bundle"*; only `command-goal` is. `present` appears in **no** bundle patch at all, which the same paragraph also says — an internal contradiction | doc error | §4.4 rewritten: the two rows are missing for *different* reasons, with corrected citations for both |
+| The commit message grouped `docs/architecture.md` with the floor locations, but that file carried no floor string and Decision 20 still described the running harness as `0.1.0-rc.7` | overstated | Decision 20 now states the `≥ 0.1.5-alpha.2` floor and frames the `0.1.0-rc.7` line historically |
+| The baseline table named `0.1.5-alpha.2` as the running version; the install has since moved to `0.1.5-rc.1` | staleness | The table now separates "at study time" from "on disk now", citing §4.14 for why no verdict changes |
+
+Verified clean by the same audit: §4.1, 4.3, 4.5, 4.6, 4.7, 4.9, 4.10, 4.11 and
+four of §4.12's five floor locations; the seven-deny-list count (`send_message`
+in none, `interrupt_agent`/`list_agents` in all seven); both skill-file edits;
+the existence of the `command-goal` and `present` rows; the claim that no bundle
+mounts `dsh-tool-present`; and that `tests/router_probe.cjs` genuinely fails if
+`PERSONA_SECTION` is reverted to `deployment:persona` (verified by reading the
+assertion and its stub).
+
+> Line numbers quoted *inside* §4 refer to the pre-port tree the study was
+> written against; the fixes themselves are cited by content, and the audit
+> re-cited them against the post-port tree.

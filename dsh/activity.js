@@ -105,11 +105,15 @@ function isChildHeader(header) {
  *
  * `Session.events` was removed in 0.1.2-rc.1, so a `?.events ?? []` read is a
  * silently empty panel; `ownEvents()` is the current accessor and excludes the
- * fork-inherited prefix that `snapshotEvents()` still returns. */
+ * fork-inherited prefix that `snapshotEvents()` still returns.
+ *
+ * Neither accessor means this is not a Session this build can observe. THROW
+ * rather than return an empty array: the whole failure mode being fixed here
+ * was a removed API degrading into an empty panel with no diagnostic. */
 function ownEventsOf(session) {
   if (typeof session?.ownEvents === 'function') return session.ownEvents()
   if (typeof session?.snapshotEvents === 'function') return session.snapshotEvents()
-  return []
+  throw new Error('rq-activity: the session exposes neither ownEvents() nor snapshotEvents(); refusing to report an empty panel')
 }
 
 /** First text block of a message, for a feed snippet. */

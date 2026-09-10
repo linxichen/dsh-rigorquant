@@ -76,6 +76,21 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 - **`sessionTitle.get()` folded the whole log on every poll.** The folded title
   is now cached against the session cursor it was taken at, and pruned with the
   entry it belongs to.
+- **The monitor refuses to report an empty panel.** `ownEventsOf` threw away
+  the silent-empty failure mode one layer down: a session exposing neither
+  `ownEvents()` nor `snapshotEvents()` now raises instead of yielding `[]`. The
+  whole bug being fixed was a removed API degrading into an empty panel with no
+  diagnostic, so keeping a `return []` would have preserved it.
+
+### Verified
+- An independent read-only audit (Claude Code 2.1.267, a different agent
+  runtime) was asked to FALSIFY the port's "implemented" claim against commit
+  `66a2ac5`. It confirmed §4.1, 4.3, 4.5–4.7, 4.9–4.11, the seven-deny-list
+  count, both skill-file edits, the two new rows, and that
+  `tests/router_probe.cjs` really fails if `PERSONA_SECTION` is reverted; it
+  found three doc/claim deviations and one stale version note, all fixed in
+  `docs/upgrade-0.1.5.md` §8 (which records the findings and their
+  dispositions).
 - **A reasoning effort the exact route refuses no longer kills the turn.**
   The settings card's effort dropdown fell back to a generic
   `[off, high, max]` vocabulary whenever the catalog reported no effort

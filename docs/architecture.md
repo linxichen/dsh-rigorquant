@@ -382,13 +382,22 @@ own generator emitted a wrong table cell that went unaudited. Decision:
 
 Guarded by `tests/test_procedural_gates.py`.
 
-## Decision 20 — adopt the 0.1.1-rc.2 builtins; dual-version the browser half
+## Decision 20 — follow the harness surface across 0.1.1 → 0.1.5
 
-Studied deepseek-harness 0.1.1-rc.2 (the newest release; the running harness
-is 0.1.0-rc.7). The host half and preset are byte-compatible; the browser half
-hit the one breaking change: `@deepseek-ai/dsh-client-schema-form` was deleted
-in rc.2 and its helpers folded into the `settingsSchema` service
-(`rehydrate`/`validate`; path helpers unchanged). Decision:
+Originally studied against deepseek-harness 0.1.1-rc.2 (then the newest release;
+the running harness was 0.1.0-rc.7), where the host half and preset were
+byte-compatible and the browser half hit one breaking change:
+`@deepseek-ai/dsh-client-schema-form` was deleted in rc.2 and its helpers folded
+into the `settingsSchema` service (`rehydrate`/`validate`; path helpers
+unchanged).
+
+**Re-surveyed for 0.1.5** (`docs/upgrade-0.1.5.md`): the dual-version client is
+gone and the **required floor is now `DSH ≥ 0.1.5-alpha.2`**, enforced by
+`install.sh` and documented in both READMEs and the preset header. 0.1.3-alpha.2
+split the persona row's single `text` key into a required `prefix` plus a
+`suffix`, and a row whose config fails validation rejects the WHOLE preset
+mount; 0.1.2-rc.1 removed the child-scoped `report` tool; 0.1.5-alpha.2 is where
+the deliverables tool (`present`) and the right Sidebar land. Decision:
 
 - **Take the draft model from `settingsSchema` — only.** `dsh/client.js`
   resolves the draft model from `ctx.settingsSchema`
