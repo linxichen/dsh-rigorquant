@@ -6,8 +6,12 @@
 # of that profile. The full RigorQuant agent preset (persona + orchestration +
 # tools) installs separately with ./install.sh.
 #
-# `baseUrl` anchors at this file's location — the installed package root — so
-# the skill directory resolves inside the package wherever pnpm put it.
+# The skill directory is resolved through the PACKAGE, not through `baseUrl`.
+# A patch file's `!!js` runs against the boot root context, whose `baseUrl` is
+# the PROFILE directory (`dsh-app-boot`: `ctx.baseUrl = dirname(absoluteConfigPath)`),
+# not this file's package root — per-file base anchors are an `Include`
+# behaviour that only composition files get. `createRequire` therefore walks
+# the profile's `node_modules` to the installed package, wherever pnpm put it.
 #
 # `includeDefaultRoots: false` keeps THIS provider off the default roots; it
 # does not stop the default provider from serving them. A machine that also ran
@@ -25,7 +29,7 @@
         providerName: rigorquant
         includeDefaultRoots: false
         customSkillDirs:
-          - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('agent-presets/rigorquant/skills/', baseUrl))"
+          - !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl + 'package.json').resolve('dsh-rigorquant/package.json')), 'agent-presets', 'rigorquant', 'skills')"
 
     # Role-routed models (see docs/architecture.md, Decision 16). The plugin
     # serves the `rigorquant-models` settings namespace (Plugins settings tab

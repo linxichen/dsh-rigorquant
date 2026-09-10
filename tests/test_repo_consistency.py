@@ -82,8 +82,15 @@ def test_install_script_installs_everything_the_runtime_needs():
 
 
 def test_native_agent_options_floor_is_declared_and_enforced():
-    """The native reasoning field cannot be installed into an older DSH."""
-    floor = "0.1.2-alpha.1"
+    """The mount-time floor cannot be installed into an older DSH.
+
+    The binding constraint is no longer `agentOptions.reasoningEffort`
+    (0.1.2-alpha.1): 0.1.3-alpha.2 replaced the persona row's single `text` key
+    with a required `prefix`, and a row whose config fails rejects the WHOLE
+    preset mount. 0.1.5-alpha.2 is where the persona split, the
+    final-assistant-message delivery contract and the `present` row all hold.
+    """
+    floor = "0.1.5-alpha.2"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
     assert "version_at_least" in install
@@ -91,8 +98,26 @@ def test_native_agent_options_floor_is_declared_and_enforced():
         assert floor in path.read_text(), "%s omits the DSH floor" % path.name
 
 
+def test_preset_persona_row_uses_the_prefix_suffix_split():
+    """0.1.3-alpha.2 renamed the persona config; the old key is unmountable.
+
+    `dsh-persona`'s schema requires `prefix` and knows nothing of `text`, so a
+    preset still written with the single-text key fails validation and takes the
+    entire mount down (not just the persona) — and discovery's health check only
+    resolves module names, so the picker still shows it as healthy.
+    """
+    composition = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    assert "name: '@deepseek-ai/dsh-persona'" in composition
+    assert "    prefix: >-" in composition
+    assert "text: >-" not in composition
+    # The router resolves a child's role from the LIVE persona section, so its
+    # constant has to follow the rename.
+    router = (REPO / "dsh/index.js").read_text()
+    assert "const PERSONA_SECTION = 'deployment:persona-prefix'" in router
+
+
 def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
-    """A pre-0.1.2 CLI must not receive a preset using reasoningEffort."""
+    """A pre-0.1.5 CLI must not receive the preset at all."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_dsh = fake_bin / "dsh"
@@ -110,7 +135,7 @@ def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
         text=True,
     )
     assert result.returncode == 2
-    assert "requires dsh >= 0.1.2-alpha.1" in result.stderr
+    assert "requires dsh >= 0.1.5-alpha.2" in result.stderr
     assert not dsh_home.exists(), "the old runtime guard must run before copying"
 
 
@@ -121,7 +146,7 @@ def test_installer_accepts_the_minimum_dsh_version(tmp_path):
     fake_dsh = fake_bin / "dsh"
     fake_dsh.write_text(
         "#!/bin/sh\n"
-        "if [ \"$1\" = \"--version\" ]; then printf '0.1.2-alpha.1\\n'; fi\n"
+        "if [ \"$1\" = \"--version\" ]; then printf '0.1.5-alpha.2\\n'; fi\n"
     )
     fake_dsh.chmod(0o755)
     dsh_home = tmp_path / "dsh-home"

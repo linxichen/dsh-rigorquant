@@ -152,6 +152,14 @@ URL as the `href`); bare URLs with no anchor text fail the check.
 2. Writer emits the .tex files; no numerical value enters the paper unless it
    appears in one of those records.
 3. `python3 <skill-dir>/scripts/rq_check.py --study <study-root>` gates the result.
+4. After the gate passes, call the `present` tool on the deliverables
+   (`present(files: [...])`, up to 8 files per call) before the final response.
+   This is what makes them *declared* deliverables: the harness records a
+   durable `deliverables/presented` fact and the conversation renders them with
+   right-Sidebar preview, "open in default app", and reveal-in-file-manager.
+   Naming a path in prose does not do this. A RigorQuant session has `present`
+   because the preset mounts `@deepseek-ai/dsh-tool-present`; if the tool is
+   missing, the session is not on this preset.
 
 ## Audience consultation (post-research, one-time, per deliverable)
 

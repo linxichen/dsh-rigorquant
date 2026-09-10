@@ -29,7 +29,9 @@ PROBE = REPO / "tests/client_bundle_probe.cjs"
 # The exported `inject` is what gates fiber activation; this map is the reason
 # the package-name edge list below has the entries it has.
 SERVICE_PROVIDERS = {
-    "slots": "@deepseek-ai/dsh-client-runtime",
+    # `slots` is provided by ui-renderer's SlotRegistry. The old
+    # @deepseek-ai/dsh-client-runtime name does not exist in 0.1.5.
+    "slots": "@deepseek-ai/dsh-client-ui-renderer",
     "locale": "@deepseek-ai/dsh-client-locale",
     "remote": "@deepseek-ai/dsh-api-remotes",
     # Sub-namespaces are gated: Cordis throws without an explicit inject entry.
@@ -58,24 +60,6 @@ def verdict():
         pytest.skip("node is required to execute the client bundle")
     client = REPO / manifest()["exports"]["./client"]
     out = subprocess.run([node, str(PROBE), str(client), PLUGIN_ID],
-                         capture_output=True, text=True, check=True)
-    return json.loads(out.stdout)
-
-
-@pytest.fixture(scope="module")
-def verdict_rc2():
-    """The same bundle against a 0.1.1-rc.2 runtime surface.
-
-    In rc.2 the standalone draft-model package is deleted and the
-    `settingsSchema` service replaces it; the probe removes the package from
-    the module table and serves the service, so any residual legacy require
-    throws and fails the mount.
-    """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required to execute the client bundle")
-    client = REPO / manifest()["exports"]["./client"]
-    out = subprocess.run([node, str(PROBE), str(client), PLUGIN_ID, "rc2"],
                          capture_output=True, text=True, check=True)
     return json.loads(out.stdout)
 
@@ -212,29 +196,23 @@ def test_card_root_is_a_list_item(verdict):
 
 
 def test_card_uses_the_settings_draft_model(verdict):
-    """The card edits through the settings draft model (rc.7 surface).
+    """The card edits through the `settingsSchema` service — the only one left.
 
-    On pre-rc.2 harnesses that is the standalone
-    @deepseek-ai/dsh-client-schema-form module. Using it is what keeps this
-    card's override/reset semantics from drifting from the seam's.
+    The standalone @deepseek-ai/dsh-client-schema-form package was deleted
+    upstream (0.1.1-rc.2 folded its helpers into the service) and is absent from
+    the browser's frozen module table, so the probe refuses to answer it. The
+    card must resolve the service; a residual require would throw inside the
+    controller's construction and take the whole bundle entry down.
+
+    `required` records every specifier the bundle asked the module table for, so
+    the absence of the deleted name proves the fallback is gone; the mount and
+    draft assertions below prove the service path actually runs.
     """
-    assert "@deepseek-ai/dsh-client-schema-form" in verdict["required"]
-
-
-def test_card_mounts_on_rc2_settings_schema_service(verdict_rc2):
-    """The rc.2 blocker: the legacy draft-model package is deleted.
-
-    The card must resolve the settingsSchema service instead — the probe
-    removes the legacy package from the module table, so a residual require
-    would throw and fail the mount. Absence of the specifier from `required`
-    proves the bundle never touched the deleted module.
-    """
-    assert verdict_rc2["mode"] == "rc2"
-    assert "factoryError" not in verdict_rc2, verdict_rc2.get("factoryError")
-    assert "mountError" not in verdict_rc2, verdict_rc2.get("mountError")
-    assert verdict_rc2["mounted"]
-    assert verdict_rc2["cards"] == CARDS
-    assert "@deepseek-ai/dsh-client-schema-form" not in verdict_rc2["required"]
+    assert "@deepseek-ai/dsh-client-schema-form" not in verdict["required"], verdict["required"]
+    source = (REPO / manifest()["exports"]["./client"]).read_text()
+    # The name may appear in prose; a REQUIRE of it is what would throw.
+    assert "require('@deepseek-ai/dsh-client-schema-form')" not in source
+    assert "this.ctx.get('settingsSchema')" in source
 
 
 def test_staging_records_an_override_and_discard_drops_it(verdict):

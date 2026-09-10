@@ -46,8 +46,12 @@ const inject = ['settings']
 const NS = 'rigorquant-models'
 /** Persona tag the preset stamps into every role persona. */
 const TAG = /\[\[rq:role=([a-z-]+)\]\]/
-/** The persona slot's reserved section name (dsh-system-prompt contract). */
-const PERSONA_SECTION = 'deployment:persona'
+/** The persona slot's reserved section name (dsh-system-prompt contract).
+ *
+ * 0.1.3-alpha.2 split the single persona section into a prefix and a suffix
+ * and deleted `deployment:persona`; the per-child persona `dsh-subagent`
+ * installs registers under this same name too. */
+const PERSONA_SECTION = 'deployment:persona-prefix'
 /** Every routable role, in card order. */
 export const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 /** Tool row → role, for the repo-consistency test and the docs to stay honest. */
@@ -131,6 +135,24 @@ function routeFatal(failure) {
 function tagRole(text) {
   const match = typeof text === 'string' ? TAG.exec(text) : null
   return match !== null && ROLES.includes(match[1]) ? match[1] : null
+}
+
+/** Whether a session header describes a subagent child.
+ *
+ * `origin: 'subagent'` is the durable discriminator the harness itself uses
+ * (`hasApiSessionSubagentOwner`), and the session-header validator rejects any
+ * other value. `parentSession` is deliberately NOT consulted: it is fork
+ * LINEAGE, so a forked top-level session carries it while staying
+ * root-eligible. */
+function isChildHeader(header) {
+  return header?.origin === 'subagent'
+}
+
+/** The session's OWN event log: `ownEvents()` (0.1.5+) excludes the
+ * fork-inherited prefix that `snapshotEvents()` includes, so an ancestor's
+ * descriptor can never be adopted as this child's role. */
+function ownEventsOf(session) {
+  return typeof session.ownEvents === 'function' ? session.ownEvents() : session.snapshotEvents()
 }
 
 /** Apply a live override/fallback while clearing an inherited effort. */
@@ -302,8 +324,10 @@ function apply(ctx, config) {
     if (roles.has(id)) return roles.get(id)
     const header = agent.session.header
     // The establishing provider appends exactly one descriptor; it is early,
-    // but a continuable child's lineage seed can push it past the head.
-    const events = agent.session.snapshotEvents()
+    // but a continuable child's lineage seed can push it past the head. The
+    // scan runs over the session's OWN log, so a fork-inherited ancestor
+    // descriptor cannot be adopted as this child's role.
+    const events = ownEventsOf(agent.session)
     for (let i = 0; i < Math.min(events.length, 64); i += 1) {
       const event = events[i]
       if (event.type === 'subagent/descriptor') {
@@ -316,12 +340,16 @@ function apply(ctx, config) {
       }
     }
     // A child (descriptor without a tag, or none yet) is never the root role.
-    if (header.parentSession !== undefined) {
+    if (isChildHeader(header)) {
       const role = await probePersonaRole(agent)
       roles.set(id, role)
       return role
     }
-    const preset = header.agentPreset ?? ctx.get('agentPresets')?.composedPreset(agent.ctx)
+    // The live composition is authoritative. `header.agentPreset` records the
+    // preset the session STARTED with and keeps that value through a picker
+    // switch — dsh-agent-presets: "Reconstruction reads the `agentPreset`
+    // Session projection, never the header alone" — so it is only a fallback.
+    const preset = ctx.get('agentPresets')?.composedPreset(agent.ctx) ?? header.agentPreset
     const role = preset === config.presetId ? 'root' : null
     roles.set(id, role)
     return role

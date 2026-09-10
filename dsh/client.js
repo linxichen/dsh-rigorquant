@@ -45,11 +45,11 @@ function React() {
 
 // The settings draft model: the same helpers the Settings surface itself edits
 // drafts with, so this card's override/reset semantics cannot drift from the
-// seam's. Resolved per-controller for dual-version compatibility: DSH
-// >= 0.1.1-rc.2 folds these helpers into the `settingsSchema` service
-// (@deepseek-ai/dsh-client-ui-settings, renames rehydrateSchema->rehydrate and
-// validateDraft->validate, and deletes the standalone package); DSH
-// <= 0.1.0-rc.8 ships them as @deepseek-ai/dsh-client-schema-form. See
+// seam's. They live on the `settingsSchema` service
+// (@deepseek-ai/dsh-client-ui-settings, `rehydrate`/`validate` plus the four
+// path helpers). The standalone `@deepseek-ai/dsh-client-schema-form` package
+// this card once fell back to was DELETED upstream and is no longer in the
+// client module table, so there is nothing to fall back to. See
 // RqModelsCardController#schemaForm below.
 
 /**
@@ -272,28 +272,29 @@ class RqModelsCardController {
   }
 
   /**
-   * The settings draft model, dual-version:
-   * - DSH >= 0.1.1-rc.2 folds it into the `settingsSchema` service
-   *   (@deepseek-ai/dsh-client-ui-settings), renaming rehydrateSchema->rehydrate
-   *   and validateDraft->validate and DELETING the standalone package;
-   * - DSH <= 0.1.0-rc.8 ships it as @deepseek-ai/dsh-client-schema-form.
-   * Prefer the service (optional read; absent on older harnesses); fall back
-   * to the legacy module so one build runs on both. The path helpers keep
-   * their names on both surfaces.
+   * The settings draft model, read from the `settingsSchema` service
+   * (@deepseek-ai/dsh-client-ui-settings). The service is not optional in
+   * practice: it is provided by the same plugin that provides `settingsScope`,
+   * which this card injects, and the first statement of that plugin's apply
+   * runs before the scope is bound. The legacy
+   * `@deepseek-ai/dsh-client-schema-form` module is gone from the harness AND
+   * from the browser's frozen module table, so a require on it would throw
+   * inside this controller's construction and take the whole bundle entry
+   * down; failing loudly here is the honest alternative.
    */
   schemaForm() {
     const service = this.ctx.get('settingsSchema')
-    if (service !== undefined) {
-      return {
-        rehydrateSchema: (serialized) => service.rehydrate(serialized),
-        validateDraft: (schema, draft) => service.validate(schema, draft),
-        getPath: (value, path) => service.getPath(value, path),
-        hasPath: (value, path) => service.hasPath(value, path),
-        setPath: (root, path, value) => service.setPath(root, path, value),
-        deletePath: (root, path) => service.deletePath(root, path),
-      }
+    if (service === undefined) {
+      throw new Error('rq-model-router: the settingsSchema service is unavailable on this harness; the model-routing card cannot validate drafts')
     }
-    return require('@deepseek-ai/dsh-client-schema-form')
+    return {
+      rehydrateSchema: (serialized) => service.rehydrate(serialized),
+      validateDraft: (schema, draft) => service.validate(schema, draft),
+      getPath: (value, path) => service.getPath(value, path),
+      hasPath: (value, path) => service.hasPath(value, path),
+      setPath: (root, path, value) => service.setPath(root, path, value),
+      deletePath: (root, path) => service.deletePath(root, path),
+    }
   }
 
   async load() {

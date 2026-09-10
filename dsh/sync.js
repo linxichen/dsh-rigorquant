@@ -1,13 +1,22 @@
 // RigorQuant self-installing distribution — host half (boot sync).
 //
-// The bundle-patch plane cannot express an agent preset: the harness's own
-// profile overlay pins the `agent-presets` row's roots to the shipped preset
-// root, and discovery is a filesystem scan of `$DSH_HOME/.agent-presets` —
-// nothing a `cordis.patch.yml` row config can reach (Decision 22). It cannot
-// host the compute lane either: a uv venv is derived state with absolute
-// paths, and node_modules is volatile (pnpm update/remove would delete a
-// provisioned lane mid-study) and version-pathed (recorded `env_lane` paths
-// in existing studies' study.json would churn).
+// The harness DOES accept `agent-presets` roots from a patch row (its Config
+// takes `roots: [{ path, trust }]`), so a preset could in principle be served
+// straight out of the installed package instead of being copied. This row
+// copies it anyway, for three reasons that outrank the saved copy:
+//
+//   * the preset is meant to be EDITED IN PLACE — the escalation lane flips a
+//     row in the INSTALLED composition, and configured roots rank ABOVE the
+//     user root, so a package-served root would shadow `$DSH_HOME/.agent-presets`
+//     and silently ignore those edits;
+//   * node_modules is volatile (a pnpm update/remove deletes the preset
+//     mid-study), and version-pathed;
+//   * the harness pins nothing here, but discovery is still a filesystem scan,
+//     so what `install.sh` and this row land is what sessions actually read.
+//
+// It cannot host the compute lane either: a uv venv is derived state with
+// absolute paths, and node_modules is volatile and version-pathed (recorded
+// `env_lane` paths in existing studies' study.json would churn).
 //
 // So this row does what install.sh does — lands files — from inside the host
 // process, once per profile boot:

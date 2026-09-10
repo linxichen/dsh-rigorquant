@@ -22,10 +22,12 @@ Three invariants are asserted, in descending order of importance:
    land on the feature branch; unlanded roles are covered only by the
    universal invariants.
 3. UNIVERSAL CHILD SCOPE — every delegation child, landed or not: no
-   delegation tools, and report + bash visible (report is the delivery
-   channel; bash is C1's kept capability for the blind lane and the compute
-   lane for everyone else). The orchestrator-owned set joins this floor when
-   the last persona's budget lands.
+   delegation tools, `send_message` + bash visible (send_message is the child's
+   push channel to its direct parent — the one-way `report` tool it replaced
+   was removed in 0.1.2-rc.1, and a child's normal delivery is its final
+   assistant message; bash is C1's kept capability for the blind lane and the
+   compute lane for everyone else). The orchestrator-owned set joins this floor
+   when the last persona's budget lands.
 
 Parser caveat: like test_blind_deny_list.py this module reads the composition
 by structural convention (see conftest), not with a yaml parser — the test
@@ -37,14 +39,13 @@ from conftest import (CORDIS, DELEGATION, ORCHESTRATOR_TOOLS, composition_rows,
 
 # Tools mounted for EVERY deployment that runs this preset: the preset's own
 # rows plus the dsh-base host composition (fs, jobs, web, skill registry,
-# goals, todo, ask-user, plan mode, subagent control, subagent report).
-# Deliberately NOT here: pwsh (win32-gated), structured_output (child-scoped,
-# structured workflow runs only), and everything plugin-optional.
+# goals, todo, ask-user, plan mode, subagent control, and the preset's own
+# `present` row). Deliberately NOT here: pwsh (win32-gated), structured_output
+# (child-scoped, structured workflow runs only), and everything
+# plugin-optional. `report` is absent on purpose — the tool no longer exists.
 GUARANTEED = frozenset({
     # shell + filesystem (preset tool-bash/tool-fs/tool-fs-search rows)
     "bash", "read", "write", "edit", "glob", "grep",
-    # delivery (host tool-subagent-report)
-    "report",
     # retrieval + procedure (preset tool-web row with fetch: true, tool-skill)
     "web_search", "web_fetch", "skill",
     # background compute (preset tool-jobs row; bash run_in_background needs them)
@@ -162,10 +163,10 @@ def test_every_delegation_child_is_child_scoped():
     """Universal floor for every spawn child, landed or not.
 
     Delegation must be catalog-invisible everywhere (C2 is not depth-only),
-    and every child keeps its delivery channel (report) and its compute lane
-    (bash, C1). The orchestrator-owned set is asserted per role as each
-    budget lands; it becomes part of this universal floor when the last
-    persona lands.
+    and every child keeps its delivery channels (its final assistant message,
+    plus `send_message` to its direct parent) and its compute lane (bash, C1).
+    The orchestrator-owned set is asserted per role as each budget lands; it
+    becomes part of this universal floor when the last persona lands.
     """
     text = _composition()
     leaked = {}
@@ -173,7 +174,9 @@ def test_every_delegation_child_is_child_scoped():
         forbidden = DELEGATION & visible
         if forbidden:
             leaked[row_id] = sorted(forbidden)
-        assert "report" in visible, "%s lost the report channel" % row_id
+        assert "send_message" in visible, (
+            "%s lost `send_message`: a child's only push channel to its parent "
+            "(the one-way `report` tool was removed in 0.1.2-rc.1)" % row_id)
         assert "bash" in visible, "%s lost bash (C1 compute lane)" % row_id
     assert not leaked, (
         "spawn child(ren) still see delegation tools: %r" % leaked)

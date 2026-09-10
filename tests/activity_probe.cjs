@@ -44,6 +44,15 @@ async function main() {
       if (name === 'sessions') return { get: (id) => ({ id }) }
       if (name === 'sessionTitle') return { get: () => ({ title: 'Boundary cases of the VaR estimator' }) }
       if (name === 'agentPresets') return { composedPreset: () => undefined }
+      if (name === 'sessionProjections') {
+        // One session's preset is readable ONLY from the projection, so a
+        // regression to the stale creation header cannot pass unnoticed.
+        return {
+          stateOf: (session, key) => (
+            key === 'agentPreset' && session.id === 'fork-1' ? 'rigorquant' : undefined
+          ),
+        }
+      }
       return undefined
     },
   }
@@ -55,14 +64,17 @@ async function main() {
   // ---- the scenario ------------------------------------------------------
   // Cold start: the lab and one explorer are already live when the plugin
   // mounts (seedAgents), then more events arrive while the floater polls.
+  // The durable creation header is STALE ('standard') and the real switch lives
+  // in the log — exactly the shape of a RigorQuant session resumed after a
+  // restart. `session.events` no longer exists, so the scan reads ownEvents().
   const rootAgent = {
     id: 'lab-1',
     ctx: {},
     status: 'running',
     session: {
       id: 'lab-1',
-      header: { agentPreset: 'rigorquant', parentSession: undefined },
-      events: [],
+      header: { agentPreset: 'standard' },
+      ownEvents: () => [{ type: 'agent-preset/selected', data: { agentPreset: 'rigorquant' } }],
     },
   }
   const explorerAgent = {
@@ -71,8 +83,8 @@ async function main() {
     status: 'running',
     session: {
       id: 'child-1',
-      header: { agentPreset: 'rigorquant', parentSession: 'lab-1' },
-      events: [{
+      header: { agentPreset: 'rigorquant', parentSession: 'lab-1', origin: 'subagent' },
+      ownEvents: () => [{
         type: 'subagent/descriptor',
         data: { persona: 'you are the explorer [[rq:role=explorer]]' },
       }],
@@ -85,8 +97,20 @@ async function main() {
     ctx: {},
     session: {
       id: 'lab-2',
-      header: { agentPreset: 'standard', parentSession: undefined },
-      events: [],
+      header: { agentPreset: 'standard' },
+      ownEvents: () => [],
+    },
+  }
+  // A FORKED top-level session: `parentSession` names its lineage but `origin`
+  // is absent, so it is NOT a child and must still be detected as a lab.
+  // Its preset is readable only from the `agentPreset` projection.
+  const forkedLab = {
+    id: 'fork-1',
+    ctx: {},
+    session: {
+      id: 'fork-1',
+      header: { parentSession: 'upstream-session' },
+      ownEvents: () => [],
     },
   }
   // The one-shot subagent (opaque label, no persona) — tests the queue role
@@ -97,11 +121,11 @@ async function main() {
     ctx: {},
     session: {
       id: 'child-shot-1',
-      header: { agentPreset: 'rigorquant', parentSession: 'lab-2' },
-      events: [{ type: 'subagent/descriptor', data: { label: 'Draft paper audience spec' } }],
+      header: { agentPreset: 'rigorquant', parentSession: 'lab-2', origin: 'subagent' },
+      ownEvents: () => [{ type: 'subagent/descriptor', data: { label: 'Draft paper audience spec' } }],
     },
   }
-  const seedAgents = [rootAgent, explorerAgent, laterLabAgent]
+  const seedAgents = [rootAgent, explorerAgent, laterLabAgent, forkedLab]
 
   let mountError = null
   try {
@@ -138,8 +162,8 @@ async function main() {
       ctx: {},
       session: {
         id: 'child-shot-2',
-        header: { agentPreset: 'rigorquant', parentSession: 'lab-2' },
-        events: [{ type: 'subagent/descriptor', data: { label: 'GT-A symbolic derivation' } }],
+        header: { agentPreset: 'rigorquant', parentSession: 'lab-2', origin: 'subagent' },
+        ownEvents: () => [{ type: 'subagent/descriptor', data: { label: 'GT-A symbolic derivation' } }],
       },
     }
     emit('agent/created', { agent: shot2 })

@@ -132,11 +132,25 @@ async function main() {
       id,
       session: {
         id,
-        header: { parentSession: 'root-session', agentPreset: NS },
-        // DSH 0.1.2 sessions expose their event log through snapshotEvents().
+        // `origin: 'subagent'` is what makes this a child: `parentSession` is
+        // fork lineage and cannot distinguish a forked top-level session.
+        header: { parentSession: 'root-session', agentPreset: NS, origin: 'subagent' },
+        // The current accessor: the session's OWN log, without a fork-inherited
+        // prefix. `snapshotEvents()` remains as the pre-0.1.5 fallback.
+        ownEvents: () => events,
         snapshotEvents: () => events,
       },
-      ctx: { get: () => undefined },
+      ctx: {
+        get: (name) => (name === 'systemPrompt'
+          ? {
+            // The section name 0.1.3-alpha.2 renamed to; a stale
+            // 'deployment:persona' lookup would return null here.
+            assemble: async () => ({
+              sections: [{ name: 'deployment:persona-prefix', text: `role [[rq:role=${role}]]` }],
+            }),
+          }
+          : undefined),
+      },
     }
   }
 
@@ -148,6 +162,17 @@ async function main() {
 
   const doublechecker = makeAgent('doublechecker-1', 'doublechecker')
   const explorer = makeAgent('explorer-1', 'explorer')
+  // A FORKED top-level session: lineage without `origin`. It must resolve the
+  // ROOT role from the live composition / header, never the child probe.
+  const forked = {
+    id: 'fork-1',
+    session: {
+      id: 'fork-1',
+      header: { parentSession: 'upstream-session', agentPreset: 'rigorquant' },
+      ownEvents: () => [],
+    },
+    ctx: { get: () => undefined },
+  }
   const nativeRoute = clone(DEFAULT_PRIMARY)
 
   // No user primary: the route already resolved by native agentOptions must
@@ -165,6 +190,35 @@ async function main() {
     inheritedRoute,
     'inherited explorer route',
   )
+  // The root role resolves through the preset id, so an explicit root primary
+  // is applied — proving the forked top-level session was NOT misread as a
+  // child (which would have returned the route untouched).
+  user = { rootPrimary: { provider: 'root-provider', model: 'root-model' } }
+  await emit('settings/document-updated', NS, 99)
+  equal(
+    await waterfall('agent/request', { agent: forked }, inheritedRoute),
+    { provider: 'root-provider', model: 'root-model' },
+    'forked top-level session routes as root',
+  )
+  user = {}
+  await emit('settings/document-updated', NS, 98)
+
+  // A ONE-SHOT child: its own log carries no descriptor, so the role comes
+  // from the LIVE persona section — the path the 0.1.3-alpha.2 rename broke
+  // (a stale 'deployment:persona' lookup returns null and the child silently
+  // loses its routing).
+  const oneShot = makeAgent('oneshot-1', 'doublechecker')
+  oneShot.session.ownEvents = () => []
+  oneShot.session.snapshotEvents = () => []
+  user = { doublecheckerPrimary: { provider: 'oneshot-provider', model: 'oneshot-model' } }
+  await emit('settings/document-updated', NS, 3)
+  equal(
+    await waterfall('agent/request', { agent: oneShot }, nativeRoute),
+    { provider: 'oneshot-provider', model: 'oneshot-model' },
+    'one-shot role resolved from the live persona section',
+  )
+  user = {}
+  await emit('settings/document-updated', NS, 4)
 
   // A raw user primary is an intentional override. Omitting effort clears the
   // inherited value, matching the native model-selection contract.

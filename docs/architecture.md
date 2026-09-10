@@ -390,18 +390,34 @@ hit the one breaking change: `@deepseek-ai/dsh-client-schema-form` was deleted
 in rc.2 and its helpers folded into the `settingsSchema` service
 (`rehydrate`/`validate`; path helpers unchanged). Decision:
 
-- **Dual-version the client.** `dsh/client.js` resolves the draft model from
-  `ctx.settingsSchema` when present (rc.2+) and falls back to the legacy
-  module on older harnesses, so one bundle runs on both. The bundle probe
-  gains an `rc2` mode that removes the legacy module from the table and serves
-  the service — a residual require would throw and fail the mount
-  (`tests/client_bundle_probe.cjs`, `test_card_mounts_on_rc2_settings_schema_service`).
-- **Adopt the child `report` channel.** Continuable in-process children carry
-  a child-scoped `report` tool (host-mounted, present since rc.7; rc.2 renamed
-  the delivery mode `wakeup`→`next-step`). RigorQuant's L2 report-first
-  delegation now instructs every role to deliver its verdict through `report`
-  — the verdict is pushed to the orchestrator and wakes it, replacing
-  wait-for-report-file loops. Works on the current harness, no upgrade needed.
+- **Take the draft model from `settingsSchema` — only.** `dsh/client.js`
+  resolves the draft model from `ctx.settingsSchema`
+  (@deepseek-ai/dsh-client-ui-settings). The legacy
+  `@deepseek-ai/dsh-client-schema-form` fallback was removed in the 0.1.5 port:
+  that package is gone from the harness and from the browser's frozen module
+  table, so the `require` could only ever throw inside the controller's
+  construction and take the whole bundle entry down. The probe's module table
+  refuses to answer the deleted name rather than providing it, so a residual
+  require fails the mount (`tests/client_bundle_probe.cjs`,
+  `test_card_uses_the_settings_draft_model`).
+- **Deliver verdicts as the final assistant message.** Through DSH 0.1.1 the
+  L2 contract was the child-scoped `report` tool; 0.1.2-rc.1 removed it, and a
+  continuable child's **final assistant message** is now what the runtime hands
+  to the agent that started it (and what wakes it). Every role persona and the
+  protocol/SKILL documents say exactly that, and the seven child `toolFilter`
+  deny lists no longer name `send_message` — a depth-1 child may message its
+  direct parent (`interrupt_agent`/`list_agents` stay denied). See
+  `docs/upgrade-0.1.5.md` §4.3.
+- **One persona section, split.** 0.1.3-alpha.2 replaced the single
+  `deployment:persona` section with `deployment:persona-prefix` and
+  `deployment:persona-suffix`, and the `dsh-persona` row now takes
+  `prefix` (required) plus `suffix`. The router's `PERSONA_SECTION` constant
+  follows the rename; the preset's identity prose is the prefix and the
+  working-directory sentence is the suffix.
+- **`present` is a preset row.** No bundle mounts
+  `@deepseek-ai/dsh-tool-present`; every preset that wants model-declared
+  deliverables carries the row. RigorQuant now does, which is what the
+  deliverables skill's closing `present` call depends on.
 - **Parallel `web_search`.** rc.8 added a `queries` array (default 4, merged);
   the literature lane batches independent queries.
 - **Named external-agent bundles.** Claude Code / Codex are installable as

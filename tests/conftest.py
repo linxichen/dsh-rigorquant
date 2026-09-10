@@ -55,8 +55,15 @@ DELEGATION = BLIND_TOOLS - {"web_search", "web_fetch", "skill"}
 # shared composition, so each role's deny list must name them explicitly.
 # (Workflow/ralph are absent: their rows are disabled outright — see
 # BLIND_TOOLS above.)
+#
+# `send_message` is deliberately NOT here. The harness made it bidirectional
+# (0.1.2-rc.1 replaced the one-way `report` tool): a resident continuable child
+# may message its DIRECT PARENT, which is the child's only push channel now
+# that `report` no longer exists. A depth-1 child still cannot reach siblings
+# or grandchildren, so keeping it costs no authority; `interrupt_agent` and
+# `list_agents` (which address CHILDREN) stay orchestrator-only.
 ORCHESTRATOR_TOOLS = {
-    "send_message", "interrupt_agent", "list_agents",   # child-control
+    "interrupt_agent", "list_agents",                   # child-control: children have no children
     "create_goal", "update_goal", "get_goal",           # Decision 10: one task-level goal
     "todo_write",                                       # Decision 10
     "ask_user_question",                                # unattended contract

@@ -79,15 +79,18 @@ JSON without ever writing the reports, queued messages produced stale
 re-audits of dead documents, and orchestrator-produced numbers went
 unaudited.
 
-- **Report-first delegation (L2).** The adversarial verdict is structured
+- **Verdict-first delegation (L2).** The adversarial verdict is structured
   data; the prose report is archival. Every audit/certification brief states
   the deliverable as *"the report, ending with `VERDICT: PASS` or
-  `VERDICT: NEEDS-EDITS`"*, and children deliver that verdict through the
-  harness `report` tool before finishing (continuable in-process children get
-  it; the delivered report wakes the orchestrator). The orchestrator treats a
-  settled run without a verdict line — reported or written — as a failed run:
-  read the results JSON once, record the verdict it establishes, and do not
-  re-dispatch for prose. The orchestrator may transcribe an independent
+  `VERDICT: NEEDS-EDITS`"*, and a child delivers that verdict as the **final
+  assistant message of its turn**: the runtime hands that message to the agent
+  that started it, so it wakes the orchestrator. (The `report` tool this
+  procedure used through DSH 0.1.1 is gone; a child may additionally use
+  `send_message` for an interim finding or a blocking question when the brief
+  gave it the orchestrator's own agent id.) The orchestrator treats a settled
+  run without a verdict line — in that final message or written — as a failed
+  run: read the results JSON once, record the verdict it establishes, and do
+  not re-dispatch for prose. The orchestrator may transcribe an independent
   agent's structured verdict into the report file; transcription is not
   certification — the producer≠checker constraint is about who *judges*, not
   who *files*.

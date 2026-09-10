@@ -72,7 +72,7 @@ def test_snapshot_reports_the_lab_and_live_roles(probe):
     """
     labs = probe["snapshot"]["labs"]
     assert probe["snapshotCode"] == 200
-    assert len(labs) == 2
+    assert len(labs) == 3
     lab = labs[0]
     assert lab["id"] == "lab-1"
     assert lab["title"] == "Boundary cases of the VaR estimator"
@@ -91,6 +91,31 @@ def test_a_session_switching_to_rigorquant_is_promoted_to_captain(probe):
     promoted = next(lab for lab in labs if lab["id"] == "lab-2")
     assert promoted["captain"]["label"] == "Orchestrator"
     assert promoted["summary"] == {"total": 3, "working": 2, "idle": 1}
+
+
+def test_a_forked_top_level_session_is_still_a_lab(probe):
+    """`parentSession` is fork LINEAGE, not "this is a child".
+
+    A forked top-level session carries `parentSession` and no `origin`; treating
+    the lineage field as the child discriminator demoted it out of lab
+    detection, so its panel silently vanished. `origin: 'subagent'` is the
+    durable discriminator the harness itself uses.
+    """
+    labs = probe["snapshot"]["labs"]
+    forked = next(lab for lab in labs if lab["id"] == "fork-1")
+    assert forked["captain"]["label"] == "Orchestrator"
+    assert forked["captain"]["role"] == "root"
+
+
+def test_a_lab_is_found_through_the_agent_preset_projection(probe):
+    """`Session.events` is gone; the preset must come from a live seam.
+
+    fork-1 carries no `agentPreset` in its header at all — the probe's
+    `agentPreset` projection is the only source — so a monitor that still
+    scanned the removed `session.events` would report no lab here.
+    """
+    labs = probe["snapshot"]["labs"]
+    assert any(lab["id"] == "fork-1" for lab in labs)
 
 
 def test_a_oneshot_subagent_gets_its_role_and_status_from_the_parents_tool_call(probe):

@@ -15,7 +15,7 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="${DSH_PROFILE:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
-MIN_DSH_VERSION="0.1.2-alpha.1"
+MIN_DSH_VERSION="0.1.5-alpha.2"
 
 usage() {
   cat <<EOF
@@ -104,9 +104,14 @@ require_dsh_version() {
   fi
 }
 
-# The native `agentOptions.reasoningEffort` field is in the full preset, not
-# in --skill-only. Fail before copying anything when an installed CLI is too
-# old; a missing CLI keeps the historical warning and can be installed later.
+# The full preset is only mountable on the harness it was written against:
+# the persona row uses the `prefix`/`suffix` split (0.1.3-alpha.2 replaced the
+# single `text` key, and a row whose config fails rejects the WHOLE preset
+# mount), the child-delivery contract is the final assistant message
+# (`report` was removed in 0.1.2-rc.1), and the deliverables flow needs the
+# `present` tool (0.1.5). Fail before copying anything when the installed CLI
+# is older; a missing CLI keeps the historical warning and can be installed
+# later.
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
   require_dsh_version
 fi

@@ -6,19 +6,24 @@
 # publish a service sit only inside an `isolate` group; host-plane services
 # (jobs, goals, skills registry, subagents registry, web, token meter) are
 # consumed from here, never re-registered. The fixed-tier child rows use
-# `agentOptions.reasoningEffort`, which requires DSH >= 0.1.2-alpha.1.
+# `agentOptions.reasoningEffort` (DSH >= 0.1.2-alpha.1) and the persona row
+# uses the `prefix`/`suffix` split (DSH >= 0.1.3-alpha.2); together with the
+# `present` tool this file requires DSH >= 0.1.5-alpha.2.
 
 # ── identity ────────────────────────────────────────────────
 
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: >-
+    # DSH >= 0.1.3-alpha.2 splits the persona into a required `prefix`
+    # (rendered before first-party guidance) and an optional `suffix`
+    # (rendered after it). The single `text` key this preset used through
+    # 0.1.2 no longer exists and its absence rejects the whole mount.
+    prefix: >-
       You are RigorQuant, the root orchestrator of an unattended mathematical
       research framework for empirical and computational work: economics,
       finance, portfolio construction and optimization, simulation, and
-      computational econ/finance. You are powered by the {{model}} model; your
-      working directory is {{cwd}}.
+      computational econ/finance. You are powered by the {{model}} model.
 
       Your mission: carry a hard quantitative problem from statement to a method
       whose mathematical validity is established on simplified/special cases
@@ -56,6 +61,7 @@
       When a rigorquant task begins, load the `rigorquant` skill and follow
       its operating procedure (workspace layout, registry schema, tolerances,
       escalation triggers, anti-patterns, lifecycle).
+    suffix: Your working directory is {{cwd}}.
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
@@ -103,6 +109,12 @@
   name: '@deepseek-ai/dsh-tool-skill'
 
 # ── goals ───────────────────────────────────────────────────
+
+# The human-facing `/goal` command. The web-app bundle disables it at the host
+# plane, so every preset must re-mount it; without this row an unattended run
+# has no way to arm the goal whose round driver is the framework's loop.
+- id: command-goal
+  name: '@deepseek-ai/dsh-command-goal'
 
 - id: tool-goal
   name: '@deepseek-ai/dsh-tool-goal'
@@ -207,16 +219,20 @@
           track is OPEN — known results and libraries are allowed. Reject status
           reports and vague optimism. You cannot delegate further.
 
-          Deliver your findings with the `report` tool before you finish — one
-          self-contained call with the concrete result; the agent that started
-          you receives only what you report.
+          Deliver your findings as your final assistant message.
+          The runtime hands that message to the agent that started you, so make
+          it self-contained. If that agent gave you its own agent id,
+          `send_message` carries an interim finding or a blocking question to
+          it; without an id, finish the turn instead.
           Harness model-routing tag, internal, ignore it: [[rq:role=explorer]]
         # Explorer tool budget: the persona is the whole protocol, and the
         # method track is OPEN, so web_search/web_fetch and `skill` stay (the
         # rigorquant skill carries the working procedure). Denied: every
         # delegation tool (C2 — depth already blocks spawn at depth 1; the deny
         # also removes the schemas), child-control tools (a depth-1 child has
-        # no children), the orchestrator-owned task state (goal trio +
+        # no children — so `interrupt_agent` and `list_agents` are denied — but
+        # `send_message` is deliberately KEPT: a child must be able to reach the
+        # agent that started it), the orchestrator-owned task state (goal trio +
         # todo_write; Decision 10: one task-level goal, root-owned),
         # ask_user_question (children run unattended; questions route through
         # the orchestrator), and plan mode. The orchestration spawners
@@ -228,7 +244,7 @@
         # deployment-optional noise (ssh_*/import_*/image tools) is trimmed by
         # the barebone assembly filter, never here.
         toolFilter:
-          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-offgrid
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -283,9 +299,11 @@
           to fetch a known result (its find/search operations are off-limits
           to you); say which checks you ran.
           You cannot delegate further.
-          Deliver your findings with the `report` tool before you finish — one
-          self-contained call with the concrete result; the agent that started
-          you receives only what you report.
+          Deliver your findings as your final assistant message.
+          The runtime hands that message to the agent that started you, so make
+          it self-contained. If that agent gave you its own agent id,
+          `send_message` carries an interim finding or a blocking question to
+          it; without an id, finish the turn instead.
           Harness model-routing tag, internal, ignore it: [[rq:role=offgrid]]
         # OffGridThinker tool budget. Its own delegation row — the role is not
         # an explorer variant: isolation is the identity, so the tool carries
@@ -296,9 +314,9 @@
         # standard: child-control tools, orchestrator-owned task state (goal
         # trio + todo_write, Decision 10), ask_user_question (unattended
         # contract), plan mode. Kept: bash + fs six (own scratch directory,
-        # seed recording), report (delivery), job trio.
+        # seed recording), job trio.
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, skill, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-double-checker
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -353,20 +371,23 @@
           you need, report that gap as part of your result instead of reaching
           for the network.
           You cannot delegate further.
-          Deliver your derivation with the `report` tool before you finish — one
-          self-contained call with the exact result; the agent that started you
-          receives only what you report.
+          Deliver your derivation as your final assistant message.
+          The runtime hands that message to the agent that started you, so make
+          it self-contained. If that agent gave you its own agent id,
+          `send_message` carries an interim finding or a blocking question to
+          it; without an id, finish the turn instead.
           Harness model-routing tag, internal, ignore it: [[rq:role=doublechecker]]
         # DoubleChecker tool budget: C1/C2 already deny web, `skill`, and
         # delegation outright (the blind lane). This adds the child-scope
         # standard set: child-control tools (a depth-1 DoubleChecker has no
-        # children), the orchestrator-owned task state (goal trio + todo_write,
+        # children; `send_message` stays so it can reach its parent), the
+        # orchestrator-owned task state (goal trio + todo_write,
         # Decision 10), ask_user_question (unattended contract), and plan
         # mode. Kept: bash + fs six (scratch derivation, seed recording,
-        # brute-force numeric tracks), report (delivery), job trio (long
+        # brute-force numeric tracks), job trio (long
         # background runs).
         toolFilter:
-          deny: [web_search, web_fetch, skill, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, skill, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -388,10 +409,13 @@
           never by style or vibes. Run the check battery and hunt
           counterexamples; write the audit report. You cannot delegate further.
 
-          Deliver your audit verdict with the `report` tool before you finish —
-          the verdict line (`VERDICT: PASS` / `VERDICT: NEEDS-EDITS`) plus the
-          killing evidence; the agent that started you receives only what you
-          report.
+          Deliver your audit verdict as your final assistant message — the
+          verdict line (`VERDICT: PASS` / `VERDICT: NEEDS-EDITS`) plus the
+          killing evidence.
+          The runtime hands that message to the agent that started you, so make
+          it self-contained. If that agent gave you its own agent id,
+          `send_message` carries an interim finding or a blocking question to
+          it; without an id, finish the turn instead.
           Harness model-routing tag, internal, ignore it: [[rq:role=adversary]]
         # Adversary tool budget: the verdict is the honesty boundary, so it
         # must rest on derivation and computation the adversary itself ran.
@@ -405,7 +429,7 @@
         # orchestration loops, child-control, orchestrator-owned task state,
         # ask_user_question, plan mode.
         toolFilter:
-          deny: [web_search, web_fetch, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-line
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -425,8 +449,11 @@
           bounded dossier (schema in the literature skill), record the frontier,
           and record every completeness-checklist sweep you performed. Do not
           read another line's dossier. You cannot delegate further.
-          Deliver your load-bearing findings with the `report` tool before you
-          finish; the agent that started you receives only what you report.
+          Deliver your load-bearing findings as your final assistant message.
+          The runtime hands that message to the agent that started you, so make
+          it self-contained. If that agent gave you its own agent id,
+          `send_message` carries an interim finding or a blocking question to
+          it; without an id, finish the turn instead.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-line]]
         # Literature line budget (review verdicts): an open retrieval role —
         # web_search/web_fetch, `skill` (arxiv + academic-paper-search are
@@ -435,7 +462,7 @@
         # loops, child-control, orchestrator-owned task state, ask_user_question
         # (unattended contract), plan mode.
         toolFilter:
-          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-lit-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -456,14 +483,17 @@
           and X is current", never that X is mathematically true. You cannot
           delegate further.
 
-          Deliver each claim verdict with the `report` tool before you finish;
-          the agent that started you receives only what you report.
+          Deliver each claim verdict as your final assistant message.
+          The runtime hands that message to the agent that started you, so make
+          it self-contained. If that agent gave you its own agent id,
+          `send_message` carries an interim finding or a blocking question to
+          it; without an id, finish the turn instead.
           Harness model-routing tag, internal, ignore it: [[rq:role=lit-adversary]]
         # Literature adversary budget: mirrors the line budget (review
         # verdicts) — web stays (independent re-retrieval is the job), skill
         # and bash stay, job trio stays. Same child-scope denials.
         toolFilter:
-          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     - id: tool-subagent-doc-adversary
       name: '@deepseek-ai/dsh-tool-subagent'
@@ -494,11 +524,14 @@
           comment, is a defect. (4) No overclaim: the text claims no result it
           does not back with the verified record.
 
-          Deliver your audit verdict with the `report` tool before you finish —
+          Deliver your audit verdict as your final assistant message —
           `VERDICT: PASS` or `VERDICT: NEEDS-EDITS` plus, for NEEDS-EDITS, each
           concrete defect (term/symbol and location, proof depth concern,
           motivation gap, or audience mismatch) so a human reader can act on it.
-          The agent that started you receives only what you report.
+          The runtime hands that message to the agent that started you, so make
+          it self-contained. If that agent gave you its own agent id,
+          `send_message` carries an interim finding or a blocking question to
+          it; without an id, finish the turn instead.
           Harness model-routing tag, internal, ignore it: [[rq:role=doc-adversary]]
         # Document-adversary tool budget: audits LOCAL deliverables, so web
         # stays denied (its own long-standing policy). `write` is load-bearing,
@@ -510,7 +543,7 @@
         # rides with bash (denying jobs while bash keeps run_in_background
         # makes background runs uncollectable).
         toolFilter:
-          deny: [web_search, web_fetch, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, send_message, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
+          deny: [web_search, web_fetch, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
 
     # Fork is DISABLED (feature/subagent-context): a fork child inherits the
     # parent's completed-turn conversation by design — exactly the context
@@ -602,6 +635,14 @@
   config:
     fetch: true
     searchTimeoutMs: 60000
+
+# Declaring the study's deliverables. NO bundle mounts this tool — only a
+# preset does — so without this row a RigorQuant session has no `present` at
+# all and the 0.1.5 deliverables flow (right-Sidebar preview, open in default
+# app, reveal in file manager) has nothing to render. The skill's deliverables
+# procedure ends with a `present` call for exactly this reason.
+- id: present
+  name: '@deepseek-ai/dsh-tool-present'
 
 # ── jacobian escalation lane ────────────────────────────────
 

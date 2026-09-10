@@ -8,7 +8,74 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Added
+- **DSH 0.1.5 support, and the version floor that goes with it.** The full
+  install now requires **DSH ≥ 0.1.5-alpha.2** (`install.sh`, both READMEs).
+  The floor is mount-time, not cosmetic: 0.1.3-alpha.2 split the persona into a
+  required `prefix` plus an optional `suffix` and deleted the single `text`
+  key, and a row whose config fails validation rejects the **whole** preset
+  mount while the preset picker still lists it as healthy.
+- **`tests/preset_harness_probe.cjs`** — validates every row of the composition
+  against the **installed** harness package's own `Config` schema, so a renamed
+  config key becomes a one-line diff instead of an unmountable preset.
+  `tests/test_harness_compat.py` runs it and skips when no `dsh` is installed.
+- **`present` and `command-goal` rows** in the preset. No bundle mounts
+  `@deepseek-ai/dsh-tool-present` — only presets do — so RigorQuant sessions
+  had no `present` tool at all; `command-goal` restores `/goal`. The
+  deliverables skill now ends its assembly workflow with a `present` call.
+- Regression coverage for the seams this port depends on: a forked top-level
+  session stays a lab (`origin`, not `parentSession`), a lab is discovered
+  through the `agentPreset` projection, the router resolves a one-shot child
+  through the **live** persona section, and the child catalog keeps
+  `send_message`.
+
+### Changed
+- **Child results travel as the final assistant message.** The one-way `report`
+  tool was removed in 0.1.2-rc.1; a continuable child's final assistant message
+  is now what the runtime hands to the agent that started it. Every role persona
+  (and the protocol/SKILL documents) says exactly that, and the seven child
+  `toolFilter` deny lists no longer name `send_message`, so a depth-1 child can
+  push an interim finding or a blocking question to its direct parent.
+  `interrupt_agent` and `list_agents` stay orchestrator-only.
+- **Persona section constant follows the 0.1.3-alpha.2 rename.** The router
+  reads `deployment:persona-prefix` (was `deployment:persona`) when it probes a
+  one-shot child's live prompt; the old name silently returned `null` and the
+  child lost its tier routing.
+- **The activity monitor reads live seams.** `agent.session.events` was removed
+  in 0.1.2-rc.1 and a `?.events ?? []` turned that into a permanently empty
+  panel; the monitor now reads `ownEvents()` (with `snapshotEvents()` as the
+  fallback), prefers the `agentPreset` Session projection over the stale
+  creation header, and treats `origin: 'subagent'` — not `parentSession` — as
+  the child discriminator.
+- **The browser half uses only `settingsSchema`.** The
+  `@deepseek-ai/dsh-client-schema-form` fallback was removed: that package is
+  gone from the harness and from the browser's frozen module table, so the
+  `require` could only throw inside the controller's construction and take the
+  whole bundle entry down. The bundle probe now refuses to answer the deleted
+  name. `dsh.client.inject` names `@deepseek-ai/dsh-client-ui-renderer` (the
+  package that actually provides `slots`) instead of the removed
+  `@deepseek-ai/dsh-client-runtime`.
+
 ### Fixed
+- **The plugin's global skill root resolved to a directory that does not
+  exist.** A patch file's `!!js` is evaluated against the boot root context,
+  whose `baseUrl` is the **profile** directory — not the patch file's package
+  root (that per-file anchor is an `Include` behaviour only composition files
+  get). `cordis.patch.yml` therefore pointed `customSkillDirs` at
+  `<profile>/agent-presets/rigorquant/skills/`, which never exists, and with
+  `includeDefaultRoots: false` the provider contributed **zero** roots: the
+  `rigorquant`, `arxiv` and `academic-paper-search` skills were unavailable to
+  every other preset in the profile. The path is now resolved through
+  `createRequire` against the installed package.
+- **The web surface can no longer wedge itself.** `rq-activity` set its
+  `routesRegistered` flag before registering the two HTTP routes; a duplicate
+  route throws, Cordis `emit` contains the throw, and the flag stayed set, so
+  the monitor was permanently dead with only a host-log stack. Both routes now
+  share one effect that sets the flag only after both succeed, disposes a
+  partial pair on failure, and logs instead of escaping.
+- **`sessionTitle.get()` folded the whole log on every poll.** The folded title
+  is now cached against the session cursor it was taken at, and pruned with the
+  entry it belongs to.
 - **A reasoning effort the exact route refuses no longer kills the turn.**
   The settings card's effort dropdown fell back to a generic
   `[off, high, max]` vocabulary whenever the catalog reported no effort
@@ -21,6 +88,14 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   drops a refused effort at routing time — the model's default level governs,
   logged once per route. The router probe also runs again (its agent stub
   predated DSH 0.1.2's `session.snapshotEvents()` rename).
+
+### Documentation
+- `docs/upgrade-0.1.5.md` — the source-verified upgrade study: what changed
+  between 0.1.2 and 0.1.5, what the preset must adopt, the deeper agent/tool
+  optimizations, and the ranked fix list this release implements.
+- `docs/architecture.md` Decision 20 records the two contract changes (the
+  final-message delivery channel and the `settingsSchema`-only draft model) and
+  the persona split.
 
 ## [0.4.1] - 2026-09-02
 

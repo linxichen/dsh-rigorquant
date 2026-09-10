@@ -8,8 +8,7 @@
 const fs = require('node:fs')
 const vm = require('node:vm')
 
-const [, , bundlePath, pluginId, mode] = process.argv
-const RC2 = mode === 'rc2'
+const [, , bundlePath, pluginId] = process.argv
 const code = fs.readFileSync(bundlePath, 'utf8')
 
 let handoff = null
@@ -33,7 +32,7 @@ sandbox.clearTimeout = clearTimeout
 sandbox.window.__ModuleLoader__ = { load: (h) => { handoff = h } }
 vm.createContext(sandbox)
 
-const verdict = { registered: false, mode: RC2 ? 'rc2' : 'rc7' }
+const verdict = { registered: false, mode: 'service' }
 /** Set by the mount block; reused by the delayed-namespace scenario. */
 let pluginSurface = null
 try {
@@ -55,14 +54,14 @@ verdict.factoryIsFunction = typeof handoff.factory === 'function'
 
 // The module table only answers platform seed words; anything else is a
 // guaranteed runtime throw in the browser, so record what was asked for.
-// In rc2 mode the legacy draft-model package is DELETED from the table (that
-// is the rc.2 change), so any require of it throws and proves the bundle
-// reached the settingsSchema service instead.
+// @deepseek-ai/dsh-client-schema-form is deliberately NOT in the table: it was
+// deleted upstream (its helpers folded into the `settingsSchema` service) and
+// is absent from the browser's frozen seed list, so a residual require of it
+// must fail here exactly as it would in the page.
 const PLATFORM = new Set([
   'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-slots', '@deepseek-ai/dsh-client-web-react',
   '@deepseek-ai/dsh-client-ui-primitives', '@deepseek-ai/dsh-client-ui-attachment',
-  ...(RC2 ? [] : ['@deepseek-ai/dsh-client-schema-form']),
 ])
 const required = []
 const registrations = []
@@ -99,10 +98,10 @@ const react = {
   useId: () => 'probe-id',
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
 }
-// Test double for the settings draft model. These mirror
-// @deepseek-ai/dsh-client-schema-form's documented semantics: presence marks an
-// override (hasPath), setPath/deletePath edit immutably, and deletePath is the
-// per-field reset. The card must not depend on anything beyond that contract.
+// Test double for the settings draft model. These mirror the seam's documented
+// semantics: presence marks an override (hasPath), setPath/deletePath edit
+// immutably, and deletePath is the per-field reset. The card must not depend on
+// anything beyond that contract.
 const schemaForm = {
   getPath: (value, path) => path.reduce(
     (node, key) => (typeof node === 'object' && node !== null ? node[key] : undefined),
@@ -132,9 +131,9 @@ const schemaForm = {
   rehydrateSchema: (serialized) => ({ serialized }),
   validateDraft: () => undefined,
 }
-// rc.2's settingsSchema service: the same helpers under the service surface
-// (renames rehydrateSchema->rehydrate, validateDraft->validate; path helpers
-// unchanged), provided by @deepseek-ai/dsh-client-ui-settings.
+// The `settingsSchema` service (@deepseek-ai/dsh-client-ui-settings): the same
+// helpers under the service surface (rehydrate/validate; path helpers
+// unchanged). It is the ONLY draft model this card may use.
 const settingsSchemaService = {
   rehydrate: (serialized) => ({ serialized }),
   validate: () => undefined,
@@ -147,7 +146,6 @@ const reqStub = (spec) => {
   required.push(spec)
   if (!PLATFORM.has(spec)) throw new Error(`module table cannot answer "${spec}"`)
   if (spec === 'react') return react
-  if (spec === '@deepseek-ai/dsh-client-schema-form') return schemaForm
   return {}
 }
 try {
@@ -206,9 +204,7 @@ if (verdict.applyIsFunction) {
   const ctx = {
     effect: (fn) => fn(),
     remote,
-    get: (name) => (RC2 && name === 'settingsSchema'
-      ? settingsSchemaService
-      : undefined),
+    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
     locale: { register: () => {}, bind: () => (key) => key },
     settingsScope: {
       bind: () => ({
@@ -372,7 +368,7 @@ async function exerciseDraft() {
 //
 // This scenario is deliberately isolated: it re-runs apply() on a fresh context
 // and tracks its own registry + catalog counter so it cannot perturb the main
-// mount, rc2, or draft scenarios (which read shared probe globals).
+// mount or draft scenarios (which read shared probe globals).
 async function exerciseDelayedCatalog() {
   if (pluginSurface === null) return
   let sessionRemote

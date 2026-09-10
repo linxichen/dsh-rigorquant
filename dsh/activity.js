@@ -92,6 +92,26 @@ function tagRole(text) {
   return match !== null && ROLES.includes(match[1]) ? match[1] : null
 }
 
+/** Whether a session header describes a subagent child (same rule as the router).
+ *
+ * `origin: 'subagent'` is the durable discriminator; `parentSession` is fork
+ * lineage, so a forked top-level session carries it while staying
+ * root-eligible. */
+function isChildHeader(header) {
+  return header?.origin === 'subagent'
+}
+
+/** The session's OWN event log.
+ *
+ * `Session.events` was removed in 0.1.2-rc.1, so a `?.events ?? []` read is a
+ * silently empty panel; `ownEvents()` is the current accessor and excludes the
+ * fork-inherited prefix that `snapshotEvents()` still returns. */
+function ownEventsOf(session) {
+  if (typeof session?.ownEvents === 'function') return session.ownEvents()
+  if (typeof session?.snapshotEvents === 'function') return session.snapshotEvents()
+  return []
+}
+
 /** First text block of a message, for a feed snippet. */
 function textOf(blocks, limit = 90) {
   const list = Array.isArray(blocks) ? blocks : []
@@ -129,6 +149,9 @@ function apply(ctx) {
   let routesRegistered = false
   /** parent session id → role FIFO, fed by subagent* tool calls. */
   const pendingSpawns = new Map()
+  /** sessionId → { seq, title }: `sessionTitle.get()` folds the whole log, and
+   *  the snapshot asks for it per lab on every HTTP poll. */
+  const titleCache = new Map()
 
   const entryOf = (id) => {
     let entry = entries.get(id)
@@ -138,6 +161,10 @@ function apply(ctx) {
         role: null,
         label: null,
         parentId: undefined,
+        /** `header.origin` — 'subagent' only for a real child; fork lineage
+         *  (`parentSession`) is a different fact and does not demote a
+         *  top-level session out of lab detection. */
+        origin: null,
         preset: null,
         status: 'idle',
         disposed: false,
@@ -170,25 +197,39 @@ function apply(ctx) {
     if (lab.feed.length > 80) lab.feed.shift()
   }
 
-  const roleOfAgent = (agent) => {
+  /** The preset a session runs under.
+   *
+   * A RigorQuant session is created as `standard` and then switched in the
+   * picker, and the DURABLE creation header keeps the value it started with
+   * forever. The order is therefore: the live composition, then the
+   * `agentPreset` Session projection (which is exactly what replaced the
+   * header as the authority), then a bounded scan of the session's own log,
+   * and only then the creation header. */
+  const presetOf = (agent) => {
     const header = agent.session?.header ?? {}
-    const events = agent.session?.events ?? []
-    // A RigorQuant session is created as `standard` and then switched in the
-    // picker: the DURABLE header keeps the creation preset forever. The
-    // preset that counts is therefore the live composition, then the latest
-    // `agent-preset/selected` record in the log, then the creation header.
-    let selectedPreset = null
+    const live = ctx.get('agentPresets')?.composedPreset(agent.ctx)
+    if (typeof live === 'string' && live !== '') return live
+    const projections = ctx.get('sessionProjections')
+    if (projections !== undefined) {
+      const state = projections.stateOf(agent.session, 'agentPreset')
+      if (typeof state === 'string' && state !== '') return state
+    }
+    const events = ownEventsOf(agent.session)
+    let selected = null
     for (let i = 0; i < Math.min(events.length, 128); i += 1) {
       const event = events[i]
-      if (event?.type === 'agent-preset/selected') selectedPreset = event.data?.agentPreset ?? null
+      if (event?.type === 'agent-preset/selected') selected = event.data?.agentPreset ?? null
     }
-    const preset = ctx.get('agentPresets')?.composedPreset(agent.ctx)
-      ?? selectedPreset
-      ?? header.agentPreset
-      ?? null
-    if (header.parentSession === undefined && preset === PRESET_ID) {
+    return selected ?? header.agentPreset ?? null
+  }
+
+  const roleOfAgent = (agent) => {
+    const header = agent.session?.header ?? {}
+    const preset = presetOf(agent)
+    if (!isChildHeader(header) && preset === PRESET_ID) {
       return { role: 'root', preset }
     }
+    const events = ownEventsOf(agent.session)
     for (let i = 0; i < Math.min(events.length, 64); i += 1) {
       const event = events[i]
       if (event?.type === 'subagent/descriptor') {
@@ -208,6 +249,7 @@ function apply(ctx) {
     entry.role = role
     entry.preset = preset
     entry.parentId = agent.session?.header?.parentSession
+    entry.origin = agent.session?.header?.origin ?? null
   }
 
   ctx.on('agent/created', ({ agent }) => {
@@ -229,6 +271,7 @@ function apply(ctx) {
     entry.role = finalRole
     entry.preset = preset
     entry.parentId = parentId
+    entry.origin = agent.session?.header?.origin ?? null
   })
 
   ctx.on('agent/status', ({ agent, status }) => {
@@ -239,6 +282,9 @@ function apply(ctx) {
 
   ctx.on('session/event', (session, event) => {
     const entry = entryOf(session.id)
+    // Backfill the child discriminator for sessions first seen through their
+    // log (a cold session, or one that predates this plugin's mount).
+    if (entry.origin === null) entry.origin = session.header?.origin ?? null
     const at = timeOf(event)
     const labId = entry.role === 'root' && entry.preset === PRESET_ID
       ? entry.id
@@ -324,9 +370,11 @@ function apply(ctx) {
     if (entry === undefined) return
     entry.preset = agentPreset
     // The picker flow creates a session as `standard` and switches: promote a
-    // parentless session to captain the moment it becomes a RigorQuant lab,
-    // and demote it if the user switches away.
-    if (agentPreset === PRESET_ID && entry.parentId === undefined && entry.role !== 'root') {
+    // top-level session to captain the moment it becomes a RigorQuant lab, and
+    // demote it if the user switches away. A real child is excluded by
+    // `origin`; `parentSession` alone would also exclude a FORKED top-level
+    // session, which is root-eligible.
+    if (agentPreset === PRESET_ID && entry.origin !== 'subagent' && entry.role !== 'root') {
       entry.role = 'root'
     } else if (agentPreset !== PRESET_ID && entry.role === 'root') {
       entry.role = null
@@ -341,6 +389,7 @@ function apply(ctx) {
     for (const [id, entry] of entries) {
       if (entry.disposed && now - Math.max(entry.lastAt, entry.startedAt) > KEEP_DISPOSED_MS) {
         entries.delete(id)
+        titleCache.delete(id)
       }
     }
   }
@@ -424,68 +473,95 @@ function apply(ctx) {
     return { labs }
   }
 
-  /** The lab's folded title, if the session-title fold has produced one. */
+  /** The lab's folded title, if the session-title fold has produced one.
+   *
+   * `sessionTitle.get()` folds the session's WHOLE log, and the snapshot asks
+   * for it once per lab on every HTTP poll, so the answer is cached against
+   * the session cursor the fold was taken at. */
   const titleOf = (labId) => {
     const session = ctx.get('sessions')?.get(labId)
     if (session === undefined) return null
+    const seq = session.seq
+    const cached = titleCache.get(labId)
+    if (cached !== undefined && cached.seq === seq) return cached.title
     const snapshotTitle = ctx.get('sessionTitle')?.get(session)?.title
-    return typeof snapshotTitle === 'string' && snapshotTitle !== '' ? snapshotTitle : null
+    const title = typeof snapshotTitle === 'string' && snapshotTitle !== '' ? snapshotTitle : null
+    titleCache.set(labId, { seq, title })
+    return title
   }
 
   const registerWebSurface = () => {
     if (routesRegistered) return
     const webServer = ctx.get('webServer')
     if (webServer === undefined) return
-    routesRegistered = true
-    ctx.effect(() => webServer.register({
-      kind: 'exact',
-      path: '/plugins/dsh-rigorquant/activity',
-      handler: async (req, res) => {
+    // One effect owns BOTH routes. `webServer.register` throws on a duplicate
+    // (kind, path) and Cordis `emit` contains nothing, so a throw on the
+    // `internal/service` path must neither leave the flag set (which would
+    // wedge the monitor permanently) nor strand a half-registered pair. The
+    // flag moves only after both registrations succeed.
+    try {
+      ctx.effect(() => {
+        const disposers = []
         try {
-          const body = JSON.stringify(snapshot())
-          res.writeHead(200, {
-            'content-type': 'application/json; charset=utf-8',
-            'cache-control': 'no-store',
-          })
-          res.end(body)
+          disposers.push(webServer.register({
+            kind: 'exact',
+            path: '/plugins/dsh-rigorquant/activity',
+            handler: async (req, res) => {
+              try {
+                const body = JSON.stringify(snapshot())
+                res.writeHead(200, {
+                  'content-type': 'application/json; charset=utf-8',
+                  'cache-control': 'no-store',
+                })
+                res.end(body)
+              } catch (error) {
+                ctx.logger.warn(`rq-activity: snapshot failed: ${String(error)}`)
+                res.writeHead(500)
+                res.end()
+              }
+            },
+          }))
+          disposers.push(webServer.register({
+            kind: 'prefix',
+            path: '/plugins/dsh-rigorquant/avatar',
+            handler: async (req, res) => {
+              let file = ''
+              try {
+                file = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname.split('/').pop() ?? '')
+              } catch {
+                res.writeHead(404)
+                res.end()
+                return
+              }
+              if (!FEED_AVATAR_FILES.has(file)) {
+                res.writeHead(404)
+                res.end()
+                return
+              }
+              try {
+                const data = readFileSync(join(FIG_DIR, file))
+                res.writeHead(200, {
+                  'content-type': 'image/png',
+                  'cache-control': 'public, max-age=86400',
+                })
+                res.end(data)
+              } catch {
+                ctx.logger.warn(`rq-activity: portrait read failed for ${file}`)
+                res.writeHead(404)
+                res.end()
+              }
+            },
+          }))
         } catch (error) {
-          ctx.logger.warn(`rq-activity: snapshot failed: ${String(error)}`)
-          res.writeHead(500)
-          res.end()
+          for (const dispose of disposers.reverse()) dispose()
+          throw error
         }
-      },
-    }), 'rq-activity: snapshot route')
-    ctx.effect(() => webServer.register({
-      kind: 'prefix',
-      path: '/plugins/dsh-rigorquant/avatar',
-      handler: async (req, res) => {
-        let file = ''
-        try {
-          file = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname.split('/').pop() ?? '')
-        } catch {
-          res.writeHead(404)
-          res.end()
-          return
-        }
-        if (!FEED_AVATAR_FILES.has(file)) {
-          res.writeHead(404)
-          res.end()
-          return
-        }
-        try {
-          const data = readFileSync(join(FIG_DIR, file))
-          res.writeHead(200, {
-            'content-type': 'image/png',
-            'cache-control': 'public, max-age=86400',
-          })
-          res.end(data)
-        } catch {
-          ctx.logger.warn(`rq-activity: portrait read failed for ${file}`)
-          res.writeHead(404)
-          res.end()
-        }
-      },
-    }), 'rq-activity: portrait route')
+        routesRegistered = true
+        return () => { for (const dispose of disposers.reverse()) dispose() }
+      }, 'rq-activity: web surface')
+    } catch (error) {
+      ctx.logger.warn(`rq-activity: web surface registration failed: ${String(error)}`)
+    }
   }
 
   registerWebSurface()

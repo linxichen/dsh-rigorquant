@@ -148,7 +148,11 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 
 ## 安装
 
-需要 DSH ≥ 0.1.2-alpha.1（preset 使用原生子代理 `agentOptions.reasoningEffort`）。
+需要 DSH ≥ 0.1.5-alpha.2。preset 依次用到：原生子代理
+`agentOptions.reasoningEffort`（0.1.2-alpha.1）、persona 的 `prefix`/`suffix` 拆分
+（0.1.3-alpha.2 —— 某一行配置校验失败会导致整个 preset 无法挂载）、
+“最终助手消息即交付”的契约（`report` 已在 0.1.2-rc.1 移除）以及 `present`
+交付物工具（0.1.5）。
 
 两种安装形态：
 
@@ -159,7 +163,7 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 完整框架（设计记录：docs/architecture.md 决策 22）：
 
 ```sh
-dsh --version                 # 必须 >= 0.1.2-alpha.1
+dsh --version                 # 必须 >= 0.1.5-alpha.2
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 
@@ -213,7 +217,8 @@ RigorQuant 模型路由**；最后一次保存的选择会持久化（写入设�
 主选路由遇到终止性失败（无适配器 / HTTP 4xx；包括官方额度响应
 `1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他
 preset、workflow 工作进程、fork 子进程）一律不干预。固定层级子代理行使用原生
-`agentOptions.reasoningEffort`，需要 DSH ≥ 0.1.2-alpha.1（插件自注册设置）。
+`agentOptions.reasoningEffort`。路由器需要 DSH ≥ 0.1.5-alpha.2
+（其 persona 区段常量跟随 0.1.3-alpha.2 的 `deployment:persona-prefix` 改名）。
 设计记录见 [docs/architecture.md](docs/architecture.md) 决策 16。
 
 ## 仓库结构
