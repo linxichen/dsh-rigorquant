@@ -2,7 +2,8 @@
 
 The vocabulary of a RigorQuant study: an unattended, multi-agent piece of
 empirical or computational mathematics run inside one DeepSeek Harness
-session. Decisions live in `docs/architecture.md` (1–23) and `docs/adr/`.
+session. Decisions live as numbered entries in `docs/architecture.md`; from
+24 on each is also an ADR in `docs/adr/`.
 
 ## Language
 

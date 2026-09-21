@@ -9,7 +9,9 @@ now exists — above all, the Agent Teams domain.**
 
 **Status: Phase 0 done (2026-09-21), no product code changed.** The
 machine runs 0.1.6-alpha.2, the probes ran against the built install, and a
-manual run confirmed the break list — evidence in §3.7, environment in §6.
+manual run confirmed B1/B2 and found one regression the break list lacked
+(a stale shared preset copy that 0.1.6 refuses to load) — evidence in
+§3.7, environment in §6.
 §7 is the execution order; §8 lists the decisions the user owns.
 
 **Baselines and targets**
@@ -52,7 +54,7 @@ Three groups, in order of urgency.
 maps onto RigorQuant's design better than the per-role `subagent_*` rows do**
 (§4). Adopting it replaces: the seven hand-composed delegation rows, the
 persona-regex role identity, the custom activity monitor (host + browser,
-~2,300 lines), the stage heuristic that greps tool names, and the procedural
+~2,300 lines), the move heuristic that greps tool names, and the procedural
 "no follow-up messages" rule. It costs: one new host half (~200 lines) that
 applies role persona/tool budget/guards to teammates by **name**, a rewrite of
 the orchestrator persona and SKILL round loop around `spawn_teammate` /
@@ -290,10 +292,10 @@ by the host's `maxActiveSubagents` (Plugins → Subagent); `ACTIVATION_LIMIT_REA
 means wait for a child to settle, never retry in a loop". Optionally the
 README suggests raising it to 12 for literature-heavy studies.
 
-### 3.7 Verify, do not assume (verified 2026-09-21 on the built 0.1.6)
+### 3.7 Verify, do not assume (Phase 0 results, 2026-09-21, built 0.1.6)
 
 The three items the source read left open, each with what the built install
-did (Phase 0, ticket #4; environment in §6):
+did (Phase 0, issue #4; environment in §6):
 
 - `cordis.patch.yml`'s `createRequire(baseUrl + 'package.json').resolve('dsh-rigorquant/package.json')`
   under **runtime resolution mode**: `baseUrl` is still the profile directory,
@@ -316,7 +318,7 @@ packages under the global install's `node_modules/@deepseek-ai`):
 
 | Probe | Runs against | Result |
 |---|---|---|
-| `preset_harness_probe.cjs` | the installed packages' `Config` schemas | green; only `workflow-worker-thread` unresolved (disabled row) |
+| `preset_harness_probe.cjs` | the installed packages' `Config` schemas | green (the bullet above) |
 | `router_probe.cjs` | a stub host context (never the install) | green — `ok: true`, both degrade paths and both effort demotions logged |
 | `client_bundle_probe.cjs` | a stub slot registry (never the install) | green — registers, `inject` intact, `modelCatalogCalls: 1` |
 
@@ -343,7 +345,12 @@ the installed packages directly:
 
 **Manual run** (0.4.1 preset = master `fbdd80e`, profile `rq16` with both
 Team bundles on, ~5 minutes, workspace `rigorquant_studies`; a smoke prompt,
-no study started). Findings, most important first:
+no study started). Issue #4 expected B1 and B2 to be the only visible
+regressions; **that did not hold** — finding 1 is a third one, and findings
+5–6 are visible changes the break list did not name. Likewise the criterion
+expected the client-bundle probe to surface the retired slot; it cannot (it
+stubs the registry), so B2 was confirmed from the installed files above.
+Findings, most important first:
 
 1. **The shared preset copy was stale and the preset showed "Failed to load".**
    `$DSH_HOME/.agent-presets/rigorquant/` was the Sep 6 tree (single-key
@@ -397,13 +404,13 @@ no study started). Findings, most important first:
    `routeFatal` (4xx / `NO_ADAPTER` / usage-limit only, Decision 16).
 7. **The roster's Model column does not show the routed model.** The panel
    showed `lead · Model: deepseek-v4.1-flash-…` (the session's
-   `agent-default-model`) while the root's requests were rewritten to
+   `agent-default-model`) while the orchestrator's requests were rewritten to
    `zai/glm-5.3`. The roster reports `options.model` from the agent
    (`agent-team/src/roster.ts:137,447`), not what left the wire. The spec's
    "the roster's per-member model column shows the routed model natively"
    holds only if the team plugin sets the created teammate's `model` option
    rather than rewriting at `agent/request` — a Phase 2 design input.
-8. **`agentPreset` in the session header is the default.** The root record's
+8. **`agentPreset` in the session header is the default.** The orchestrator's record's
    first line says `agentPreset: standard`; the truth is the
    `agent-preset/selected` event (seq 4). Children carry `rigorquant` in the
    header. Nothing in this repository reads the header field.
@@ -425,7 +432,7 @@ RigorQuant patch follows them); session records under
 |---|---|---|
 | Role identity | `[[rq:role=…]]` regex over persona text, scanned from history (`dsh/index.js:135-138,330`) | the teammate **name** (`explorer-1`, `doublechecker-2`…): durable in the Lead log, in every roster row, in the Web UI |
 | Fan-out / wait | spawn N children, then rely on settlement notices waking the orchestrator | `spawn_teammate` ×N, then `wait_agent` — a native blocking primitive; the settlement notice still lands in the Lead's turn stream (`subagent/README.md:109`) |
-| Round state / who-does-what | `registry.json` + `journal.md` (evidence) plus a stage heuristic that greps tool names (`dsh/activity.js:132-141`) | the **shared task board**: sub-problems as tasks, the four moves as a `blocked_by` DAG, ownership by claim, CAS revisions; the stage is "first task not completed" — no heuristic |
+| Round state / who-does-what | `registry.json` + `journal.md` (evidence) plus a move heuristic that greps tool names (`dsh/activity.js:132-141`) | the **shared task board**: sub-problems as tasks, the four moves as a `blocked_by` DAG, ownership by claim, CAS revisions; the move is "first task not completed" — no heuristic |
 | Per-role scratch dirs ("keep your work in your own scratch directory") | prose | advisory `write_scopes` (`interim/<teammate>/`) with **overlap warnings rendered natively** |
 | Interim findings / blocking questions | `send_message` to a parent id the brief had to carry | `send_message` to `lead`, durable, cold-resumes an inactive orchestrator |
 | "Never message an in-flight agent" (Decision 19 L3) | a procedural rule born from lost/duplicated deliveries | mailbox is durable, ordered, de-duplicated; the *freeze-until-verdict + hash* half of L3 stays |
@@ -504,7 +511,7 @@ descriptor):
      through `agentTeams.getTask`); for blind roles, deny `bash` whose
      command matches `\b(curl|wget|pip\s+install|uv\s+(sync|add|pip))\b` — the
      bash-curl residual hole shrinks from "audited" to "denied at the call".
-4. For the Lead, guards on `spawn_teammate`: deny a `name` that does not
+4. For the orchestrator, guards on `spawn_teammate`: deny a `name` that does not
    parse to a role (an unnamed teammate would run the *orchestrator* persona
    with the full catalog — the exact failure Decision 8 forbids), and deny
    `context: 'fork'` (Decision 8: fork inherits the parent conversation).
@@ -520,7 +527,10 @@ lane, but resolves the role through `rq-team` (name), and now carries the
 native `agentOptions` row to defer to any more. The card's "reset" therefore
 returns to the shipped default rather than to a native route; the `NATIVE_PRIMARY`
 distinction and the raw user-section dance can go. The roster's per-member
-`model` column shows the routed model natively.
+`model` column reports the agent's `options.model`, not what the router put
+on the wire (§3.7 finding 7): for the column to show the route, `rq-team`
+must set the teammate's model option at creation rather than rewrite each
+request — the spec's "shows the routed model natively" holds only then.
 
 Upstream, in parallel: a small PR adding optional `persona`, `toolFilter`,
 `agentOptions` to `SpawnTeammateRequest` and passing them to
@@ -533,7 +543,7 @@ pattern `tool-agent-team` uses for its own tools).
 
 **Composition (`agent.cordis.yml`).** Remove the seven `tool-subagent-*` role
 rows, `tool-subagent-control`, `tool-subagent-list-agents`, and the disabled
-fork row (the Team's scoped tools replace them for every member). Keep
+fork row (the Team's scoped tools replace them for the whole team). Keep
 external-agent rows disabled. Keep `maxDepth` semantics by construction:
 `spawn_teammate` is Lead-only in the service, and no other delegation tool is
 mounted. The persona's ISOLATION paragraph changes from "per-role delegation
@@ -559,7 +569,7 @@ polling. `registry.json`/`journal.md` remain the *evidence* record and the
 validator never reads the board — coordination is not proof (Decision 13).
 
 **Team policy text.** The fixed section says teammates are created only on an
-explicit request; the orchestrator persona states that a RigorQuant task **is**
+explicit request; the orchestrator persona states that a RigorQuant study **is**
 that request. `send_message` guidance ("do not resend a queued message") is
 native now; protocol.md L3 keeps only the freeze-and-hash half.
 
@@ -589,11 +599,11 @@ Retire `dsh/activity.js` (host), `tests/activity_probe.cjs`,
 `dsh/client.js` (≈1,400 lines). The Team UI already shows the roster, status,
 model, diagnostics, and the task board, and opens teammates in the sidebar.
 
-Keep one small **stage pill** in `conversation.session.header.utilities`
+Keep one small **move pill** in `conversation.session.header.utilities`
 (`scope: 'session'` → the Session is provided; B1 disappears) that calls
-`ctx.remote.agentTeams.view(leadSessionId)` and derives the five-move stage
+`ctx.remote.agentTeams.view(leadSessionId)` and derives the move
 from the task board (first incomplete of `promise/fan-out/ground-truth/attack/certify`)
-with the role portraits for running members. The `remote.agentTeams` namespace
+with the role portraits for running teammates. The `remote.agentTeams` namespace
 is mounted by the Team web bundle; inject it optionally and render nothing
 when absent. The README's hub-and-spoke SVG stays as the static picture of the
 topology the guards enforce.
@@ -613,7 +623,7 @@ Move the model-routing card to `plugins.bundle.config` (B2) with
 | N4 | Hooks bridge, `Stop` event | optional, guarded | a preset row mounting `@deepseek-ai/dsh-hooks-claude-code` with a `hooks.json` whose `Stop` hook runs `rq_check.py --stop-gate`: block the stop when `study.json` asserts a certification outcome the record does not back. Must self-limit (no upstream consecutive-block cap) — at most two blocks per round, tracked in `interim/`. |
 | N5 | Headless `--json`/`--session-id`/stdin | adopt (docs) | a "batch study" recipe: `dsh --profile headless --json --session-id study-<slug> - < brief.md`, events piped to a log; the goal re-arm rule is unchanged |
 | N6 | `spill` in base | note | oversized tool results become bounded previews with locators; keep the pruner at 4 KiB; add one line to the persona: read a spilled result back with the locator instead of re-running |
-| N7 | `mcp-resources` in base | note | when `mcp-jacobian` is enabled, resource tools appear for every member; same residual-hole rule as the checker lane (persona) |
+| N7 | `mcp-resources` in base | note | when `mcp-jacobian` is enabled, resource tools appear for every teammate; same residual-hole rule as the checker lane (persona) |
 | N8 | Subagent conversations / plan cards in the sidebar | free | README "The team, live" |
 | N9 | `session-log-deepseek` default on | deployment note | README: how to disable in the user patch |
 | N10 | Auto review, browser/computer use, schedule | skip | orthogonal; children already run with `approvalPolicy: never` |
@@ -623,7 +633,7 @@ Move the model-routing card to `plugins.bundle.config` (B2) with
 
 ## 6. Environment before any code moves (done 2026-09-21)
 
-What the plan said, and what was actually run:
+What the plan said, and what was actually run, in order:
 
 1. Install the alpha: `npm i -g @deepseek-ai/dsh@alpha` — the **global**
    install, no isolated prefix (decided during grilling; the previous
@@ -638,25 +648,31 @@ What the plan said, and what was actually run:
    `package.json` — the same manifest write the Plugins page makes for an
    optional bundle (`plugin-manager` `setBundleEnabled`); nothing is installed
    into the profile, the packages resolve from the installation. Then
-   `DSH_PROFILE=rq16 ./install.sh` from the master checkout: the plugin
-   (`file:` spec) into `rq16`, and the preset/lane refresh that §3.7 finding 1
-   turned out to need. `dsh rq16 --dump-config` shows the two Team rows after
-   the base/web layers and the RigorQuant rows after them.
-3. Probes and inspections: §3.7.
-4. Manual run: `dsh rq16 --no-open --port 3416`, a RigorQuant session in the
-   `rigorquant_studies` workspace with a smoke prompt (tool list, persona
+   `dsh plugin --profile rq16 add file:$HOME/gits/dsh-rigorquant` (the master
+   checkout, `fbdd80e`) for the plugin half only. `dsh rq16 --dump-config`
+   shows the two Team rows after the base/web layers and the RigorQuant rows
+   after them.
+3. Probes and installed-file inspections: §3.7.
+4. Manual run: `dsh rq16 --no-open --port 3416`, then the Plugins page, the
+   Settings → Agent presets card (where the preset read *Failed to load* —
+   §3.7 finding 1, against the shared preset tree as it stood), then
+   `DSH_PROFILE=rq16 ./install.sh` from the master checkout to refresh
+   `$DSH_HOME/.agent-presets/rigorquant` and `$DSH_HOME/share/rigorquant`
+   (and re-add the plugin, a no-op), a reload, and a RigorQuant session in
+   the `rigorquant_studies` workspace with a smoke prompt (tool list, persona
    line, one `subagent_explorer`, one `subagent_adversary`); §3.7.
 
-The `web` profile is untouched except that it shares
-`$DSH_HOME/.agent-presets/rigorquant` and `$DSH_HOME/share/rigorquant`,
-which now hold master `fbdd80e`.
+To reproduce finding 1, run step 4 before any `install.sh` — the installer
+replaces the shared tree unconditionally and hides it. The `web` profile is
+untouched except that it shares those two directories, which now hold
+master `fbdd80e`.
 
 ---
 
 ## 7. Execution order
 
 **Phase 0 — Environment and evidence** (§6). No code. **Done 2026-09-21**
-(ticket #4); results in §3.7.
+(issue #4); results in §3.7.
 
 **Phase 1 — Compatibility (0.4.x still classic; releasable as 0.4.2)**
 B1 (minimal `retainedBy.mainView` fix), B2 (card → `plugins.bundle.config`),
@@ -673,7 +689,7 @@ task DAG; `install.sh` Teams check + `maxMembers` user-patch override;
 guard) amending 8, 14, 16, 19, 20, 23.
 
 **Phase 3 — Browser goes native (0.5.0)**
-retire `activity.js` + probes + tests; thin stage pill on
+retire `activity.js` + probes + tests; thin move pill on
 `remote.agentTeams.view`; README "The team, live" rewritten around the native
 roster/task board; `docs/figs/agent-team-activity.*` kept as the static
 picture (or regenerated from a task-board snapshot).
@@ -710,13 +726,19 @@ PR for `SpawnTeammateRequest` composition pass-through.
    adversaries and literature lines (recommended) — versus fresh everything
    (needs `maxMembers ≈ 64+`) or reuse everything (breaks blank context).
 4. **Activity view**: retire the custom panel for the native roster + a thin
-   stage pill (recommended) versus porting the whole floater onto
+   move pill (recommended) versus porting the whole floater onto
    `agentTeams/view`.
 5. **Hooks `Stop` gate** (N4): ship disabled with a documented enable, or not
    at all.
 6. **Upstream PR** for `spawn_teammate` composition pass-through: file it
    (recommended — it removes most of `rq-team` later) or wait for the domain
    to stabilise.
+7. **0.4.2 on a Teams-enabled profile** (raised by §3.7 finding 5, Phase 1):
+   the classic orchestrator and its children see the nine Team tools beside
+   the `subagent_*` rows. A tool restriction cannot name them (not mounted on
+   every deployment). Options: one persona sentence telling the orchestrator
+   to leave them alone, or nothing (0.4.2 is the line for profiles that
+   cannot enable Teams, so most 0.4.2 sessions never see them).
 
 ---
 

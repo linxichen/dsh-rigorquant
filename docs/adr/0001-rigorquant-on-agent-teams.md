@@ -12,7 +12,7 @@ mechanism **is** Agent Teams — team-only, no classic per-role delegation
 tools left in the preset — and the per-role composition Teams does not carry
 (persona, tool budget, model tier, hub-and-spoke topology) is re-established
 by a RigorQuant host plugin on every teammate's `agent/created`, keyed by
-the teammate's **name**. Study: `docs/upgrade-0.1.6.md`. Recorded as
+the teammate's **name**. Upgrade study: `docs/upgrade-0.1.6.md`. Recorded as
 Decision 24 in `docs/architecture.md`.
 
 ## Why
@@ -56,7 +56,9 @@ Decision 24 in `docs/architecture.md`.
 
 ## Consequences
 
-- Hard-lesson L3 is rewritten: the freeze-and-hash half stands; "never
+- Hard-lesson L3 (`docs/hard-lessons-from-the-var-expected-return-run.md`,
+  carried by the skill's `references/protocol.md`) is rewritten: the
+  freeze-and-hash half stands; "never
   message a settled agent" becomes "a reused teammate only ever receives a
   new hash-bound brief, never a follow-up about an artifact under audit, and
   only while idle or inactive".
