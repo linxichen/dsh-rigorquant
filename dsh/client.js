@@ -1,12 +1,15 @@
 // RigorQuant model router — browser half.
 //
-// One card in the Plugins settings tab, keyed by the `rigorquant-models`
-// settings namespace this package's host half serves. Each role row stages an
-// explicit primary override (model + reasoning effort) and a per-role fallback
-// choice; "inherit" clears the user layer for that field so the native
-// tool-subagent default (fixed-tier roles) or the parent/session route (root and
-// inherit roles) governs again. The last saved selection is the persistent one:
-// it lives in the settings user layer, not in this page's state.
+// One configuration entry on the Plugins page: the bundle's own form, rendered
+// on this bundle's page between its description and its rows
+// (`plugins.bundle.config`, keyed by the package name), editing the
+// `rigorquant-models` settings namespace this package's host half serves. Each
+// role row stages an explicit primary override (model + reasoning effort) and a
+// per-role fallback choice; "inherit" clears the user layer for that field so
+// the native tool-subagent default (fixed-tier roles) or the parent/session
+// route (root and inherit roles) governs again. Only a save writes: the last
+// saved selection is the persistent one (the settings user layer), and leaving
+// the page drops whatever was staged.
 //
 // Shipped in the shell's client-bundle format, because that is what the browser
 // half is REQUIRED to be: the web shell appends this file as a classic
@@ -26,6 +29,13 @@
 
 window.__ModuleLoader__.load({ id: 'dsh-rigorquant', factory: (require) => {
 
+// The bundle's package name: the key the Plugins page looks the bundle's
+// configuration entry up by. It repeats the loader id above on purpose — the
+// shell concatenates every plugin's bundle into one classic script, so a
+// top-level binding shared with the `load` call would collide with any other
+// bundle's; the probe pins that the two literals agree.
+const BUNDLE = 'dsh-rigorquant'
+// The settings namespace the host half serves; also this entry's locale namespace.
 const CARD_KEY = 'rigorquant-models'
 const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 const SLOTS = ['Primary', 'Fallback']
@@ -104,10 +114,7 @@ const copy = {
     effortInherit: 'Default',
     effortUnsupported: 'unsupported',
     save: 'Save',
-    discard: 'Discard',
-    expand: 'Expand',
-    collapse: 'Collapse',
-    pending: 'Unsaved',
+    unavailable: 'Model routing is not served by this profile: the rq-model-router row is off.',
     primary: 'Primary',
     fallback: 'Fallback',
     overridden: 'Overridden',
@@ -148,10 +155,7 @@ const copy = {
     effortInherit: '默认',
     effortUnsupported: '不支持',
     save: '保存',
-    discard: '放弃',
-    expand: '展开',
-    collapse: '收起',
-    pending: '未保存',
+    unavailable: '当前配置未提供模型路由：rq-model-router 行已关闭。',
     primary: '主选择',
     fallback: '回退',
     overridden: '已覆盖',
@@ -186,63 +190,25 @@ const copy = {
   },
 }
 
-// Card chrome. `settings.plugin.item` renders its entries into a <ul>, so a
-// card MUST be an <li> — a bare <div> lands outside the card frame, which is
-// what "showing at root level" looks like. PluginCard itself is exported as a
-// type only and lives behind the bundle purity gate, so the chrome is restated
-// here against the same `--dsw-alias-*` tokens the built-in cards use.
-const cardStyle = (open) => ({
-  listStyle: 'none',
-  overflow: 'hidden',
-  border: '1px solid var(--dsw-alias-border-l2)',
-  borderRadius: 12,
-  background: open ? 'var(--dsw-alias-bg-layer-2)' : 'var(--dsw-alias-bg-layer-3)',
-  borderColor: open ? 'var(--dsw-alias-label-dimmed)' : 'var(--dsw-alias-border-l2)',
-})
-const headerStyle = {
-  boxSizing: 'border-box', width: '100%', appearance: 'none', border: 0,
-  background: 'none', font: 'inherit', color: 'inherit', textAlign: 'left',
-  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
-  padding: '14px 16px', borderRadius: 12,
-}
-const headTextStyle = { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }
-const nameStyle = { fontSize: 15, fontWeight: 600, lineHeight: 1.4, color: 'var(--dsw-alias-label-primary)' }
+// Page chrome. The Plugins page renders this entry inside its own section on
+// the bundle's page (`detailSection`), so the form is a plain block headed the
+// way the page heads its rows section — a 14px/500 title with a one-line
+// description — followed by the role rows and a footer holding the save.
+// The page draws the bundle's title, icon and crumb itself. Tokens are the
+// same `--dsw-alias-*` the page's own sections use.
+const formStyle = { display: 'flex', flexDirection: 'column', minWidth: 0 }
+const sectionHeadStyle = { display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }
+const sectionTitleStyle = { margin: 0, fontSize: 14, lineHeight: '20px', fontWeight: 500, color: 'var(--dsw-alias-label-primary)' }
 const cardDescriptionStyle = { fontSize: 13, lineHeight: 1.5, color: 'var(--dsw-alias-label-tertiary)' }
-const pendingStyle = {
-  flex: 'none', borderRadius: 999, padding: '1px 8px', fontSize: 11, lineHeight: '17px',
-  fontWeight: 500, whiteSpace: 'nowrap',
-  background: 'var(--dsw-alias-bg-module-platform)', color: 'var(--dsw-alias-label-secondary)',
-}
-const bodyStyle = { borderTop: '1px solid var(--dsw-alias-border-l2)', margin: '0 16px', paddingBottom: 8 }
+const statusStyle = { margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--dsw-alias-label-tertiary)' }
 const footerStyle = {
   display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8,
-  padding: '12px 0 4px', borderTop: '1px solid var(--dsw-alias-border-l2)',
-}
-const buttonBase = {
-  appearance: 'none', border: '1px solid transparent', borderRadius: 8,
-  padding: '5px 14px', font: 'inherit', fontSize: 13, lineHeight: 1.5, cursor: 'pointer',
-}
-const discardStyle = {
-  ...buttonBase, borderColor: 'var(--dsw-alias-border-l2)', background: 'none',
-  color: 'var(--dsw-alias-label-secondary)',
+  paddingTop: 16,
 }
 const saveStyle = {
-  ...buttonBase, background: 'var(--dsw-alias-label-primary)', color: 'var(--dsw-alias-bg-layer-3)',
-}
-
-/** Disclosure chevron, drawn inline: the icon set is a platform module whose
- *  export names this package cannot verify at build time (it has no build). */
-function Chevron(props) {
-  return React().createElement('svg', {
-    width: 14, height: 14, viewBox: '0 0 14 14', 'aria-hidden': 'true',
-    style: {
-      flex: 'none', color: 'var(--dsw-alias-label-tertiary)',
-      transition: 'transform .16s', transform: props.open ? 'rotate(180deg)' : 'none',
-    },
-  }, React().createElement('path', {
-    d: 'M3.5 5.25 7 8.75l3.5-3.5', fill: 'none', stroke: 'currentColor',
-    strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round',
-  }))
+  appearance: 'none', border: '1px solid transparent', borderRadius: 8,
+  padding: '5px 14px', font: 'inherit', fontSize: 13, lineHeight: 1.5, cursor: 'pointer',
+  background: 'var(--dsw-alias-label-primary)', color: 'var(--dsw-alias-bg-layer-3)',
 }
 
 
@@ -719,14 +685,26 @@ function RqModelsCard(props) {
   // `hooks: { rqCard: store }` and the component receives the bound selector
   // hook `useRqCard` instead — the `hooks` key itself never reaches props.
   const snapshot = props.useRqCard((value) => value)
-  const [open, setOpen] = R.useState(false)
   const t = props.t
-  // A deployment that does not serve this namespace should show no trace of the
-  // plugin, rather than a card the user cannot act on.
-  if (!snapshot.available) return null
+  // Only a save writes. Leaving the page drops every staged edit, so the page
+  // view discards on unmount and offers no discard control and no unsaved
+  // marker (the Plugins page's form contract). The summary view stages
+  // nothing, so its unmount drops nothing. `discard` is bound to the one
+  // controller this bundle mounts, so the closure the effect captured stays
+  // valid however often the renderer re-runs `inject()` (it does on every
+  // locale revision); keying the effect on its identity would drop the draft
+  // on a language switch instead.
+  const view = props.view
+  const { discard } = props
+  R.useEffect(() => (view === 'page' ? () => { discard() } : undefined), [view])
+  // The page asks every entry for two views: `summary` is the one-liner it
+  // places under the title, `page` the form with its own save control.
+  if (view === 'summary') return t('description')
+  // A profile whose host half does not serve the namespace (the router row is
+  // off) says so in place of controls nothing would accept.
+  if (!snapshot.available) return R.createElement('p', { role: 'status', style: statusStyle }, t('unavailable'))
 
   const dirty = Object.values(snapshot.fields).some((field) => field.dirty)
-  const title = t('title')
 
   const body = []
   for (const role of ROLES) {
@@ -751,13 +729,6 @@ function RqModelsCard(props) {
     }, snapshot.failed === 'write' ? t('failed') : `${t('invalid')}: ${snapshot.failed}`))
   }
   controls.push(R.createElement('button', {
-    key: 'discard',
-    type: 'button',
-    onClick: props.discard,
-    disabled: snapshot.saving || !dirty,
-    style: { ...discardStyle, ...(snapshot.saving || !dirty ? { opacity: 0.4, cursor: 'default' } : {}) },
-  }, t('discard')))
-  controls.push(R.createElement('button', {
     key: 'save',
     type: 'button',
     onClick: props.save,
@@ -768,27 +739,12 @@ function RqModelsCard(props) {
     },
   }, t('save')))
 
-  const header = R.createElement('button', {
-    type: 'button',
-    style: headerStyle,
-    'aria-expanded': open,
-    'aria-label': `${t(open ? 'collapse' : 'expand')}: ${title}`,
-    onClick: () => { setOpen(!open) },
-  },
-    R.createElement('span', { style: headTextStyle },
-      R.createElement('span', { style: nameStyle }, title),
+  return R.createElement('div', { style: formStyle, 'data-rq-models': '' },
+    R.createElement('div', { style: sectionHeadStyle },
+      R.createElement('h4', { style: sectionTitleStyle }, t('title')),
       R.createElement('span', { style: cardDescriptionStyle }, t('description'))),
-    // Carried on the header so a collapsed card still says it holds edits.
-    dirty ? R.createElement('span', { style: pendingStyle }, t('pending')) : null,
-    R.createElement(Chevron, { open }))
-
-  return R.createElement('li', { style: cardStyle(open) },
-    header,
-    open
-      ? R.createElement('div', { style: bodyStyle },
-        ...body,
-        R.createElement('div', { style: footerStyle }, ...controls))
-      : null)
+    ...body,
+    R.createElement('div', { style: footerStyle }, ...controls))
 }
 
 function apply(ctx) {
@@ -797,10 +753,14 @@ function apply(ctx) {
   ctx.effect(() => {
     void controller.load()
   }, 'rq-model-router: catalog load')
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register(
+  // The bundle's configuration entry: the Plugins page renders it on this
+  // bundle's page, looked up by the package name. (The Settings-tab plugin
+  // card slot this entry once used is retired on 0.1.6 — a registration
+  // there renders nowhere, silently.)
+  ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register(
     {
-      name: 'settings.plugin.item',
-      key: CARD_KEY,
+      name: 'plugins.bundle.config',
+      key: BUNDLE,
       locale: CARD_KEY,
       inject: () => controller.inject(),
     },
@@ -1038,9 +998,35 @@ function labForSession(labs, sessionId) {
   return null
 }
 
+/**
+ * The session the main view holds, or null. 0.1.6 made client sessions
+ * references: the list is `{ids, byId, …}` with no `current` field, and which
+ * session the main view holds is answered per id by
+ * `sessions.retainInfo(id).retainedBy.mainView` — the check the harness's own
+ * team UI makes (client-ui-agent-team `mount.ts`). `ids` is the Host list;
+ * a subagent transcript opened in the main view is a live generation that
+ * appears in `byId` only, so both are scanned.
+ */
+function mainViewSessionId(sessions) {
+  const list = sessions?.list
+  if (typeof list?.getSnapshot !== 'function' || typeof sessions?.retainInfo !== 'function') return null
+  const state = list.getSnapshot()
+  const candidates = new Set([
+    ...(Array.isArray(state?.ids) ? state.ids : []),
+    ...Object.keys(typeof state?.byId === 'object' && state.byId !== null ? state.byId : {}),
+  ])
+  for (const id of candidates) {
+    const info = sessions.retainInfo(id)
+    const retainedBy = typeof info?.getSnapshot === 'function' ? info.getSnapshot()?.retainedBy : undefined
+    if ((retainedBy?.mainView ?? 0) > 0) return id
+  }
+  return null
+}
+
 function startActivityPoller(ctx) {
-  // The web shell, and nothing else: the probe and webless hosts have no
-  // fetch/interval, and the floater is only meaningful in a browser anyway.
+  // The web shell, and nothing else: webless hosts have no fetch/interval,
+  // and the floater is only meaningful in a browser anyway (the probe
+  // supplies both so the first poll and the session scan are exercised).
   if (typeof window === 'undefined'
     || typeof window.fetch !== 'function'
     || typeof window.setInterval !== 'function') {
@@ -1062,26 +1048,32 @@ function startActivityPoller(ctx) {
     shiftCss.setAttribute('data-rq-panel-shift', '')
     shiftCss.textContent = `html[${PANEL_OPEN_ATTRIBUTE}] [data-phase='active']{padding-right:var(${PANEL_SHIFT_PROPERTY});}`
     document.head.appendChild(shiftCss)
-    ctx.effect(() => {
+    // `ctx.effect` runs its body at once and keeps what the body RETURNS as
+    // the disposer; the removal is the disposer, not the body.
+    ctx.effect(() => () => {
       const parent = shiftCss.parentNode
       if (parent !== null && parent !== undefined && typeof parent.removeChild === 'function') parent.removeChild(shiftCss)
     }, 'rq-activity: dodge css')
   }
   updatePanelShift()
-  // The floater follows the CURRENT session (same as dsh-agent-teams): only
-  // the lab owned by the session open in the conversation view is shown, and
-  // only while that session is a RigorQuant one (labs exist only for those).
-  // Bind before the first fetch: this immediately-loaded bundle used to call
-  // tick() before these lexical bindings existed, causing a TDZ rejection.
+  // The floater follows the session the MAIN VIEW holds (same as
+  // dsh-agent-teams): only the lab owned by the session open in the
+  // conversation view is shown, and only while that session is a RigorQuant
+  // one (labs exist only for those). A `mainView` retain or release republishes
+  // the list row it touches, so subscribing to the list is what keeps the
+  // scan current. Bind before the first fetch: this immediately-loaded bundle
+  // used to call tick() before these lexical bindings existed, causing a TDZ
+  // rejection.
+  let sessions = null
   let sessionList = null
   let unsubscribeSessionList = null
-  const syncCurrentSession = () => {
+  // `activityState.currentSessionId` is the session the floater currently
+  // follows: since 0.1.6 that is the main-view session, resolved below.
+  const syncMainViewSession = () => {
     try {
-      const next = typeof sessionList?.getSnapshot === 'function'
-        ? sessionList.getSnapshot().current
-        : null
+      const next = mainViewSessionId(sessions)
       if (next !== activityState.currentSessionId) {
-        activityState.currentSessionId = next ?? null
+        activityState.currentSessionId = next
         publishActivity()
         updatePanelShift()
       }
@@ -1090,14 +1082,16 @@ function startActivityPoller(ctx) {
     }
   }
   const bindSessionList = () => {
-    const list = ctx.get('sessions')?.list
+    const service = ctx.get('sessions')
+    const list = service?.list
     if (list === sessionList) return
     if (typeof unsubscribeSessionList === 'function') unsubscribeSessionList()
+    sessions = service ?? null
     sessionList = typeof list?.subscribe === 'function' ? list : null
     unsubscribeSessionList = null
     if (sessionList !== null) {
-      syncCurrentSession()
-      unsubscribeSessionList = sessionList.subscribe(syncCurrentSession)
+      syncMainViewSession()
+      unsubscribeSessionList = sessionList.subscribe(syncMainViewSession)
     }
   }
   bindSessionList()
@@ -1474,9 +1468,9 @@ function ActivityPanel(props) {
   const snapshot = props.useRqActivity((value) => value)
   const currentSessionId = snapshot?.currentSessionId ?? null
   const allLabs = snapshot?.labs ?? []
-  // Only the lab relevant to the current session (its own captain session, or
-  // one of its subagent transcripts) is shown — never other sessions' labs,
-  // and only while the current session is a RigorQuant one (labs exist only
+  // Only the lab relevant to the main-view session (its own captain session,
+  // or one of its subagent transcripts) is shown — never other sessions'
+  // labs, and only while that session is a RigorQuant one (labs exist only
   // for those). Mirrors dsh-agent-teams' captain-session scoping.
   const labs = (() => {
     if (currentSessionId === null || currentSessionId === undefined) return []

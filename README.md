@@ -233,9 +233,10 @@ The bundled plugin gives each RigorQuant role a model + reasoning-effort
 policy, with one fallback per role. The DoubleChecker and adversary tool rows
 use DSH 0.1.2's native `agentOptions` for their shipped primary
 (`deepseek-v4-pro` @ `high`); the router only overlays explicit Settings
-choices and fallback retries. Configure overrides in **Settings → Plugins → RigorQuant model
-routing**: the last saved selection persists (settings user layer). Shipped
-defaults:
+choices and fallback retries. Configure overrides in **Plugins → dsh-rigorquant**
+(the bundle's own page, under its description): only Save writes, the last
+saved selection persists (settings user layer), and leaving the page drops
+staged edits. Shipped defaults:
 
 | Role | Primary | Fallback |
 | --- | --- | --- |

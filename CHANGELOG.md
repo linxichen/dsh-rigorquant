@@ -70,6 +70,39 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   `@deepseek-ai/dsh-client-runtime`.
 
 ### Fixed
+- **The model-routing card renders again on DSH 0.1.6 — on the Plugins page.**
+  0.1.6 retired the Settings-tab `settings.plugin.item` slot the card
+  registered into, and a registration into a slot nothing renders is silent:
+  the card simply never appeared. The browser half now registers the bundle's
+  configuration entry on `plugins.bundle.config`, keyed by the package name,
+  so the form renders on the **dsh-rigorquant** page under Plugins between the
+  bundle's description and its rows. It renders the two views the slot
+  contract names (`summary`: the one-liner; `page`: the form with its own
+  Save — the bundle page asks for `page` today), and follows the page's form
+  contract: only a save writes, so the Discard control and the unsaved marker
+  are gone and leaving the page drops staged edits. A profile whose router row
+  is off used to render nothing; on the bundle's page the section is drawn
+  once the entry is registered, so the page view now says the namespace is not
+  served instead of leaving an empty section. The settings-schema draft model,
+  the `settings.describe` seam and the model-catalog seam are unchanged. The
+  client-bundle probe asserts the new slot with both views, the absence of the
+  retired slot, and the `plugins.bundle.config` key equals the loader id.
+- **The activity floater finds the main-view session again on DSH 0.1.6.**
+  Client sessions became references and the sessions list lost its `current`
+  field; the floater read it, got `undefined` forever, and rendered nothing —
+  silently, since a missing field is not an error. It now scans the client
+  session list (`ids`, then the live rows in `byId`) for the id whose retain
+  info counts a `mainView` reference — the same
+  `sessions.retainInfo(id).retainedBy.mainView` check the harness's own team
+  UI makes — and re-scans on every list publish, which a main-view retain or
+  release triggers. The probe now runs the poller against a 0.1.6-shaped
+  sessions stub (no `current`; `retainInfo`) and asserts the resolved session,
+  the rendered panel, that moving the main view moves the panel, and that no
+  `.current` read remains in the bundle. Found while verifying by eye: the
+  docked panel's "dodge" stylesheet was registered as an effect *body* rather
+  than as its disposer, so it was removed the instant it was added and the
+  conversation column never yielded width to a docked-open panel; the effect
+  now returns the removal, and the column yields.
 - **The plugin's global skill root resolved to a directory that does not
   exist.** A patch file's `!!js` is evaluated against the boot root context,
   whose `baseUrl` is the **profile** directory — not the patch file's package

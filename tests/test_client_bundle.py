@@ -40,13 +40,15 @@ SERVICE_PROVIDERS = {
     "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
     "sessions": "@deepseek-ai/dsh-api-session-controller",
 }
-# The card registers into the `settings.plugin.item` ring, which this package
-# declares; the activity floater registers into the root-scoped `shell.overlay`
-# ring declared by ui-layout (both additive seats — a replacement would shadow
-# the shell).
-RINGS = ["settings.plugin.item", "shell.overlay"]
-CARDS = ["rigorquant-models", "rigorquant-activity"]
-RING_OWNER = "@deepseek-ai/dsh-client-ui-settings-plugins"
+# The card registers into the Plugins page's `plugins.bundle.config` ring,
+# keyed by this bundle's package name; the activity floater registers into the
+# root-scoped `shell.overlay` ring declared by ui-layout (both additive seats —
+# a replacement would shadow the shell). 0.1.6 retired `settings.plugin.item`:
+# a card registered there renders nowhere, silently.
+RINGS = ["plugins.bundle.config", "shell.overlay"]
+CARDS = [PLUGIN_ID, "rigorquant-activity"]
+RETIRED_RING = "settings.plugin.item"
+RING_OWNER = "@deepseek-ai/dsh-client-ui-plugin-manager"
 
 
 def manifest():
@@ -137,13 +139,37 @@ def test_card_waits_for_session_remote_before_failing(verdict):
 def test_apply_mounts_both_rings(verdict):
     """Registering is necessary, not sufficient: apply must survive mount.
 
-    The plugin contributes the settings card (settings.plugin.item) AND the
+    The plugin contributes the routing card (plugins.bundle.config) AND the
     live activity floater (shell.overlay). Both are additive list/keyed seats.
     """
     assert "mountError" not in verdict, verdict.get("mountError")
     assert verdict["mounted"]
     assert verdict["mountedRings"] == RINGS
     assert verdict["cards"] == CARDS
+
+
+def test_card_registers_on_the_bundle_config_slot_keyed_by_the_package(verdict):
+    """The Plugins page finds a bundle's form by slot name and key.
+
+    `plugins.bundle.config` is keyed by the bundle's package name and rendered
+    on the bundle's page between its description and its rows
+    (ui-plugin-manager slot-contract). The key must be the same name the
+    bundle registered with the loader: any other key is an entry the page
+    never asks for.
+    """
+    assert verdict["cardSlot"] == "plugins.bundle.config"
+    assert verdict["cardKey"] == verdict["id"] == PLUGIN_ID
+
+
+def test_the_retired_settings_slot_is_gone(verdict):
+    """0.1.6 retired `settings.plugin.item`; a registration there is silent.
+
+    Nothing renders the ring any more, so the failure is a card that simply
+    never appears. The ring must be absent from what apply mounts AND from the
+    source, so it cannot come back behind a feature check.
+    """
+    assert RETIRED_RING not in verdict["mountedRings"]
+    assert verdict["retiredSettingsSlotReferences"] == 0
 
 
 def test_activity_floater_renders_null_while_no_lab_runs(verdict):
@@ -167,6 +193,56 @@ def test_activity_floater_scopes_to_the_current_session(verdict):
     assert verdict["scopeMatchRendered"] is True
 
 
+def test_activity_floater_resolves_the_main_view_session_from_retain_info(verdict):
+    """The main-view session comes from the retain-info scan, not a `current` field.
+
+    0.1.6 made client sessions references: the list is `{ids, byId, ...}` and
+    which session the main view holds is answered per id by
+    `sessions.retainInfo(id).retainedBy.mainView` — the check the harness's
+    own team UI makes. The probe's list has no `current`; after the poller's
+    first poll the store must name the session the stub retains for the main
+    view, the panel must render for that lab, and moving the main view to a
+    non-lab session must empty the panel (and back).
+    """
+    assert "floaterSessionError" not in verdict, verdict.get("floaterSessionError")
+    result = verdict["floaterSession"]
+    assert result["fetches"] >= 1, "the poller never polled: the session scan was not exercised"
+    assert result["status"] == "ready", result
+    assert result["resolved"] == "lab-current", result
+    assert result.get("renderError") is None, result.get("renderError")
+    assert result["rendered"] is True, result
+    assert result["afterMove"] == "unrelated", result
+    assert result["afterMoveNull"] is True, result
+    assert result["afterReturn"] == "lab-current", result
+
+
+def test_nothing_reads_a_current_session_field(verdict):
+    """`SessionListState.current` is gone; a read of it is silently undefined.
+
+    The pin is on the member name in the source (the behavioural check above
+    is what proves the replacement works). It is deliberately blunt: a future
+    `ref.current` in the bundle would trip it too, and would be the moment to
+    narrow it to the session-list read.
+    """
+    assert verdict["currentFieldReads"] == 0, (
+        "dsh/client.js still reads a `.current` member; the sessions list has "
+        "no such field on 0.1.6 and the read is silent")
+
+
+def test_dodge_stylesheet_lives_with_the_effects(verdict):
+    """The docked panel's dodge rule mounts with the plugin and leaves with it.
+
+    `ctx.effect` runs its body at once and keeps what the body RETURNS as the
+    disposer. The dodge stylesheet's effect once removed the sheet in its body,
+    so the conversation column never yielded width to a docked-open panel. The
+    probe keeps the mount's disposers and runs them as a fiber unload would:
+    the sheet must be in <head> until then, and gone after.
+    """
+    assert "disposeError" not in verdict, verdict.get("disposeError")
+    assert verdict["dodgeCssMounted"] == 1, verdict.get("dodgeCssMounted")
+    assert verdict["dodgeCssAfterDispose"] == 0, verdict.get("dodgeCssAfterDispose")
+
+
 def test_card_renders_with_framework_composed_props(verdict):
     """Mounting is not rendering: the `hooks` compartment is reserved.
 
@@ -185,14 +261,21 @@ def test_component_receives_the_bound_selector_hook(verdict):
     assert "hooks" not in verdict["renderProps"]
 
 
-def test_card_root_is_a_list_item(verdict):
-    """`settings.plugin.item` renders its entries into a <ul>.
+def test_card_renders_the_two_views_the_plugins_page_asks_for(verdict):
+    """`summary` is one line of text; `page` is the form with its own Save.
 
-    A card whose root is a bare <div> escapes the card frame and renders flush
-    at the section's root level instead of inside its own titled, collapsible
-    box like the Shell and Agent Loop cards.
+    The page draws the title, icon and crumb itself and asks the entry for
+    `view: 'summary'` (the one-liner under the title) and `view: 'page'` (the
+    form). The page view is a plain block — the bundle's page wraps it in its
+    own section, so the old `<li>` card frame would nest a list item in a
+    section — and only a save writes: no Discard control, no unsaved marker.
     """
-    assert verdict["rootType"] == "li", verdict.get("rootType")
+    assert "renderError" not in verdict, verdict.get("renderError")
+    assert isinstance(verdict["summaryView"], str) and verdict["summaryView"], verdict.get("summaryView")
+    assert verdict["rootType"] == "div", verdict.get("rootType")
+    assert verdict["pageButtons"] == ["save"], verdict["pageButtons"]
+    assert "discard" not in verdict["pageText"]
+    assert "pending" not in verdict["pageText"]
 
 
 def test_card_uses_the_settings_draft_model(verdict):
@@ -247,7 +330,7 @@ def test_effort_dropdown_offers_only_the_models_real_surfaces(verdict):
     """Every effort select renders exactly what the chosen model supports.
 
     The probe's one catalog model carries no reasoning metadata, so every
-    effort select (8 roles x 2 slots) must offer only "Default" — never a
+    effort select (8 roles x 2 slots, on the page view) must offer only "Default" — never a
     generic [off, high, max] vocabulary, which is how a route with no
     reasoning surface once got saved with an effort every turn on it refused.
     A stored effort the model does not list stays visible but disabled.

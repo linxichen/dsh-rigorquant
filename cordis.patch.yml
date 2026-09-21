@@ -32,10 +32,11 @@
           - !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl + 'package.json').resolve('dsh-rigorquant/package.json')), 'agent-presets', 'rigorquant', 'skills')"
 
     # Role-routed models (see docs/architecture.md, Decision 16). The plugin
-    # serves the `rigorquant-models` settings namespace (Plugins settings tab
-    # renders its card) and overlays explicit per-role choices plus a fallback
-    # on terminal route failure. The fixed oracle/adversary primary defaults
-    # live in the native `agentOptions` on their tool rows; every other role
+    # serves the `rigorquant-models` settings namespace (the browser half
+    # renders its form on this bundle's page under Plugins) and overlays
+    # explicit per-role choices plus a fallback on terminal route failure. The
+    # fixed oracle/adversary primary defaults live in the native
+    # `agentOptions` on their tool rows; every other role
     # inherits the session model (root follows the chatbox picker). Untagged
     # sessions — other presets, workflow workers, fork children — are never
     # touched.

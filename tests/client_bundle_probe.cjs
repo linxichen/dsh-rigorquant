@@ -20,15 +20,53 @@ sandbox.globalThis = sandbox
 // emitting: diagnostics stay on the verdict, stdout stays pure JSON.
 const collectedLogs = []
 sandbox.console = { ...console, log: (...args) => { collectedLogs.push(args.map(String).join(' ')) } }
+// The <head> keeps its children, so what the bundle mounts there — and what
+// it removes when its effects are disposed — is observable.
+const headChildren = []
 sandbox.document = {
   querySelectorAll: () => [],
-  createElement: () => ({ dataset: {}, setAttribute() {}, remove() {} }),
-  head: { append() {}, appendChild() {} },
+  createElement: (tag) => {
+    const el = {
+      tag, dataset: {}, attributes: {}, parentNode: null,
+      setAttribute(name, value) { el.attributes[name] = value },
+      remove() { if (el.parentNode !== null) el.parentNode.removeChild(el) },
+    }
+    return el
+  },
+  head: {
+    append() {},
+    appendChild(el) { el.parentNode = sandbox.document.head; headChildren.push(el); return el },
+    removeChild(el) {
+      const at = headChildren.indexOf(el)
+      if (at >= 0) headChildren.splice(at, 1)
+      el.parentNode = null
+      return el
+    },
+  },
 }
 // The card's lazy catalog retry uses window.setTimeout; the VM window is the
 // sandbox itself, so surface the host timers.
 sandbox.setTimeout = setTimeout
 sandbox.clearTimeout = clearTimeout
+// The floater's poller runs only where the web shell's fetch and interval
+// exist. Answer both so the poller starts and its session scan is exercised:
+// one fetch of the activity route serves two labs; the interval is inert (the
+// first poll is the one under test, and a live timer would keep this process
+// alive past the verdict).
+const LABS = ['lab-current', 'lab-other']
+const mkLab = (id) => ({
+  id, title: id, stage: 'fan out',
+  summary: { total: 1, working: 0, idle: 1 },
+  captain: { label: 'Orchestrator', status: 'idle' },
+  members: [], feed: [],
+})
+let activityFetches = 0
+sandbox.fetch = async () => {
+  activityFetches += 1
+  return { ok: true, json: async () => ({ labs: LABS.map(mkLab) }) }
+}
+sandbox.setInterval = () => 0
+sandbox.clearInterval = () => {}
 sandbox.window.__ModuleLoader__ = { load: (h) => { handoff = h } }
 vm.createContext(sandbox)
 
@@ -51,6 +89,13 @@ if (handoff === null) {
 verdict.registered = true
 verdict.id = handoff.id
 verdict.factoryIsFunction = typeof handoff.factory === 'function'
+// 0.1.6 made client sessions references and dropped the list's `current`
+// field (client-session-references, 2026-09-15). A read of it is silent —
+// `undefined`, never an error — so the source is scanned for the member
+// itself: `.current` followed by a non-word character (`.currentSessionId`,
+// the floater's own state, does not match).
+verdict.currentFieldReads = (code.match(/\.current\b/g) ?? []).length
+verdict.retiredSettingsSlotReferences = (code.match(/settings\.plugin\.item/g) ?? []).length
 
 // The module table only answers platform seed words; anything else is a
 // guaranteed runtime throw in the browser, so record what was asked for.
@@ -65,14 +110,45 @@ const PLATFORM = new Set([
 ])
 const required = []
 const registrations = []
+/** Disposers the mount context's effects returned, in registration order. */
+const effectDisposers = []
 const rings = []
 const ops = []
 let modelCatalogCalls = 0
 // Mutable persisted user layer: the ops the card emits land here, so a
 // follow-up edit sees the same layering the real seam would show it.
 const userLayer = {}
-/** Scenario-pinned useState value; `undefined` restores the initial value. */
-let useStateOverride
+// The client sessions service as 0.1.6 ships it: the list carries `ids`
+// and `byId` and NO `current` field; which session the main view holds is
+// answered per id by `retainInfo(id).retainedBy.mainView` — the check the
+// harness's own team UI makes. The holder is switchable and the list's
+// subscribers are recorded, so the probe can move the main view and see
+// whether the floater follows.
+let mainViewSession = 'lab-current'
+const sessionListeners = new Set()
+const sessionsService = {
+  list: {
+    getSnapshot: () => ({
+      ids: ['unrelated', 'lab-current'],
+      byId: {
+        unrelated: { id: 'unrelated', displayTitle: 'unrelated', running: false, retainedBy: {} },
+        'lab-current': { id: 'lab-current', displayTitle: 'lab-current', running: true, retainedBy: {} },
+      },
+      phase: 'ready', subagentsByParent: {}, jobsBySession: {},
+    }),
+    subscribe: (listener) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener) },
+  },
+  retainInfo: (id) => ({
+    getSnapshot: () => (id === mainViewSession
+      ? { referenceCount: 1, retainedBy: { mainView: 1 } }
+      : { referenceCount: 0, retainedBy: {} }),
+    subscribe: () => () => {},
+  }),
+}
+const moveMainView = (id) => {
+  mainViewSession = id
+  for (const listener of sessionListeners) listener()
+}
 // Minimal React: enough to run one render pass of a function component and
 // record the element tree. The card only needs createElement plus the hooks it
 // calls; the framework supplies its snapshot through the bound selector hook.
@@ -85,12 +161,7 @@ const react = {
     props: props ?? {},
     children: children.flat(Infinity).filter((child) => child !== null && child !== undefined),
   }),
-  useState: (initial) => {
-    // A scenario can pin the state (e.g. force the card's `open` disclosure)
-    // because the stub has no re-render loop to update it through.
-    const value = typeof initial === 'function' ? initial() : initial
-    return [useStateOverride !== undefined ? useStateOverride : value, () => {}]
-  },
+  useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
   useMemo: (factory) => factory(),
   useCallback: (fn) => fn,
   useRef: (initial) => ({ current: initial }),
@@ -141,6 +212,28 @@ const settingsSchemaService = {
   hasPath: schemaForm.hasPath,
   setPath: schemaForm.setPath,
   deletePath: schemaForm.deletePath,
+}
+/** Props as the slot framework composes them from a registration's face:
+ *  every `hooks` source becomes a bound `use<Name>` selector hook and the
+ *  `hooks` key itself never reaches the component (ui-slots InjectFace). */
+const propsOf = (face) => {
+  const props = { t: (key) => key }
+  for (const [name, value] of Object.entries(face)) {
+    if (name === 'hooks') continue
+    props[name] = value
+  }
+  for (const [name, source] of Object.entries(face.hooks ?? {})) {
+    props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
+  }
+  return props
+}
+/** Poll `done` at `stepMs` until it holds or `steps` elapse. */
+const settle = async (done, steps = 100, stepMs = 10) => {
+  for (let i = 0; i < steps; i += 1) {
+    if (done()) return true
+    await new Promise((resolve) => setTimeout(resolve, stepMs))
+  }
+  return done()
 }
 const reqStub = (spec) => {
   required.push(spec)
@@ -202,9 +295,12 @@ if (verdict.applyIsFunction) {
     },
   })
   const ctx = {
-    effect: (fn) => fn(),
+    // `ctx.effect` runs the body at once and keeps what it returns as the
+    // disposer; the disposers are collected so the disposal scenario can run
+    // them the way a fiber unload does.
+    effect: (fn) => { const dispose = fn(); if (typeof dispose === 'function') effectDisposers.push(dispose); return dispose },
     remote,
-    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
+    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : name === 'sessions' ? sessionsService : undefined),
     locale: { register: () => {}, bind: () => (key) => key },
     settingsScope: {
       bind: () => ({
@@ -237,6 +333,12 @@ if (verdict.applyIsFunction) {
     verdict.mounted = true
     verdict.mountedRings = rings
     verdict.cards = cards
+    // The Plugins page finds a bundle's form by the slot name and the KEY:
+    // `plugins.bundle.config` keyed by the bundle's package name, which is
+    // also the id the bundle registered with the loader.
+    const card = registrations.find((reg) => reg.descriptor.name !== 'shell.overlay')
+    verdict.cardSlot = card?.descriptor.name ?? null
+    verdict.cardKey = card?.descriptor.key ?? null
   } catch (error) {
     verdict.mounted = false
     verdict.mountError = `${error.name}: ${error.message}`
@@ -250,20 +352,31 @@ if (verdict.applyIsFunction) {
   // -- registration and render are separate failure surfaces.
   if (registrations.length > 0) {
     const { descriptor, component } = registrations[0]
-    const face = descriptor.inject()
-    const props = { t: (key) => key }
-    for (const [name, value] of Object.entries(face)) {
-      if (name === 'hooks') continue
-      props[name] = value
-    }
-    for (const [name, source] of Object.entries(face.hooks ?? {})) {
-      props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
-    }
+    const props = propsOf(descriptor.inject())
     verdict.renderProps = Object.keys(props).sort()
+    // The page asks every configuration entry for two views through its
+    // owner props: `summary` is the one-liner under the title, `page` the
+    // form with its own save control (ui-plugin-manager slot-contract). Only
+    // a save writes: there is no discard control and no unsaved marker.
+    const textOf = (node, found = []) => {
+      if (typeof node === 'string') found.push(node)
+      else if (node !== null && typeof node === 'object') for (const child of node.children ?? []) textOf(child, found)
+      return found
+    }
+    const buttonsOf = (node, found = []) => {
+      if (node === null || typeof node !== 'object') return found
+      if (node.type === 'button') found.push(textOf(node).join(''))
+      for (const child of node.children ?? []) buttonsOf(child, found)
+      return found
+    }
     try {
-      const tree = component(props)
+      const summary = component({ ...props, view: 'summary' })
+      verdict.summaryView = typeof summary === 'string' ? summary : (summary?.type ?? null)
+      const page = component({ ...props, view: 'page' })
       verdict.rendered = true
-      verdict.rootType = tree?.type ?? null
+      verdict.rootType = page?.type ?? null
+      verdict.pageButtons = buttonsOf(page)
+      verdict.pageText = textOf(page)
     } catch (error) {
       verdict.rendered = false
       verdict.renderError = `${error.name}: ${error.message}`
@@ -275,14 +388,7 @@ if (verdict.applyIsFunction) {
   if (registrations.length > 1) {
     const { descriptor, component } = registrations[1]
     const face = descriptor.inject()
-    const props = { t: (key) => key }
-    for (const [name, value] of Object.entries(face)) {
-      if (name === 'hooks') continue
-      props[name] = value
-    }
-    for (const [name, source] of Object.entries(face.hooks ?? {})) {
-      props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
-    }
+    const props = propsOf(face)
     try {
       const overlayTree = component(props)
       verdict.overlayRendered = true
@@ -297,12 +403,6 @@ if (verdict.applyIsFunction) {
     // in the store, but a non-lab current session must render null; a matching
     // current session must render (the collapsed pill).
     const scopeStore = face.hooks.rqActivity
-    const mkLab = (id) => ({
-      id, title: id, stage: 'fan out',
-      summary: { total: 1, working: 0, idle: 1 },
-      captain: { label: 'Orchestrator', status: 'idle' },
-      members: [], feed: [],
-    })
     const scopedRender = () => {
       try { return component(props) } catch { return null }
     }
@@ -316,9 +416,39 @@ if (verdict.applyIsFunction) {
       labs: [mkLab('lab-current'), mkLab('lab-other')],
     })
     verdict.scopeMatchRendered = scopedRender() !== null
+    // Leave nothing behind: the main-view scenario below must find its
+    // session through the poller's own publish, not through this store write.
+    scopeStore.set({ status: 'idle', anchorRight: null, currentSessionId: null, labs: [] })
   }
 }
 
+
+// The floater learns the main-view session from the sessions service, not
+// from a `current` field. After the poller's first poll the store must name
+// the session whose retain info counts a `mainView` reference, the panel must
+// render for that lab, and moving the main view must move the panel with it.
+async function exerciseFloaterSession() {
+  const overlay = registrations.find((reg) => reg.descriptor.name === 'shell.overlay')
+  if (overlay === undefined) return
+  const face = overlay.descriptor.inject()
+  const store = face.hooks.rqActivity
+  await settle(() => store.getSnapshot().status === 'ready')
+  const props = propsOf(face)
+  const render = () => {
+    try { return overlay.component(props) } catch (error) { return `${error.name}: ${error.message}` }
+  }
+  const result = { fetches: activityFetches, status: store.getSnapshot().status }
+  result.resolved = store.getSnapshot().currentSessionId
+  const first = render()
+  result.rendered = first !== null && typeof first === 'object'
+  result.renderError = typeof first === 'string' ? first : undefined
+  moveMainView('unrelated')
+  result.afterMove = store.getSnapshot().currentSessionId
+  result.afterMoveNull = render() === null
+  moveMainView('lab-current')
+  result.afterReturn = store.getSnapshot().currentSessionId
+  verdict.floaterSession = result
+}
 
 // Drive the draft model through the same face the card uses. This is the
 // schema-form contract in motion: staging a choice records an override,
@@ -426,7 +556,7 @@ async function exerciseDelayedCatalog() {
     }
   }, 120)
   await new Promise((resolve) => setTimeout(resolve, 900))
-  const card = delayedRegs.find((reg) => reg.descriptor.key === 'rigorquant-models')
+  const card = delayedRegs.find((reg) => reg.descriptor.name === 'plugins.bundle.config')
   verdict.delayedCatalogStatus = card?.descriptor?.inject?.().hooks?.rqCard?.getSnapshot?.().catalog?.status ?? null
   verdict.delayedCatalogCalls = delayedCalls
 }
@@ -440,21 +570,10 @@ async function exerciseDelayedCatalog() {
 async function exerciseEffortDropdown() {
   if (registrations.length === 0) return
   // The card loads its catalog asynchronously; wait for it to settle.
-  for (let i = 0; i < 100; i += 1) {
-    const status = registrations[0].descriptor.inject().hooks.rqCard.getSnapshot().catalog.status
-    if (status === 'ready' || status === 'failed') break
-    await new Promise((resolve) => setTimeout(resolve, 20))
-  }
   const { component } = registrations[0]
   const face = registrations[0].descriptor.inject()
-  const props = { t: (key) => key }
-  for (const [name, value] of Object.entries(face)) {
-    if (name === 'hooks') continue
-    props[name] = value
-  }
-  for (const [name, source] of Object.entries(face.hooks ?? {})) {
-    props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
-  }
+  await settle(() => ['ready', 'failed'].includes(face.hooks.rqCard.getSnapshot().catalog.status), 100, 20)
+  const props = propsOf(face)
   const renderNode = (node) => {
     if (node === null || typeof node !== 'object') return node
     // Render one function-component level the framework would: the card's
@@ -492,27 +611,42 @@ async function exerciseEffortDropdown() {
   }
   const effortSelects = (tree) => collectSelects(renderNode(tree))
     .filter((select) => select.options.some((option) => option.label === 'effortInherit'))
-  // The card body (the 16 role rows) renders only when the disclosure is open;
-  // pin the stub's useState so this render sees the expanded card.
-  useStateOverride = true
-  try {
-    const cleanTree = component(props)
-    verdict.effortSelectCount = effortSelects(cleanTree).length
-    verdict.effortSelectsDefaultOnly = effortSelects(cleanTree).every((select) =>
-      select.options.length === 1 && select.options[0].value === '' && select.options[0].disabled === false)
-    face.stage('explorerPrimary', { provider: 'deepseek', model: 'v4-pro', reasoningEffort: 'high' })
-    const stale = effortSelects(component(props)).filter((select) => select.value === 'high')
-    verdict.staleEffortOptions = stale.length === 1 ? stale[0].options : null
-  } finally {
-    useStateOverride = undefined
-  }
+  // The role rows are the page view's form; the summary view is one line.
+  const pageProps = { ...props, view: 'page' }
+  const cleanTree = component(pageProps)
+  verdict.effortSelectCount = effortSelects(cleanTree).length
+  verdict.effortSelectsDefaultOnly = effortSelects(cleanTree).every((select) =>
+    select.options.length === 1 && select.options[0].value === '' && select.options[0].disabled === false)
+  face.stage('explorerPrimary', { provider: 'deepseek', model: 'v4-pro', reasoningEffort: 'high' })
+  const stale = effortSelects(component(pageProps)).filter((select) => select.value === 'high')
+  verdict.staleEffortOptions = stale.length === 1 ? stale[0].options : null
   face.discard()
 }
 
-exerciseEffortDropdown().catch((error) => {
+// A fiber unload runs every effect disposer. The floater's dodge stylesheet
+// (the rule that makes the conversation column yield to a docked-open panel)
+// must be in <head> while the plugin runs and gone once its effects are
+// disposed: `ctx.effect` keeps what the body RETURNS as the disposer, and a
+// body that removed the sheet itself left the column never yielding. Runs
+// after the scenarios that need the first mount alive and before the
+// delayed-catalog scenario, whose second mount adds a sheet of its own.
+function exerciseDisposal() {
+  const dodge = () => headChildren.filter((el) => 'data-rq-panel-shift' in el.attributes).length
+  verdict.dodgeCssMounted = dodge()
+  for (const dispose of effectDisposers.splice(0).reverse()) {
+    try { dispose() } catch (error) { verdict.disposeError = `${error.name}: ${error.message}` }
+  }
+  verdict.dodgeCssAfterDispose = dodge()
+}
+
+exerciseFloaterSession().catch((error) => {
+  verdict.floaterSessionError = `${error.name}: ${error.message}`
+}).then(() => exerciseEffortDropdown()).catch((error) => {
   verdict.effortDropdownError = `${error.name}: ${error.message}`
 }).then(() => exerciseDraft()).catch((error) => {
   verdict.draftError = `${error.name}: ${error.message}`
+}).then(() => exerciseDisposal()).catch((error) => {
+  verdict.disposeError = `${error.name}: ${error.message}`
 }).then(() => exerciseDelayedCatalog()).catch((error) => {
   verdict.delayedCatalogError = `${error.name}: ${error.message}`
 }).finally(() => {

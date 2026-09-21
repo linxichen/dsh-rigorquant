@@ -280,8 +280,9 @@ composition.
   disabled), so this lane mostly guards stale saved choices.
 - **Persistence and UI.** Choices live in the `rigorquant-models` settings
   namespace (user layer of `settings.yaml`); the browser half renders the
-  card in the Plugins settings tab, keyed by that namespace, with model and
-  effort dropdowns from the live provider catalog.
+  form on the bundle's own page under Plugins (`plugins.bundle.config`, keyed
+  by the package name — Decision 20's 0.1.6 amendment), with model and effort
+  dropdowns from the live provider catalog. Only a save writes.
 - **Shipped defaults.** DoubleChecker and adversary: `deepseek-v4-pro`@high with a
   `deepseek-flash`@low fallback (a fallback is a degrade lane, not a second
   full-price route; `deepseek-flash` is DeepSeek-V41-Flash, the flash tier the
@@ -385,7 +386,7 @@ own generator emitted a wrong table cell that went unaudited. Decision:
 
 Guarded by `tests/test_procedural_gates.py`.
 
-## Decision 20 — follow the harness surface across 0.1.1 → 0.1.5
+## Decision 20 — follow the harness surface across 0.1.1 → 0.1.6
 
 Originally studied against deepseek-harness 0.1.1-rc.2 (then the newest release;
 the running harness was 0.1.0-rc.7), where the host half and preset were
@@ -445,6 +446,26 @@ the deliverables tool (`present`) and the right Sidebar land. Decision:
 - **Watch (not wired):** the experimental `agent-team` domain (shared task
   DAG, `spawn_teammate`/`wait_agent`) is the closest native match to the
   round-loop fan-out; adopt only when it stabilizes.
+
+**Amended for 0.1.6 (0.4.2, the last classic release; `docs/upgrade-0.1.6.md`
+§3):** two browser seams broke silently and are followed, not worked around.
+
+- **The routing card is the bundle's configuration entry on the Plugins
+  page.** 0.1.6 retired `settings.plugin.item` (plugin configuration moved
+  out of Settings); a registration into a slot nothing renders fails
+  silently. The card registers on `plugins.bundle.config`, keyed by the
+  package name, and renders the two views the page asks for — `summary`, one
+  line; `page`, the form with its own Save. It follows the page's form
+  contract: only a save writes, so Discard and the unsaved marker are gone
+  and leaving the page drops staged edits. The draft model, the
+  `settings.describe` seam and the model-catalog seam are unchanged.
+- **The floater finds the main-view session by retain info.** Client sessions
+  are references and the list has no `current` field. The floater scans the
+  client session list for the id whose
+  `sessions.retainInfo(id).retainedBy.mainView` is positive — the check the
+  harness's own team UI makes — and re-scans on every list publish. Nothing
+  reads a `current` field, and the client-bundle probe pins that on the
+  source as well as on behaviour.
 
 Storage note: rc.8 changed the SQLite backend format (no migration), but it is
 opt-in; rigorquant sessions persist as JSONL, which is byte-compatible across
