@@ -370,6 +370,62 @@ def test_router_roles_cover_the_tagged_roles_exactly():
         "router ROLES %s != tagged roles %s + root" % (sorted(declared), sorted(tagged)))
 
 
+def _shipped_route(slot):
+    """The router's DEFAULT_<slot> route as (model, effort), read off dsh/index.js."""
+    router = (REPO / "dsh/index.js").read_text()
+    match = re.search(
+        r"const DEFAULT_%s = Object\.freeze\(\{[^}]*"
+        r"model:\s*'([^']+)'[^}]*reasoningEffort:\s*'([^']+)'" % slot,
+        router,
+    )
+    assert match, "dsh/index.js no longer declares DEFAULT_%s" % slot
+    return match.group(1), match.group(2)
+
+
+def test_readme_routing_tables_carry_the_shipped_tier_matrix():
+    """Both READMEs' routing tables repeat the router's DEFAULT_PRIMARY/FALLBACK.
+
+    The fixed-tier rows (DoubleChecker, Adversary) end in "| `<primary>` @
+    <effort> | `<fallback>` @ <effort> |". The cells are compared against the
+    router constants, not literals, so a retarget cannot leave a README behind.
+    """
+    cells = "| `%s` @ %s | `%s` @ %s |" % (
+        *_shipped_route("PRIMARY"), *_shipped_route("FALLBACK"))
+    for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
+        rows = [line for line in path.read_text().splitlines()
+                if re.match(r"\|\s*(DoubleChecker|Adversary|双重复核|对抗审计)\b", line)]
+        assert len(rows) == 2, "%s lost a fixed-tier routing row" % path.name
+        for row in rows:
+            assert row.rstrip().endswith(cells), (
+                "%s tier row must end in %s: %s" % (path.name, cells, row))
+
+
+def test_no_shipped_file_names_the_retired_fallback_model():
+    """The V4 Flash id left the default DeepSeek catalog in 0.1.6.
+
+    Break B3 of the 0.1.6 upgrade study: an unlisted id fails only once the
+    fallback lane is entered, so the miss is silent until a primary fails
+    (Decision 16 records the shipped routes). The name may survive only where
+    it is history — the upgrade studies. The id is assembled here so this file
+    is not exempt from its own pin; the retired vision-exp id (same prefix,
+    `-vision-exp` suffix) is a different model and not this pin's concern.
+    """
+    retired = re.compile(r"(?<![\w-])%s(?![\w-])" % "-".join(("deepseek", "v4", "flash")))
+    history = re.compile(r"^docs/upgrade-[\d.]+\.md$")
+    offenders = []
+    for rel in tracked_files():
+        if history.match(rel) or rel.endswith((".png", ".pdf", ".lock")):
+            continue
+        try:
+            text = (REPO / rel).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            if retired.search(line):
+                offenders.append("%s:%d: %s" % (rel, number, line.strip()[:100]))
+    assert not offenders, "retired fallback model still named:\n" + "\n".join(offenders)
+
+
 def test_bundle_patch_mounts_the_model_router():
     """The router rows travel with the dsh plugin add bundle."""
     patch = (REPO / "cordis.patch.yml").read_text()

@@ -239,8 +239,8 @@ defaults:
 
 | Role | Primary | Fallback |
 | --- | --- | --- |
-| DoubleChecker | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
-| Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
+| DoubleChecker | `deepseek-v4-pro` @ high | `deepseek-flash` @ low |
+| Adversary | `deepseek-v4-pro` @ high | `deepseek-flash` @ low |
 | Root, explorers, OffGridThinker, literature/document roles | inherit (root follows the chatbox picker) | — |
 
 On a terminal primary failure (no adapter / HTTP 4xx, including the official

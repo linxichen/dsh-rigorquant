@@ -81,8 +81,10 @@ const SettingsSchema = z.object(Object.fromEntries(
   ]),
 ))
 
+// Decision 16's shipped routes. `deepseek-flash` is DeepSeek-V41-Flash
+// (efforts off|low|high|max), the flash tier the 0.1.6 default catalog lists.
 const DEFAULT_PRIMARY = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' })
-const DEFAULT_FALLBACK = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'low' })
+const DEFAULT_FALLBACK = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'low' })
 
 // These fixed-tier defaults are also declared on the corresponding native
 // tool-subagent rows. Keeping the map here lets the fallback policy recognize
@@ -421,4 +423,4 @@ function apply(ctx, config) {
   })
 }
 
-export { Config, SettingsSchema, NS, name, apply, inject }
+export { Config, SettingsSchema, NS, name, apply, inject, DEFAULT_PRIMARY, DEFAULT_FALLBACK }

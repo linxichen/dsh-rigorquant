@@ -30,6 +30,19 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   `send_message`.
 
 ### Changed
+- **The shipped fallback route is `deepseek-flash` @ low.** The 0.1.6 default
+  DeepSeek catalog lists `deepseek-flash` (DeepSeek-V41-Flash, efforts
+  `off|low|high|max`) and `deepseek-v4-pro`; the V4 flash id the
+  DoubleChecker/adversary fallback lane named is no longer listed, and an
+  unlisted id fails only once the lane is entered, so the miss was silent until
+  a primary failed. The router's `DEFAULT_FALLBACK`, the routing card's
+  defaults (served from the router's schema), both README tables and Decision
+  16 now name `deepseek-flash`; the primary stays `deepseek-v4-pro` @ high.
+  The router exports `DEFAULT_PRIMARY`/`DEFAULT_FALLBACK`; the router probe
+  seeds its settings base from them and pins the literals, so a retarget
+  cannot pass the probe by editing the probe's own fixture. Two
+  repo-consistency pins: both README tier rows equal the router constants,
+  and no tracked file outside the upgrade studies names the retired id.
 - **Child results travel as the final assistant message.** The one-way `report`
   tool was removed in 0.1.2-rc.1; a continuable child's final assistant message
   is now what the runtime hands to the agent that started it. Every role persona

@@ -283,8 +283,11 @@ composition.
   card in the Plugins settings tab, keyed by that namespace, with model and
   effort dropdowns from the live provider catalog.
 - **Shipped defaults.** DoubleChecker and adversary: `deepseek-v4-pro`@high with a
-  `deepseek-v4-flash`@low fallback (a fallback is a degrade lane, not a second
-  full-price route). Every other role: inherit. Defaults
+  `deepseek-flash`@low fallback (a fallback is a degrade lane, not a second
+  full-price route; `deepseek-flash` is DeepSeek-V41-Flash, the flash tier the
+  0.1.6 default catalog lists — the V4 flash id it replaced is unlisted there,
+  and an unlisted id passes through to the wire and fails only when the lane
+  is entered). Every other role: inherit. Defaults
   assume the `deepseek-official` catalog; a deployment without it overrides
   the row config or the card, and a default that cannot route degrades
   through the same fallback lane (or fails loudly if the fallback cannot

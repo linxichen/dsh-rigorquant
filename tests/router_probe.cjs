@@ -10,11 +10,14 @@ const fs = require('node:fs')
 const vm = require('node:vm')
 
 const NS = 'rigorquant-models'
-const DEFAULT_PRIMARY = {
+// The shipped tier matrix as the probe expects it. The router's own constants
+// are compared against these below, so a retarget of the fallback cannot pass
+// the probe by editing one side.
+const SHIPPED_PRIMARY = {
   provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high',
 }
-const DEFAULT_FALLBACK = {
-  provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'low',
+const SHIPPED_FALLBACK = {
+  provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'low',
 }
 
 function clone(value) {
@@ -71,6 +74,12 @@ function loadHostModule(modulePath) {
 async function main() {
   const [, , modulePath] = process.argv
   const mod = loadHostModule(modulePath)
+  // The resolved section's base is `Config.defaults`, which schemastery fills
+  // from the router's DEFAULT_* constants; the schema stub above discards that
+  // default, so the probe seeds the base from the same exported constants.
+  const { DEFAULT_PRIMARY, DEFAULT_FALLBACK } = mod
+  equal(DEFAULT_PRIMARY, SHIPPED_PRIMARY, 'shipped primary')
+  equal(DEFAULT_FALLBACK, SHIPPED_FALLBACK, 'shipped fallback')
   const listeners = new Map()
   const section = {
     doublecheckerPrimary: clone(DEFAULT_PRIMARY),
@@ -103,7 +112,8 @@ async function main() {
   // the router must fail open, leaving the request untouched.
   const effortSurfaces = {
     'deepseek-official::deepseek-v4-pro': ['off', 'low', 'medium', 'high'],
-    'deepseek-official::deepseek-v4-flash': ['off', 'low', 'medium', 'high'],
+    // DeepSeek-V41-Flash (the 0.1.6 default catalog): no `medium` tier.
+    'deepseek-official::deepseek-flash': ['off', 'low', 'high', 'max'],
     'zai::glm-5.3-flash': [],
     'stub-provider::stub-model': ['low'],
   }
@@ -254,7 +264,8 @@ async function main() {
     DEFAULT_FALLBACK,
     'fallback retry route',
   )
-  assert(logs.length === 1 && logs[0].includes('degraded to deepseek-official/deepseek-v4-flash'), 'fallback log')
+  const degradedTo = `degraded to ${SHIPPED_FALLBACK.provider}/${SHIPPED_FALLBACK.model}`
+  assert(logs.length === 1 && logs[0].includes(degradedTo), 'fallback log')
 
   await emit('session/event', doublechecker.session, {
     type: 'assistant/message',
