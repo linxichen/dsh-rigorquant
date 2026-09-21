@@ -598,6 +598,24 @@ Tests: `test_repo_consistency.py` pins tag↔row identity, the fixed-tier
 follow the new tool names; the router and client-bundle probes exercise the
 renamed settings keys end to end.
 
+## Decision 24 — RigorQuant runs on Agent Teams (0.5.0)
+
+Recorded as an ADR: `docs/adr/0001-rigorquant-on-agent-teams.md`. From 0.5.0
+the multi-agent mechanism is DSH's experimental Agent Teams, consumed as the
+shipped optional bundle and never imported: **identity by name**
+(`<role>-<n>` teammate names replace the `[[rq:role=…]]` persona tag),
+**enforcement by scope** (a host plugin applies each role's persona, tool
+budget and bash network denial on the teammate's `agent/created`),
+**topology by guard** (a teammate may message only the orchestrator; every
+teammate is roster-blind). Amends 8 (mechanism: `spawn_teammate`/`wait_agent`
+and the task board replace the per-role delegation tools), 14 (the bash-curl
+hole is denied at the call for web-denied roles), 16 (the router carries the
+tier matrix; no native `agentOptions` rows remain), 19 (L3 keeps
+freeze-and-hash; a reused teammate receives only new hash-bound briefs),
+20 (floor `0.1.6-alpha.2`; the activity monitor retires for the native team
+view plus a move pill) and 23 (role identity moves from the tool name to the
+teammate name; the hub-and-spoke map is now what the guards enforce).
+
 ## Repo map
 
 ```
