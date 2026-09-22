@@ -683,9 +683,13 @@ persona and global tool-tier budget by name, and registers the
 orchestrator's "RigorQuant team guard: armed" line as a runtime context
 (not a section — the harness's own `CONTEXT_ORDERS` family, distinct from
 a persona slot).
-Per-call guards (topology-by-guard's message/roster/board/bash-network
-enforcement) and router role-resolution by membership are later issues; the
-classic mechanism coexists with `rq-team` until the preset rows are removed.
+**Topology-by-guard shipped under issue #10** (`docs/upgrade-0.1.6.md`
+§3.10): a `tools.guard` per composed member enforces what `tools.restrict`
+cannot mask on the scoped Team tools — hub-and-spoke messaging, roster/board
+blindness, own-task-only board access, the bash network-verb denial for
+web-denied roles, and the orchestrator's `spawn_teammate` name/fork refusal.
+Router role-resolution by membership is a later issue; the classic mechanism
+coexists with `rq-team` until the preset rows are removed.
 
 ## Repo map
 

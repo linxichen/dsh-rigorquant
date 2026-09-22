@@ -36,14 +36,17 @@
 // per-teammate via that teammate's own scope (`agent.ctx`). Per-call
 // enforcement — hub-and-spoke messaging, roster-blindness, own-task-only
 // board access, the bash network-verb denial for web-denied roles, and
-// `spawn_teammate` name/fork refusal on the orchestrator — is a later issue
-// (`tools.guard`, not `tools.restrict`); this module never registers a
-// guard.
+// `spawn_teammate` name/fork refusal on the orchestrator — is `tools.guard`
+// (docs/architecture.md, Decision 24; the ADR's "topology by guard"),
+// registered per-agent alongside the restriction above, never globally: a
+// guard registered through `agent.ctx` applies only to that agent's calls.
 //
 // A teammate whose name does not parse to a role is skipped silently: no
-// composition, no warning. Refusing an unparseable name at spawn time is
-// the orchestrator's own job (a later issue's `spawn_teammate` guard), not
-// this module's — this module is purely compositional/observational.
+// composition, no warning, no guard. Refusing an unparseable name at spawn
+// time is the orchestrator's own `spawn_teammate` guard below — by the time
+// an unparseable-named teammate exists, the Lead's guard already should have
+// refused creating it; this module's own skip is defense in depth, not the
+// enforcement point.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -108,6 +111,112 @@ function denyListFor(role) {
   return [...EVERY_TEAMMATE_DENY]
 }
 
+// ── topology by guard (Decision 24; docs/adr/0001-rigorquant-on-agent-teams.md) ──
+//
+// `tools.restrict` (above) masks the GLOBAL catalog and cannot reach the
+// scoped Team tools `tool-agent-team` registers directly in each member's own
+// scope (`send_message`, `list_agents`, `team_task_list`, `team_task_get`,
+// `team_task_update`, `spawn_teammate`, …) — a restriction only filters what
+// a scope inherits from the global layer. `tools.guard` is the one API that
+// reaches a scoped registration: a monotonic per-call check, registered
+// through `agent.ctx` so it applies only to that one agent.
+
+/** Hub-and-spoke's one legal `send_message` target for every teammate — the
+ * literal name the Team tool's own prompt teaches callers to use for the
+ * Lead (`tool-agent-team`'s `send_message` description: "Team member name,
+ * or lead"). No other string is ever a legal teammate-to-teammate target. */
+const LEAD_TARGET = 'lead'
+
+/** Every teammate is roster- and board-blind outright (ADR "Consequences"):
+ * these two scoped tools are denied regardless of role or tier. */
+const ROSTER_BLIND_TOOLS = new Set(['list_agents', 'team_task_list'])
+
+/** The two scoped board tools whose target task must be the caller's own —
+ * unowned (not yet claimed) is allowed, so `team_task_update(action:
+ * 'claim')` still works; owned by someone else is refused. */
+const OWN_TASK_TOOLS = new Set(['team_task_get', 'team_task_update'])
+
+/** Network verbs the bash-curl residual hole denies at the call for
+ * web-denied roles (blind roles plus Adversary/Document adversary) — the
+ * exact verb set docs/upgrade-0.1.6.md §4.3 and issue #10 name. */
+const BASH_NETWORK_VERBS = /\b(curl|wget|pip\s+install|uv\s+(sync|add|pip))\b/
+
+/** Web-denied union: every role without web access (CONTEXT.md's "Web-denied
+ * role" — the blind roles plus the Adversary and Document adversary). */
+const WEB_DENIED_UNION = new Set([...BLIND_ROLES, ...WEB_DENIED_ROLES])
+
+/** A guard sees `execution.arguments` as `unknown` (it is whatever the model
+ * sent, validated only by the tool's own schema); normalize to a plain
+ * object so both guards below can read fields without repeating the guard. */
+function argsOf(execution) {
+  return (execution.arguments && typeof execution.arguments === 'object') ? execution.arguments : {}
+}
+
+/**
+ * A teammate's guard: hub-and-spoke messaging, roster/board blindness,
+ * own-task-only board access, and (for web-denied roles) the bash
+ * network-verb denial. Ownership is read live through the service
+ * (`teams.getTask`), never cached, so a CAS race cannot stale-allow.
+ * @param agent - the exact live teammate this guard is scoped to.
+ * @param membership - that teammate's resolved Team identity (`name`).
+ * @param role - the parsed role, deciding whether bash network verbs apply.
+ * @param teams - the `agentTeams` service, for the live ownership read.
+ */
+function teammateGuard(agent, membership, role, teams) {
+  const webDenied = WEB_DENIED_UNION.has(role)
+  return (execution) => {
+    const args = argsOf(execution)
+    if (execution.name === 'send_message') {
+      if (args.target === LEAD_TARGET) return undefined
+      return `rq-team: hub-and-spoke — ${membership.name} may message only the Lead, not '${args.target}'`
+    }
+    if (ROSTER_BLIND_TOOLS.has(execution.name)) {
+      return `rq-team: ${membership.name} is roster-blind — ${execution.name} is denied`
+    }
+    if (OWN_TASK_TOOLS.has(execution.name)) {
+      const taskId = args.task_id
+      if (typeof taskId !== 'string') return undefined // malformed call: let the tool's own schema validation report it
+      let task
+      try {
+        task = teams.getTask(agent, taskId)
+      } catch {
+        return undefined // unknown/inaccessible task: let the real call surface the authoritative error
+      }
+      if (task !== undefined && task.ownerName !== undefined && task.ownerName !== membership.name) {
+        return `rq-team: ${membership.name} does not own task '${taskId}' (owned by ${task.ownerName})`
+      }
+      return undefined
+    }
+    if (webDenied && execution.name === 'bash') {
+      const command = typeof args.command === 'string' ? args.command : ''
+      if (BASH_NETWORK_VERBS.test(command)) {
+        return `rq-team: ${membership.name} is web-denied — network command refused: ${command}`
+      }
+    }
+    return undefined
+  }
+}
+
+/**
+ * The orchestrator's guard: `spawn_teammate` refuses a name that does not
+ * parse to `<role>-<n>` (an unnamed teammate would run the orchestrator
+ * persona with the full catalog — Decision 8's exact forbidden failure) and
+ * refuses `context: 'fork'` (fork inherits the parent conversation).
+ */
+function leadGuard() {
+  return (execution) => {
+    if (execution.name !== 'spawn_teammate') return undefined
+    const args = argsOf(execution)
+    if (roleFromName(args.name) === null) {
+      return `rq-team: spawn_teammate refused — '${args.name}' does not parse to <role>-<n>`
+    }
+    if (args.context === 'fork') {
+      return "rq-team: spawn_teammate refused — context 'fork' inherits the Lead conversation"
+    }
+    return undefined
+  }
+}
+
 /** Read every role's persona file once, at mount. A missing/unreadable file
  * warns and leaves that role uncomposed (defensive; should never happen in a
  * shipped tree — pinned by tests/test_repo_consistency.py). */
@@ -162,8 +271,14 @@ function apply(ctx, config = {}) {
     if (!inRigorQuant) return
     const systemPrompt = agent.ctx.get('systemPrompt')
     if (systemPrompt === undefined) return
+    const tools = agent.ctx.get('tools')
     if (membership.role === 'lead') {
-      installed.set(agent, systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT }))
+      const disposeContext = systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT })
+      const disposeGuard = tools !== undefined ? tools.guard(leadGuard()) : () => {}
+      installed.set(agent, () => {
+        disposeContext()
+        disposeGuard()
+      })
       return
     }
     const role = roleFromName(membership.name)
@@ -172,11 +287,12 @@ function apply(ctx, config = {}) {
     if (persona === undefined) return
     const order = systemPrompt.getSectionOrder?.('DEPLOYMENT_PERSONA_PREFIX') ?? 0
     const disposePersona = systemPrompt.section({ name: PERSONA_PREFIX_SECTION, order, text: persona })
-    const tools = agent.ctx.get('tools')
     const disposeTools = tools !== undefined ? tools.restrict({ deny: denyListFor(role) }) : () => {}
+    const disposeGuard = tools !== undefined ? tools.guard(teammateGuard(agent, membership, role, teams)) : () => {}
     installed.set(agent, () => {
       disposePersona()
       disposeTools()
+      disposeGuard()
     })
   }
 

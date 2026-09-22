@@ -2,12 +2,15 @@
 //
 // Mounts the plugin against a stub ctx (agentTeams membership, agents
 // backfill, agentPresets) and a per-agent stub scope (systemPrompt's
-// section()/context()/getSectionOrder(), tools' restrict()), then drives
-// three scenarios: agentTeams present (a lead + several teammates of
+// section()/context()/getSectionOrder(), tools' restrict()/guard()), then
+// drives four scenarios: agentTeams present (a lead + several teammates of
 // varying tiers, an unparseable name, a non-RigorQuant teammate), agentTeams
-// absent (warning, no armed context), and a resume-sourced re-creation
-// (proves composition is reapplied, not skipped as a no-op). Prints one
-// JSON verdict.
+// absent (warning, no armed context), a resume-sourced re-creation (proves
+// composition is reapplied, not skipped as a no-op), and a guard drive that
+// fakes a call through every per-call rule (topology by guard: hub-and-spoke
+// messaging, roster/board blindness, own-task-only board access, the bash
+// network-verb denial for web-denied roles, and the orchestrator's
+// spawn_teammate name/fork refusal). Prints one JSON verdict.
 const { pathToFileURL } = require('node:url')
 
 /** One fake teammate/lead: its own agent.ctx scope recording every
@@ -16,6 +19,7 @@ function makeAgent(id, preset) {
   const sections = []
   const contexts = []
   const restricts = []
+  const guards = []
   const disposedSections = []
   const systemPromptStub = {
     section: (spec) => {
@@ -33,6 +37,10 @@ function makeAgent(id, preset) {
       restricts.push(filter)
       return () => {}
     },
+    guard: (fn) => {
+      guards.push(fn)
+      return () => {}
+    },
   }
   const agent = {
     id,
@@ -45,18 +53,43 @@ function makeAgent(id, preset) {
       },
     },
   }
-  return { agent, recorder: { sections, contexts, restricts, disposedSections } }
+  return { agent, recorder: { sections, contexts, restricts, guards, disposedSections } }
 }
 
 function pick(recorder) {
-  return { sections: recorder.sections, contexts: recorder.contexts, restricts: recorder.restricts }
+  return { sections: recorder.sections, contexts: recorder.contexts, restricts: recorder.restricts, guardCount: recorder.guards.length }
 }
+
+/** Drive one fake call through a registered guard, returning the denial
+ * reason or `null` when the guard allows it (JSON has no `undefined`). */
+function drive(guardFn, name, args) {
+  if (guardFn === undefined) return 'NO_GUARD_REGISTERED'
+  const reason = guardFn({ name, arguments: args })
+  return reason === undefined ? null : reason
+}
+
+// Fixture task board for the ownership guard: 'own-task' is owned by
+// doublechecker-1, 'foreign-task' by explorer-1, 'unowned-task' has no owner
+// yet (still claimable), and any other id is unknown (getTask throws, the
+// way the real service does for a bad id).
+const TASKS_BY_ID = new Map([
+  ['own-task', { id: 'own-task', ownerName: 'doublechecker-1' }],
+  ['foreign-task', { id: 'foreign-task', ownerName: 'explorer-1' }],
+  ['unowned-task', { id: 'unowned-task', ownerName: undefined }],
+])
 
 async function runPresentScenario(mod) {
   const listeners = new Map()
   const membershipByAgent = new Map()
   const agentsBackfill = []
-  const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
+  const teamsService = {
+    tryMembership: (agent) => membershipByAgent.get(agent),
+    getTask: (_agent, taskId) => {
+      const task = TASKS_BY_ID.get(taskId)
+      if (task === undefined) throw new Error(`team-task-not-found: ${taskId}`)
+      return task
+    },
+  }
   const ctx = {
     logger: { warn: () => {} },
     on: (name, handler) => {
@@ -101,8 +134,39 @@ async function runPresentScenario(mod) {
     mountError = `${error.name}: ${error.message}`
   }
 
+  const doublechecker1Guard = doublechecker1.recorder.guards[0]
+  const explorer1Guard = explorer1.recorder.guards[0]
+  const adversary1Guard = adversary1.recorder.guards[0]
+  const leadGuard = lead.recorder.guards[0]
+
+  const guardChecks = {
+    // Hub-and-spoke: a sibling target is refused, the Lead is allowed.
+    siblingMessageDenied: drive(doublechecker1Guard, 'send_message', { target: 'explorer-1' }),
+    leadMessageAllowed: drive(doublechecker1Guard, 'send_message', { target: 'lead' }),
+    // Roster/board blindness: unconditional for every teammate.
+    listAgentsDenied: drive(doublechecker1Guard, 'list_agents', {}),
+    taskListDenied: drive(doublechecker1Guard, 'team_task_list', {}),
+    // Own-task-only board access, read live through the (fake) service.
+    ownTaskGetAllowed: drive(doublechecker1Guard, 'team_task_get', { task_id: 'own-task' }),
+    foreignTaskGetDenied: drive(doublechecker1Guard, 'team_task_get', { task_id: 'foreign-task' }),
+    unownedTaskClaimAllowed: drive(doublechecker1Guard, 'team_task_update', { task_id: 'unowned-task', action: 'claim' }),
+    foreignTaskUpdateDenied: drive(doublechecker1Guard, 'team_task_update', { task_id: 'foreign-task', action: 'complete' }),
+    // Bash network verbs: denied for a web-denied role (blind and
+    // web-denied-only both), allowed for an open role (explorer).
+    blindBashCurlDenied: drive(doublechecker1Guard, 'bash', { command: 'curl https://example.com' }),
+    webDeniedBashWgetDenied: drive(adversary1Guard, 'bash', { command: 'wget https://example.com/file' }),
+    openRoleBashCurlAllowed: drive(explorer1Guard, 'bash', { command: 'curl https://example.com' }),
+    blindBashPlainAllowed: drive(doublechecker1Guard, 'bash', { command: 'ls -la' }),
+    // The orchestrator's spawn_teammate guard: bad name and fork are both
+    // refused; a well-formed fresh spawn is allowed.
+    spawnBadNameDenied: drive(leadGuard, 'spawn_teammate', { name: 'scout-1', context: 'fresh' }),
+    spawnForkDenied: drive(leadGuard, 'spawn_teammate', { name: 'doublechecker-9', context: 'fork' }),
+    spawnFreshRoleAllowed: drive(leadGuard, 'spawn_teammate', { name: 'doublechecker-9', context: 'fresh' }),
+  }
+
   return {
     mountError,
+    guardChecks,
     present: {
       lead: pick(lead.recorder),
       doublechecker1: pick(doublechecker1.recorder),
@@ -175,11 +239,11 @@ async function main() {
   const [, , modulePath] = process.argv
   const mod = await import(pathToFileURL(modulePath).href)
 
-  const { mountError, present } = await runPresentScenario(mod)
+  const { mountError, present, guardChecks } = await runPresentScenario(mod)
   const absent = await runAbsentScenario(mod)
   const resume = await runResumeScenario(mod)
 
-  process.stdout.write(JSON.stringify({ mountError, present, absent, resume }))
+  process.stdout.write(JSON.stringify({ mountError, present, guardChecks, absent, resume }))
 }
 
 main().catch((error) => {

@@ -555,6 +555,54 @@ API precisely. The persona itself stays a `.section()` at
   it is account-wide, not model- or provider-scoped) made further live
   turns impractical.
 
+### 3.10 Phase 2, topology by guard: per-call enforcement (2026-09-22, issue #10)
+
+`dsh/team.js` gained the second half of Decision 24's "enforcement by
+scope": a `tools.guard` per composed member, alongside the `tools.restrict`
+#9 shipped. Restriction masks only the GLOBAL tool catalog and cannot reach
+the scoped Team tools `tool-agent-team` registers directly in each member's
+own scope (`send_message`, `list_agents`, `team_task_list`, `team_task_get`,
+`team_task_update`, `spawn_teammate`), so hub-and-spoke and roster/board
+blindness were still procedural, not enforced, until this issue.
+
+- Every teammate's guard: `send_message` denied unless the target is the
+  literal string `'lead'` (the Team tool's own prompt teaches this name for
+  the Lead); `list_agents`/`team_task_list` denied outright, unconditionally
+  — reading the ADR's "Consequences" section against §4.3's own earlier
+  draft wording ("for blind roles") settled this in favor of the ADR: every
+  teammate is roster-blind, not just the blind tier; `team_task_get`/
+  `team_task_update` denied when the named task's live `ownerName` (read
+  through `agentTeams.getTask`, never cached) belongs to someone else —
+  an unowned task stays reachable, or `team_task_update(action: 'claim')`
+  could never succeed on a fresh task; for web-denied roles (blind roles
+  plus Adversary/Document adversary) a `bash` command matching
+  `\b(curl|wget|pip\s+install|uv\s+(sync|add|pip))\b` is refused.
+- The orchestrator's guard: `spawn_teammate` denied when `name` does not
+  parse to `<role>-<n>`, or when `context` is `'fork'`.
+- `tests/team_probe.cjs` now drives a fake call through every rule (not just
+  records restriction/section calls): sibling `send_message` denied / Lead
+  allowed, roster/board tools denied, a foreign task denied and an unowned
+  or own task allowed, a bash network verb denied for a web-denied role and
+  allowed for an open role, and the orchestrator's bad-name/fork refusals —
+  15 checks, one guard function per composed member, invoked directly
+  (`tests/test_team_plugin.py`, +7 tests over #9's 12).
+- `tests/test_repo_consistency.py` gained
+  `test_team_guard_enforces_the_same_hub_and_spoke_the_pillbox_map_draws`,
+  next to the pillbox-map pin it names: the guard's one legal `send_message`
+  target must be the named `LEAD_TARGET` constant equal to `'lead'`, and
+  `list_agents`/`team_task_list` must be denied unconditionally (no tier
+  narrows that set).
+- Full suite: 338 passed; coverage unchanged at 96.3% (the guard is
+  JS-side, covered by the Node probe, not the Python coverage gate).
+- **Not yet done live**: the issue's demo line ("a teammate's sibling
+  message and a DoubleChecker's `curl` show as refused in its
+  conversation") needs an interactive session against the installed
+  `0.1.6-alpha.2` profile, the way #9's demo (§3.9) ran. The installed
+  `rq6`/`rq16` profiles' `dsh-rigorquant` plugin is a copy taken from the
+  master checkout at spawn time (`dsh plugin add file:...`), not a link to
+  this worktree, so re-syncing it first is required; deferred rather than
+  spending another live session's quota on it without being asked.
+
 ---
 
 ## 4. The centrepiece — RigorQuant on Agent Teams

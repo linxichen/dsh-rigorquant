@@ -1,4 +1,4 @@
-"""Team composition (dsh/team.js) — the first Agent Teams tracer bullet.
+"""Team composition (dsh/team.js) — Agent Teams composition AND per-call guard.
 
 DSH 0.1.6 ships native Agent Teams. This host half applies each teammate's
 role composition — persona, tool-tier budget, and (on the Lead) a runtime
@@ -7,10 +7,17 @@ fact that the guard is armed — purely from the teammate's NAME
 `agentTeams` service. It is purely additive: the classic `[[rq:role=...]]`
 tag mechanism (dsh/index.js) and the seven classic delegation rows
 (agent-presets/rigorquant/agent.cordis.yml) are untouched and coexist with
-this module until a later issue removes them. Per-call guards (hub-and-spoke
-messaging, roster-blindness, own-task-only board access, the bash
-network-verb denial, `spawn_teammate` refusal) are a later issue too — this
-module only registers `tools.restrict`, never `tools.guard`.
+this module until a later issue removes them.
+
+`tools.restrict` cannot mask the scoped Team tools (`send_message`,
+`list_agents`, `team_task_list`, `team_task_get`, `team_task_update`,
+`spawn_teammate`), so topology-by-guard (docs/architecture.md, Decision 24)
+is `tools.guard`, registered per-agent alongside the restriction: hub-and-
+spoke messaging (a teammate may message only the Lead), roster/board
+blindness (`list_agents`/`team_task_list` denied outright), own-task-only
+board access (`team_task_get`/`team_task_update` read live ownership
+through the service), the bash network-verb denial for web-denied roles,
+and the orchestrator's `spawn_teammate` name/fork refusal.
 
 These checks pin the load-bearing properties against a real execution of the
 module (via tests/team_probe.cjs, not by re-implementing it in Python):
@@ -21,13 +28,19 @@ module (via tests/team_probe.cjs, not by re-implementing it in Python):
 2. the Lead gets a distinct "RigorQuant team guard: armed" runtime CONTEXT
    (not a persona section — see dsh/team.js's module header for why);
 3. an unparseable teammate name, and a non-RigorQuant team, are both
-   silently untouched;
+   silently untouched (no section, no restriction, no guard);
 4. every `agent/created` source re-applies composition from scratch (proven
    via a resume-sourced re-creation: the first registration is disposed and
    a fresh one takes its place, not skipped as a no-op);
 5. `agentTeams` absent -> one warning, no armed context anywhere;
 6. the module never imports the experimental Agent Teams packages and never
-   declares `agentTeams` a hard dependency.
+   declares `agentTeams` a hard dependency;
+7. the per-call guard table, driven with fake calls through every rule:
+   sibling `send_message` denied / Lead allowed; `list_agents`/
+   `team_task_list` denied; a foreign task's `team_task_get`/
+   `team_task_update` denied, an unowned or own task allowed; a bash
+   network verb denied for a web-denied role and allowed for an open role;
+   a bad `spawn_teammate` name or `context: 'fork'` denied on the Lead.
 """
 
 import json
@@ -106,12 +119,12 @@ def test_adversary_is_web_denied_but_keeps_skill(probe):
 
 def test_an_unparseable_teammate_name_is_skipped_silently(probe):
     entry = probe["present"]["unparseableName"]
-    assert entry == {"sections": [], "contexts": [], "restricts": []}
+    assert entry == {"sections": [], "contexts": [], "restricts": [], "guardCount": 0}
 
 
 def test_a_non_rigorquant_team_is_never_touched(probe):
     entry = probe["present"]["nonRigorQuantTeammate"]
-    assert entry == {"sections": [], "contexts": [], "restricts": []}
+    assert entry == {"sections": [], "contexts": [], "restricts": [], "guardCount": 0}
 
 
 def test_the_lead_gets_the_armed_guard_line_as_a_context_not_a_section(probe):
@@ -135,6 +148,55 @@ def test_when_agent_teams_is_absent_a_warning_is_logged_and_no_armed_context_app
     assert len(absent["warnings"]) == 1
     assert "agentTeams" in absent["warnings"][0]
     assert absent["leadContexts"] == []
+
+
+def test_every_composed_member_registers_exactly_one_guard(probe):
+    """Restriction alone cannot reach the scoped Team tools; every composed
+    member (teammate or Lead) must also register a `tools.guard`."""
+    present = probe["present"]
+    for member in ("lead", "doublechecker1", "explorer1", "adversary1"):
+        assert present[member]["guardCount"] == 1, f"{member} did not register a guard"
+
+
+# ── topology by guard: a fake call driven through every per-call rule ──────
+
+
+def test_hub_and_spoke_denies_a_sibling_and_allows_the_lead(probe):
+    checks = probe["guardChecks"]
+    assert isinstance(checks["siblingMessageDenied"], str)
+    assert checks["leadMessageAllowed"] is None
+
+
+def test_every_teammate_is_roster_and_board_blind(probe):
+    checks = probe["guardChecks"]
+    assert isinstance(checks["listAgentsDenied"], str)
+    assert isinstance(checks["taskListDenied"], str)
+
+
+def test_a_teammate_touches_only_its_own_task(probe):
+    checks = probe["guardChecks"]
+    assert checks["ownTaskGetAllowed"] is None
+    assert isinstance(checks["foreignTaskGetDenied"], str)
+    assert checks["unownedTaskClaimAllowed"] is None, (
+        "an unclaimed task must stay reachable, or team_task_update(action: "
+        "'claim') could never succeed")
+    assert isinstance(checks["foreignTaskUpdateDenied"], str)
+
+
+def test_bash_network_verbs_are_denied_for_web_denied_roles_and_allowed_for_open_roles(probe):
+    checks = probe["guardChecks"]
+    assert isinstance(checks["blindBashCurlDenied"], str)
+    assert isinstance(checks["webDeniedBashWgetDenied"], str)
+    assert checks["openRoleBashCurlAllowed"] is None
+    assert checks["blindBashPlainAllowed"] is None, (
+        "the guard must gate on the network verb, not deny bash outright")
+
+
+def test_the_orchestrator_spawn_teammate_guard_refuses_bad_names_and_fork(probe):
+    checks = probe["guardChecks"]
+    assert isinstance(checks["spawnBadNameDenied"], str)
+    assert isinstance(checks["spawnForkDenied"], str)
+    assert checks["spawnFreshRoleAllowed"] is None
 
 
 def test_the_patch_registers_the_team_row():

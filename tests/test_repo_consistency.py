@@ -616,6 +616,35 @@ def test_activity_hub_map_is_hub_and_spoke():
         "the stage DAG survived the hub-and-spoke rewrite")
 
 
+def test_team_guard_enforces_the_same_hub_and_spoke_the_pillbox_map_draws():
+    """Decision 24 ("topology by guard"): the pillbox map is now a picture of
+    what dsh/team.js's per-call guard actually enforces on the Team tools
+    `tools.restrict` cannot mask. The one legal `send_message` target for
+    every teammate must be the Lead, by the literal name the Team tool's own
+    prompt teaches ('lead') — no other quoted string may ever appear as an
+    allowed message target in the guard.
+    """
+    team = (REPO / "dsh" / "team.js").read_text()
+    assert "tools.guard(" in team, (
+        "dsh/team.js must register a per-call guard — tools.restrict cannot "
+        "mask the scoped Team tools (send_message, list_agents, "
+        "team_task_list, team_task_get, team_task_update, spawn_teammate)")
+    hub_target = re.search(r"const LEAD_TARGET = '([a-z]+)'", team)
+    assert hub_target, "the guard's one legal message target must be a named constant"
+    assert hub_target.group(1) == "lead", (
+        "hub-and-spoke's only legal send_message target must be the Lead")
+    send_message_guard = re.search(
+        r"execution\.name === 'send_message'.*?\n(.*?\n){0,4}", team)
+    assert send_message_guard and "LEAD_TARGET" in send_message_guard.group(0), (
+        "the send_message guard must gate on the one hub-and-spoke target "
+        "constant, not a separately spelled-out condition")
+    # Roster and board blindness are unconditional — no role tier may narrow
+    # the deny set to fewer than these two scoped tools.
+    assert "ROSTER_BLIND_TOOLS = new Set(['list_agents', 'team_task_list'])" in team, (
+        "list_agents and team_task_list must be denied for every teammate, "
+        "with no tier exception")
+
+
 def test_router_native_defaults_overrides_and_fallback_round_trip():
     """The host router leaves native defaults alone but keeps its policy overlay."""
     node = shutil.which("node")
