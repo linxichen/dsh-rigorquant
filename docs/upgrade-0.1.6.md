@@ -505,10 +505,9 @@ API precisely. The persona itself stays a `.section()` at
   silently untouched; the orchestrator gets the armed *context* (not a
   section); a `resume`-sourced re-creation disposes the first registration
   and installs a fresh one (proves reapplication, not a skipped no-op);
-  `agentTeams`
-  absent logs one warning and no armed context appears anywhere; the module
-  declares no hard `agentTeams` dependency and imports no experimental
-  package.
+  `agentTeams` absent logs one warning and no armed context appears
+  anywhere; the module declares no hard `agentTeams` dependency and
+  imports no experimental package.
 - `tests/test_repo_consistency.py` (+2): the router's `ROLES`,
   `dsh/team.js`'s `TEAMMATE_ROLES`, and the `dsh/personas/*.md` file set
   must name exactly the same seven roles, each file stating its own role
@@ -521,11 +520,40 @@ API precisely. The persona itself stays a `.section()` at
   `dsh/team.js` imports cleanly from the profile's linked copy (`name`,
   `inject`, `TEAMMATE_ROLES`, `apply` all resolve). The server boots with a
   clean log — no mount error, and no `agentTeams absent` warning, consistent
-  with the Team bundles being enabled. **Not exercised**: the interactive
-  demo (spawn `doublechecker-1` in the UI, read its live persona and tool
-  list, restart and reconfirm) needs the browser session tooling, which
-  was unavailable this session — a follow-up check, not a gap in the
-  automated evidence above.
+  with the Team bundles being enabled. The Plugins page shows the bundle at
+  v0.4.2 with **5 total, 5 running** components, `rq-team` among them,
+  and the "RigorQuant model routing" card renders (Root orchestrator's
+  stored override: `zai/GLM-5.3` @ high — explains why every turn routes
+  there regardless of the chatbox picker; Decision 16, unrelated to #9).
+- **The interactive demo, run for real** on `rq6`: asked the live
+  orchestrator to (1) quote any context line naming "RigorQuant team
+  guard" and (2) `spawn_teammate` a `doublechecker-1` and relay its own
+  persona's first sentence and tool catalog. Both checks came back exactly
+  as designed, from the model itself with no knowledge of the
+  implementation:
+  - *Check 1*: `"RigorQuant team guard: armed"` — the orchestrator located
+    it in "the runtime-context block injected into the conversation
+    (`Current runtime context.` snapshot), not in my system prompt
+    proper — my system prompt contains no occurrence of that string." An
+    independent, live confirmation of Decision 1's `.context()` (not
+    `.section()`) correction — the model itself distinguishes the two
+    slots without being told the mechanism.
+  - *Check 2*: `doublechecker-1` reported `PERSONA_FIRST_SENTENCE: You are
+    a RigorQuant DoubleChecker working in epistemic isolation.` — verbatim
+    against `dsh/personas/doublechecker.md` — and a `TOOL_CATALOG` missing
+    exactly the nine denied tools (`web_search`, `web_fetch`, `skill`,
+    `create_goal`, `update_goal`, `get_goal`, `todo_write`,
+    `ask_user_question`, `exit_plan_mode`) while keeping everything else
+    (including the still-mounted classic delegation tools and the Team
+    tools per-call guards don't yet restrict — both correctly out of #9's
+    scope).
+  The resume half of the demo (restart, reconfirm) was not repeated live
+  after this — `tests/test_team_plugin.py`'s `resume`-sourced scenario
+  already proves reapplication deterministically, and the account's
+  5-hour usage quota (exhausted mid-session, `code: 1308`, identical
+  across `zai`, `linxicloud`, and `deepseek-official` routes — confirming
+  it is account-wide, not model- or provider-scoped) made further live
+  turns impractical.
 
 ---
 
