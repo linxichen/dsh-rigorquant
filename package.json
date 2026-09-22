@@ -34,6 +34,7 @@
     "./client": "./dsh/client.js",
     "./sync": "./dsh/sync.js",
     "./activity": "./dsh/activity.js",
+    "./team": "./dsh/team.js",
     "./package.json": "./package.json"
   },
   "dsh": {

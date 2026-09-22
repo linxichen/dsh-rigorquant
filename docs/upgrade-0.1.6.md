@@ -475,6 +475,58 @@ installs.
   gate ≥ 95% (CI parity), including the new consistency test pinning the
   two version stamps together.
 
+### 3.9 Phase 2 tracer bullet: `rq-team` composition (2026-09-22, issue #9)
+
+`dsh/team.js` applies each teammate's persona and tool-tier budget purely
+from its NAME, resolved through the installed `0.1.6-alpha.2` harness's
+real `agentTeams` service — verified by reading the shipped `.d.ts` files
+directly (not the pre-written design in §4.3 alone): `TeamService` really
+registers as `agentTeams`; `tryMembership(agent)` is the exact non-throwing
+call the shipped `@deepseek-ai/dsh-experimental-tool-agent-team` package
+itself uses to scope its own tools; `agent/created` really fires on all four
+of `startup`/`resume`/`clear`/`compact`, confirming composition must be
+reapplied on every one, not just twice as §4.3's prose loosely implied.
+
+One correction to §4.3's own sketch, found by reading the harness's
+`dsh-system-prompt` types in full: the "RigorQuant team guard: armed" line
+is a `systemPrompt.context()` registration (`PromptContext`/`CONTEXT_ORDERS`
+— "dynamic model context materialized as a durable user-role snapshot", the
+same family as the harness's own `SANDBOX_POLICY`/`APPROVAL_POLICY`/
+`SUBAGENT_DELEGATION` context entries), not a second `systemPrompt.section()`
+call — the issue's own wording ("a runtime context line") names the correct
+API precisely. The persona itself stays a `.section()` at
+`deployment:persona-prefix`/order 0, matching `dsh/index.js`'s existing
+`PERSONA_SECTION` read.
+
+- `tests/team_probe.cjs` + `tests/test_team_plugin.py` (13 tests): plugin
+  mounts clean; DoubleChecker (blind) loses web/skill/goal/todo/ask-user/
+  plan-mode; Explorer (open) keeps web/skill; Adversary (web-denied) keeps
+  skill; an unparseable teammate name and a non-RigorQuant team are both
+  silently untouched; the orchestrator gets the armed *context* (not a
+  section); a `resume`-sourced re-creation disposes the first registration
+  and installs a fresh one (proves reapplication, not a skipped no-op);
+  `agentTeams`
+  absent logs one warning and no armed context appears anywhere; the module
+  declares no hard `agentTeams` dependency and imports no experimental
+  package.
+- `tests/test_repo_consistency.py` (+2): the router's `ROLES`,
+  `dsh/team.js`'s `TEAMMATE_ROLES`, and the `dsh/personas/*.md` file set
+  must name exactly the same seven roles, each file stating its own role
+  name up front; the persona-section-name literal is pinned equal on both
+  `dsh/index.js` and `dsh/team.js`.
+- Full suite: 331 passed, 1 skipped; coverage 96.3% ≥ 95%.
+- **Confirmed composing on the installed `0.1.6-alpha.2`** (`rq6` profile,
+  Team bundles on, `dsh --profile rq6 --dump-config`): the `rq-team` row
+  appears in the composed profile tree, enabled, after `rq-preset-sync`.
+  `dsh/team.js` imports cleanly from the profile's linked copy (`name`,
+  `inject`, `TEAMMATE_ROLES`, `apply` all resolve). The server boots with a
+  clean log — no mount error, and no `agentTeams absent` warning, consistent
+  with the Team bundles being enabled. **Not exercised**: the interactive
+  demo (spawn `doublechecker-1` in the UI, read its live persona and tool
+  list, restart and reconfirm) needs the browser session tooling, which
+  was unavailable this session — a follow-up check, not a gap in the
+  automated evidence above.
+
 ---
 
 ## 4. The centrepiece — RigorQuant on Agent Teams
@@ -741,7 +793,16 @@ lifecycle.md + literature.md rewritten around `spawn_teammate`/`wait_agent`/
 task DAG; `install.sh` Teams check + `maxMembers` user-patch override;
 `cordis.patch.yml` row + override; tests in §4.5; CHANGELOG; architecture.md
 **Decision 24** (Teams: identity by name, enforcement by scope, topology by
-guard) amending 8, 14, 16, 19, 20, 23.
+guard) amending 8, 14, 16, 19, 20, 23. The composition half (`dsh/team.js`,
+the seven `dsh/personas/<role>.md` files, the `cordis.patch.yml` row) is
+**done 2026-09-22** (issue #9 — the first tracer bullet: persona +
+global tool-tier budget applied per teammate by name, and the
+orchestrator's "guard armed" runtime context); results in §3.9. Router
+role-resolution by membership (#11), classic preset-row removal (#14), and
+`install.sh`'s
+Teams-enabling (#12) land separately — the classic `[[rq:role=...]]`
+mechanism and the seven classic delegation rows coexist with `rq-team`
+until #14.
 
 **Phase 3 — Browser goes native (0.5.0)**
 retire `activity.js` + probes + tests; thin move pill on

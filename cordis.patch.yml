@@ -64,3 +64,16 @@
     # local edits; removal stays explicit via ./install.sh --uninstall.
     - id: rq-preset-sync
       name: 'dsh-rigorquant/sync'
+
+    # Team composition: role personas, tool-tier budgets, and the "RigorQuant
+    # team guard: armed" runtime context line (docs/architecture.md,
+    # Decision 24; docs/adr/0001-rigorquant-on-agent-teams.md). Declares the
+    # `agentTeams` service OPTIONAL and reaches it duck-typed by service name,
+    # never importing the experimental Agent Teams packages; the classic
+    # `[[rq:role=...]]` mechanism and the seven classic delegation rows above
+    # are untouched and coexist with this row until a later issue removes
+    # them. Per-call guards (send_message target, roster-blindness,
+    # own-task-only board access, bash network denial, spawn_teammate
+    # refusal) are a later issue — this row is composition only.
+    - id: rq-team
+      name: 'dsh-rigorquant/team'

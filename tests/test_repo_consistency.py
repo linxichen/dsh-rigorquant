@@ -659,6 +659,49 @@ def test_router_roles_cover_the_tagged_roles_exactly():
         "router ROLES %s != tagged roles %s + root" % (sorted(declared), sorted(tagged)))
 
 
+def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
+    """dsh/team.js's TEAMMATE_ROLES, dsh/personas/*.md, and dsh/index.js's
+    ROLES (minus 'root') must name exactly the same seven roles.
+
+    Drift in any one silently strands a teammate without composition (a
+    role dsh/team.js doesn't know) or a persona file nobody reads (a role
+    dsh/team.js knows but no file backs).
+    """
+    router = (REPO / "dsh" / "index.js").read_text()
+    router_match = re.search(r"export const ROLES = \[([^\]]*)\]", router)
+    assert router_match, "dsh/index.js no longer exports its ROLES list"
+    router_roles = set(re.findall(r"'([a-z-]+)'", router_match.group(1))) - {"root"}
+
+    team = (REPO / "dsh" / "team.js").read_text()
+    team_match = re.search(r"export const TEAMMATE_ROLES = \[([^\]]*)\]", team)
+    assert team_match, "dsh/team.js no longer exports TEAMMATE_ROLES"
+    team_roles = set(re.findall(r"'([a-z-]+)'", team_match.group(1)))
+
+    persona_dir = REPO / "dsh" / "personas"
+    persona_roles = {p.stem for p in persona_dir.glob("*.md")}
+
+    assert router_roles == team_roles == persona_roles, (
+        "role drift: router=%s team=%s personas=%s"
+        % (sorted(router_roles), sorted(team_roles), sorted(persona_roles)))
+
+    for role in persona_roles:
+        text = (persona_dir / f"{role}.md").read_text()
+        assert text.lstrip().startswith(f"# Role: {role}"), (
+            f"{role}.md must state its own role name up front")
+
+
+def test_team_persona_section_name_matches_the_router_constant():
+    """dsh/team.js writes the persona to the same section dsh/index.js reads.
+
+    A silent rename on either side would write a teammate's persona to a
+    slot nothing reads, or read a slot rq-team never writes.
+    """
+    router = (REPO / "dsh" / "index.js").read_text()
+    team = (REPO / "dsh" / "team.js").read_text()
+    assert "const PERSONA_SECTION = 'deployment:persona-prefix'" in router
+    assert "const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'" in team
+
+
 def _shipped_route(slot):
     """The router's DEFAULT_<slot> route as (model, effort), read off dsh/index.js."""
     router = (REPO / "dsh/index.js").read_text()

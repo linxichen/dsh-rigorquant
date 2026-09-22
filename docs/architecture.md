@@ -677,6 +677,16 @@ freeze-and-hash; a reused teammate receives only new hash-bound briefs),
 view plus a move pill) and 23 (role identity moves from the tool name to the
 teammate name; the hub-and-spoke map is now what the guards enforce).
 
+**Enforcement-by-scope's composition half shipped under issue #9**
+(`docs/upgrade-0.1.6.md` §3.9): `dsh/team.js` applies each teammate's
+persona and global tool-tier budget by name, and registers the
+orchestrator's "RigorQuant team guard: armed" line as a runtime context
+(not a section — the harness's own `CONTEXT_ORDERS` family, distinct from
+a persona slot).
+Per-call guards (topology-by-guard's message/roster/board/bash-network
+enforcement) and router role-resolution by membership are later issues; the
+classic mechanism coexists with `rq-team` until the preset rows are removed.
+
 ## Repo map
 
 ```
