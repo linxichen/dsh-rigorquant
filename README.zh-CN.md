@@ -156,6 +156,9 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 引入，回退路由指向的模型也只在该版本的目录中——在 0.1.5 上，模型路由卡片与活动
 悬浮条都会静默地什么都不渲染。
 
+下限本身是 alpha：0.1.6 尚未发布正式版，本版本跑在预发布宿主上——它依赖的
+接缝记录在 docs/architecture.md 决策 20 的 0.1.6 修正里。
+
 扇出受宿主限制：每个 root 同时最多 8 个存活子代理（`maxActiveSubagents`，
 **插件 → Subagent**）。文献密集的研究若要让 4 条文献线与探索者并行，可在那里调高。
 

@@ -8,10 +8,21 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-22
+
+The last classic release (Decision 24, `docs/adr/0001-rigorquant-on-agent-teams.md`):
+the existing mechanism — delegation rows, custom router, activity monitor —
+runs on DSH **0.1.6-alpha.2**, its two silent browser breaks fixed and its
+fallback retargeted, holding the line for operators who cannot enable a Beta
+bundle while 0.5.0 moves the same study loop onto Agent Teams. It also
+carries the 0.1.5 port, which never shipped on its own: 0.4.1 predates it.
+
 ### Added
 - **DSH 0.1.5 support, and the version floor that goes with it.** The full
-  install now requires **DSH ≥ 0.1.5-alpha.2** (`install.sh`, both READMEs).
-  The floor is mount-time, not cosmetic: 0.1.3-alpha.2 split the persona into a
+  install requires **DSH ≥ 0.1.6-alpha.2** (`install.sh`, both READMEs) —
+  the floor the 0.1.6 amendments below raise from the port's own
+  `0.1.5-alpha.2`, for the reason the Changed section states. The floor is
+  mount-time, not cosmetic: 0.1.3-alpha.2 split the persona into a
   required `prefix` plus an optional `suffix` and deleted the single `text`
   key, and a row whose config fails validation rejects the **whole** preset
   mount while the preset picker still lists it as healthy.
@@ -28,6 +39,14 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   through the `agentPreset` projection, the router resolves a one-shot child
   through the **live** persona section, and the child catalog keeps
   `send_message`.
+- **The installer detects Agent Teams; it does not enable it.** A full
+  install reads `dsh.profile.bundles` in the target profile's `package.json`
+  and reports whether both optional Team bundles are on, printing where to
+  toggle them when they are not. Detection only: enabling a bundle appends a
+  layer to the profile's stack, which changes what every session in that
+  profile composes, so it stays the operator's decision until Decision 24
+  (0.5.0) enables them under a marker it can find again. An unreadable
+  manifest is reported as unknown, never as "off".
 
 ### Changed
 - **The shipped fallback route is `deepseek-flash` @ low.** The 0.1.6 default
@@ -68,6 +87,29 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   name. `dsh.client.inject` names `@deepseek-ai/dsh-client-ui-renderer` (the
   package that actually provides `slots`) instead of the removed
   `@deepseek-ai/dsh-client-runtime`.
+- **The floor is DSH ≥ 0.1.6-alpha.2.** Both READMEs, `install.sh`, the
+  preset header and `dsh/sync.js` state it (sync states and cannot enforce:
+  the bundle install path of Decision 22 runs after the profile has
+  composed, so there is nothing left to refuse), and the READMEs say
+  outright that the floor is an alpha harness. The floor sits above every
+  row's own requirement because the seams that broke are browser-side — on
+  0.1.5 the preset still mounts while the routing card and the activity
+  floater render nothing at all.
+- **The deprecated synchronous history reads stay, with the deferral note.**
+  0.1.6 deprecated `ownEvents()`/`snapshotEvents()` under the policy
+  "existing logic may remain unmigrated for now, but new calls are
+  prohibited". The router and the activity half each keep one helper
+  carrying that note, and the consistency suite pins both the accessor
+  count and the call sites, so the deferral cannot quietly grow a third
+  caller. Both disappear under Decision 24, where a role comes from the
+  teammate's name.
+- **Fan-out wording follows the host's live-children pool.** The skill and
+  the protocol state the pool — eight live children per root
+  (`maxActiveSubagents`, default 8) — and that a spawn over the bound fails
+  with `ACTIVATION_LIMIT_REACHED`, which reads like a transient error and is
+  not one: wait for a teammate to settle, never retry in a loop, because
+  nothing releases a slot but a teammate finishing. Raising the setting is
+  the operator's change, in Plugins, not the orchestrator's.
 
 ### Fixed
 - **The model-routing card renders again on DSH 0.1.6 — on the Plugins page.**
@@ -127,8 +169,40 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   `ownEvents()` nor `snapshotEvents()` now raises instead of yielding `[]`. The
   whole bug being fixed was a removed API degrading into an empty panel with no
   diagnostic, so keeping a `return []` would have preserved it.
+- **The disabled rows still name packages that exist.** The workflow engine
+  row follows 0.1.6's rename to `workflow-ptc`
+  (`@deepseek-ai/dsh-workflow-worker-thread` no longer exists) and the
+  disabled external-agent rows move from `enableRunInBackground: false` to
+  `backgroundMode: one-shot`, matching the shipped `standard` preset. All
+  three stay **disabled** for the reasons that disabled them (untagged,
+  unscopeable children), and `modelSelectionSettings` stays off — a
+  caller-chosen model would override the role's routed tier (Decision 16).
+  Nothing mounts either way — a disabled row is never imported — but a row
+  that cannot resolve reads as a typo rather than a decision, and the
+  harness probe against the installed 0.1.6 now reports **38 rows, 0 hard
+  failures and no UNRESOLVED row** (see Verified).
+- **`install.sh --help` no longer runs `--skill-only`.** Backticks in an
+  unquoted heredoc in the usage text executed it as a command, so `--help`
+  wrote "command not found" to stderr and printed the floor line with a gap
+  in it.
 
 ### Verified
+- **Released against the installed 0.1.6-alpha.2** (`docs/upgrade-0.1.6.md`
+  §3.8, on a scratch profile installing the release tree by `file:`): the
+  preset harness probe reports **38 rows, 0 hard failures and no UNRESOLVED
+  row**; the bundle page shows v0.4.2 with **all four components Running** —
+  the skill-root row is the one that evaluates the patch's package-relative
+  `createRequire` resolution, so runtime resolution mode is confirmed on a
+  real profile — and `rq-preset-sync` stamped 0.4.2 at first boot, the
+  version bump being what replaces the shared preset tree (the stale-copy
+  failure mode the 0.1.5 port's unreleased bump would have hit). Toggling
+  the four RigorQuant rows off and on in the Plugins page (three
+  unload/reload transitions of the route-owning component) left **no
+  dangling route or listener**: both `/plugins/dsh-rigorquant/` routes 404
+  while off and 200 with a live snapshot after every re-enable, with the
+  host log silent throughout. The full suite ran green under the coverage
+  gate, including a new consistency test pinning the package and lane
+  version stamps together.
 - An independent read-only audit (Claude Code 2.1.267, a different agent
   runtime) was asked to FALSIFY the port's "implemented" claim against commit
   `66a2ac5`. It confirmed §4.1, 4.3, 4.5–4.7, 4.9–4.11, the seven-deny-list
@@ -154,9 +228,16 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 - `docs/upgrade-0.1.5.md` — the source-verified upgrade study: what changed
   between 0.1.2 and 0.1.5, what the preset must adopt, the deeper agent/tool
   optimizations, and the ranked fix list this release implements.
+- `docs/upgrade-0.1.6.md` — the 0.1.6 source study: what changed upstream, the
+  break list (the two silent browser breaks, the removed fallback model, the
+  deprecated history reads), the Phase 0 probe evidence against the installed
+  alpha, and the Phase 1 release verification recorded in its §3.8.
 - `docs/architecture.md` Decision 20 records the two contract changes (the
   final-message delivery channel and the `settingsSchema`-only draft model) and
-  the persona split.
+  the persona split; its 0.1.6 amendment is the compat surface this release
+  ships. Decision 24 (`docs/adr/0001-rigorquant-on-agent-teams.md`) is the plan
+  0.4.2 is the safety net for: the last classic release, while 0.5.0 moves the
+  same study loop onto Agent Teams.
 
 ## [0.4.1] - 2026-09-02
 

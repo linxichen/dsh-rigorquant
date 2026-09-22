@@ -422,6 +422,59 @@ Commands and paths: `node tests/preset_harness_probe.cjs`;
 RigorQuant patch follows them); session records under
 `$DSH_HOME/sessions/--Users-linxi-gits-rigorquant_studies--/`.
 
+### 3.8 Phase 1 release verification (2026-09-22, 0.4.2)
+
+The release checks the spec names, run against the release tree itself
+(issue #8). The scratch profile this time is **`rq6`** — recreated for this
+run (worktree `file:` install of the 0.4.2 tree via pnpm hardlinks, both
+Team bundles on, `dsh --profile rq6 --no-open --port 38116`) — because the
+release must be verified on the code it ships, not the master clone `rq16`
+installs.
+
+- **Harness probe green.** `node tests/preset_harness_probe.cjs` against the
+  installed `0.1.6-alpha.2`: **38 rows, 0 hard failures, 0 UNRESOLVED**,
+  7 rows without an exported Config — one more than §3.7's six because the
+  renamed `workflow-ptc` row resolves but exports no Config, where the
+  retired worker-thread name was the UNRESOLVED. No row is expected to be
+  unresolved, and none is.
+- **The version bump replaced the shared preset.** §3.7 finding 1's
+  mechanism held in the release direction: `install.sh` (run from the
+  worktree with `dsh` off PATH, so the plugin step skips by design) replaced
+  `$DSH_HOME/.agent-presets/rigorquant`, and `rq-preset-sync` stamped
+  `.rq-sync.json` = **0.4.2** at first boot.
+- **Package-relative patch resolution under runtime mode, on the release
+  tree.** The bundle page on `rq6` shows **v0.4.2** (the pnpm hardlink serves
+  the worktree's `package.json`) with **4 total · 4 running**:
+  `skill-filesystem-rigorquant`, `rq-model-router`, `rq-activity`,
+  `rq-preset-sync`. The skill-root row is the one evaluating
+  `createRequire(baseUrl + 'package.json').resolve('dsh-rigorquant/package.json')`,
+  so it resolved against the worktree install under the same boot-root
+  `baseUrl` §3.7 confirmed. The bundle page also renders the
+  **RigorQuant model routing** card between the description and the rows —
+  the `plugins.bundle.config` registration of B2's fix, live.
+- **Plugin Manager live unload leaves nothing dangling.** The check §3.7
+  deferred to Phase 1. With all four rows Running, both HTTP routes answer
+  200 (`/plugins/dsh-rigorquant/activity` JSON snapshot,
+  `/plugins/dsh-rigorquant/avatar/avatar-explorer.png`). All four RigorQuant
+  rows toggled **off** in the Plugins page: both routes **404**, the page
+  reads "4 total · 4 off". Toggled back **on**: "4 total · 4 running", both
+  routes 200 again with a valid snapshot. `rq-activity` alone was cycled off
+  and on twice more (three unload/reload transitions of the route-owning
+  component in total): every off state 404s, every on state 200s — no
+  duplicate-route throw, no wedged `routesRegistered` flag, and the host log
+  stayed silent throughout (a leaked `ctx.on` listener or a stranded
+  disposer would surface as one of those). The browser console holds only
+  the expected resource errors (the pre-auth 401 loads and the 404s of the
+  probes themselves while the rows were off); no JS exception.
+- **§8 decision 7 disposed: nothing.** 0.4.2 ships no persona wording about
+  the nine Team tools a Teams-enabled profile hands the classic orchestrator
+  (§3.7 finding 5). This is the line for profiles that cannot enable Teams,
+  so most of its sessions never see them; the persona speaks when Decision
+  24 replaces the mechanism wholesale.
+- **Suite and gate.** `RQ_COVERAGE=1` full suite green with the coverage
+  gate ≥ 95% (CI parity), including the new consistency test pinning the
+  two version stamps together.
+
 ---
 
 ## 4. The centrepiece — RigorQuant on Agent Teams
@@ -678,6 +731,8 @@ master `fbdd80e`.
 B1 (minimal `retainedBy.mainView` fix), B2 (card → `plugins.bundle.config`),
 B3 (`deepseek-flash`), B5/B7 (rows, floor, docs), B6 (SKILL wording),
 §3.7 verifications, probes updated. This is the safety net if Phase 2 slips.
+**Done 2026-09-22** (issues #5–#7, released as 0.4.2 by #8); results in
+§3.8.
 
 **Phase 2 — Agent Teams (0.5.0)**
 `dsh/team.js` (`rq-team`) + `ROLE_PERSONA`/`ROLE_DENY`/guards; router keyed

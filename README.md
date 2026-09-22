@@ -173,6 +173,10 @@ mount), the final-assistant-message delivery contract (`report` was removed in
 introduced and the fallback route names a model only its catalog lists — on
 0.1.5 the routing card and the activity floater render nothing, silently.
 
+The floor is an alpha: 0.1.6 has not shipped final, so this release depends
+on a pre-release harness — the seams it follows are recorded in Decision
+20's 0.1.6 amendment (`docs/architecture.md`).
+
 Fan-out is bounded by the host: eight live children per root
 (`maxActiveSubagents`, **Plugins → Subagent**). A literature-heavy study that
 wants four lines running beside its explorers can raise it there.
