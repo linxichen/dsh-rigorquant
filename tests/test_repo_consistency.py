@@ -73,6 +73,22 @@ def test_package_files_all_exist():
     assert not missing, "package.json ships paths that do not exist: %s" % missing
 
 
+def test_the_package_and_lane_version_stamps_agree():
+    """A release bumps both stamps; the 0.4.1 release commit did it by hand.
+
+    The lane stamp is what rq-preset-sync keys its replace-vs-keep decision
+    on, so a release that bumps one stamp and not the other ships a preset
+    the profiles keep stale (upgrade-0.1.6.md §3.7, finding 1).
+    """
+    manifest = json.loads((REPO / "package.json").read_text())
+    stamp = re.search(r'^version = "([^"]+)"',
+                      (REPO / "env" / "pyproject.toml").read_text(), re.M)
+    assert stamp, "env/pyproject.toml states no version"
+    assert stamp.group(1) == manifest["version"], (
+        "package.json says %s but env/pyproject.toml says %s -- a release "
+        "must bump both" % (manifest["version"], stamp.group(1)))
+
+
 def test_install_script_installs_everything_the_runtime_needs():
     """The skill's scripts and schemas must survive a full install."""
     install = (REPO / "install.sh").read_text()
