@@ -55,9 +55,9 @@ GUARANTEED = frozenset({
     "ask_user_question", "exit_plan_mode",
     "send_message", "interrupt_agent", "list_agents",
     # delegation (the preset's own spawn rows). The untagged spawner rows
-    # (subagent_fork, workflow, ralph, workflow-worker-thread) are disabled
-    # outright and mount nothing, so they appear neither here nor in any deny
-    # list (tools.restrict throws on unmounted names).
+    # (subagent_fork, workflow, ralph, workflow-ptc) are disabled outright and
+    # mount nothing, so they appear neither here nor in any deny list
+    # (tools.restrict throws on unmounted names).
     "subagent_explorer", "subagent_double_checker", "subagent_adversary",
     "subagent_offgrid", "subagent_lit_line", "subagent_lit_adversary",
     "subagent_document_adversary",
@@ -209,7 +209,7 @@ def test_untagged_spawner_rows_are_disabled():
     import re
 
     for row_id, body in composition_rows(_composition()):
-        if row_id in ("tool-subagent-fork", "workflow-worker-thread",
+        if row_id in ("tool-subagent-fork", "workflow-ptc",
                       "tool-workflow", "tool-ralph"):
             assert re.search(r"^\s+disabled: true\s*$", body, re.MULTILINE), (
                 "%s must stay disabled: it mints untagged, unscopeable children"

@@ -71,7 +71,7 @@ rather than forcing PASS, and tag every claim with its evidence level
 (falsification-surviving / independently re-derived / certificate-checked /
 formally verified; see lifecycle.md).
 
-## Delegation discipline (hard-lessons L2, L3, L5)
+## Delegation discipline (hard-lessons L2, L3, L5, and the host's pool)
 
 These rules exist because the 20260820 var-expected-return-term run's budget
 was consumed by process, not content: six agents produced complete verdict
@@ -101,6 +101,19 @@ unaudited.
   settlement describe a prior state and are discarded without action. A
   hash-bound verdict is the only way a later reader can tell which document a
   verdict judged.
+- **Fan-out is bounded by the live-children pool.** The host runs at most
+  **eight** live children per root (`maxActiveSubagents`, Plugins → Subagent,
+  default 8). RigorQuant teammates are depth-1 and settle when they finish, so
+  the pool bounds concurrency, not the study's lifetime headcount — but a
+  round that launches four literature lines, two explorers and a second
+  DoubleChecker at once is seven of the eight slots. Batch the round: start
+  the literature line, the method and the ground-truth work in waves rather
+  than fanning a whole round out in one message. A spawn over the bound fails
+  with `ACTIVATION_LIMIT_REACHED`, which reads like a transient error and is
+  not one: **wait for a teammate to settle, never retry in a loop.** Nothing
+  releases a slot but a teammate finishing, so a retry loop spends the budget
+  on the error path. (A literature-heavy study may raise the setting instead —
+  that is the operator's change, in Plugins, not the orchestrator's.)
 - **Orchestrator-produced numbers are audited like agent-produced numbers
   (L5).** Anything the orchestrator produces that becomes evidence — a
   generator, a table, a verification script, a status claim — goes through the

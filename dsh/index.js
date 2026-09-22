@@ -152,7 +152,14 @@ function isChildHeader(header) {
 
 /** The session's OWN event log: `ownEvents()` (0.1.5+) excludes the
  * fork-inherited prefix that `snapshotEvents()` includes, so an ancestor's
- * descriptor can never be adopted as this child's role. */
+ * descriptor can never be adopted as this child's role.
+ *
+ * @deprecated Both accessors are deprecated as of 0.1.6 (synchronous session
+ * event reads). Existing logic may remain unmigrated for now, but new calls
+ * are prohibited — which is why every read in this module goes through this
+ * one helper. The reads disappear with the classic mechanism: under Agent
+ * Teams a role comes from the teammate's name, which the membership carries
+ * durably and no log scan can miss. */
 function ownEventsOf(session) {
   return typeof session.ownEvents === 'function' ? session.ownEvents() : session.snapshotEvents()
 }

@@ -396,8 +396,8 @@ into the `settingsSchema` service (`rehydrate`/`validate`; path helpers
 unchanged).
 
 **Re-surveyed for 0.1.5** (`docs/upgrade-0.1.5.md`): the dual-version client is
-gone and the **required floor is now `DSH ≥ 0.1.5-alpha.2`**, enforced by
-`install.sh` and documented in both READMEs and the preset header. 0.1.3-alpha.2
+gone and the floor moved to `0.1.5-alpha.2` (0.1.6 raised it again — see the
+amendment below). 0.1.3-alpha.2
 split the persona row's single `text` key into a required `prefix` plus a
 `suffix`, and a row whose config fails validation rejects the WHOLE preset
 mount; 0.1.2-rc.1 removed the child-scoped `report` tool; 0.1.5-alpha.2 is where
@@ -448,7 +448,12 @@ the deliverables tool (`present`) and the right Sidebar land. Decision:
   round-loop fan-out; adopt only when it stabilizes.
 
 **Amended for 0.1.6 (0.4.2, the last classic release; `docs/upgrade-0.1.6.md`
-§3):** two browser seams broke silently and are followed, not worked around.
+§3):** two browser seams broke silently and are followed, not worked around,
+and the **required floor is now `DSH ≥ 0.1.6-alpha.2`** — enforced by
+`install.sh`, documented in both READMEs and the preset header, and pinned by
+`test_repo_consistency.py`. The floor is above every row's own requirement
+because the two seams below are browser-side: on 0.1.5 the preset still mounts
+while the card and the floater render nothing at all.
 
 - **The routing card is the bundle's configuration entry on the Plugins
   page.** 0.1.6 retired `settings.plugin.item` (plugin configuration moved
@@ -466,6 +471,41 @@ the deliverables tool (`present`) and the right Sidebar land. Decision:
   harness's own team UI makes — and re-scans on every list publish. Nothing
   reads a `current` field, and the client-bundle probe pins that on the
   source as well as on behaviour.
+- **Disabled rows still have to be honest.** The workflow engine row follows
+  0.1.6's rename to `workflow-ptc` (`@deepseek-ai/dsh-workflow-worker-thread`
+  no longer exists) and the disabled external-agent rows move from
+  `enableRunInBackground: false` to `backgroundMode: one-shot`, matching the
+  shipped `standard` preset. All three stay **disabled** for the reasons that
+  disabled them (untagged, unscopeable children). Nothing mounts either way —
+  a disabled row is never imported — but the harness probe reported the stale
+  package UNRESOLVED, and a row that cannot resolve reads as a typo rather
+  than a decision. `modelSelectionSettings`, which `standard` turned on for
+  `tool-subagent`, stays **off**: a caller-chosen model overrides the role's
+  routed tier (Decision 16).
+- **Fan-out is bounded by the host's pool.** `maxActiveSubagents` (default 8)
+  caps live children per root; over it a spawn raises
+  `ACTIVATION_LIMIT_REACHED`, which nothing but a child settling clears. The
+  skill and the protocol say to batch the round and wait, never to retry in a
+  loop; raising the setting is the operator's change in Plugins, not the
+  orchestrator's.
+- **The installer detects Agent Teams; it does not enable it.** A full install
+  reads `dsh.profile.bundles` in the target profile's `package.json` and
+  reports whether both optional Team bundles are on, printing where to toggle
+  them when they are not. 0.4.2 is the classic release and needs neither;
+  enabling a bundle appends a layer to the profile's stack, which changes what
+  every session in that profile composes, so it stays the operator's decision
+  (Decision 24 is where 0.5.0 enables them, under a marker it can find again).
+  An unreadable manifest is reported as unknown, never as "off". The floor
+  itself is enforced only on this path: the bundle install of Decision 22
+  runs after the profile has composed, so `dsh/sync.js` states the floor and
+  cannot check it.
+- **The deprecated synchronous history reads stay, with the deferral note.**
+  0.1.6 deprecated `ownEvents()`/`snapshotEvents()` under the policy "existing
+  logic may remain unmigrated for now, but new calls are prohibited". The
+  router and the activity half each keep one helper carrying that note; the
+  consistency suite pins the call count, so the deferral cannot quietly grow a
+  third caller. Both disappear under Decision 24, where a role comes from the
+  teammate's name.
 
 Storage note: rc.8 changed the SQLite backend format (no migration), but it is
 opt-in; rigorquant sessions persist as JSONL, which is byte-compatible across
