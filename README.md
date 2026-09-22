@@ -171,7 +171,7 @@ mount), the final-assistant-message delivery contract (`report` was removed in
 0.1.2-rc.1), and the `present` deliverables tool (0.1.5).
 
 **One line, everything** — the preset, the compute lane, and the plugin (role
-model router + its Settings card):
+model router + its card on the Plugins page):
 
 ```sh
 npx dsh-rigorquant
@@ -260,7 +260,7 @@ cordis.patch.yml            bundle patch: skills layer + rq-model-router +
                             rq-activity + rq-preset-sync rows
 dsh/                        host halves (rq-model-router router, rq-activity
                             monitor, rq-preset-sync boot-sync) and the web
-                            client bundle (settings card + activity floater)
+                            client bundle (routing card + activity floater)
 agent-presets/rigorquant/   preset composition + persona + bundled skills
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install the dsh-rigorquant agent preset (and its bundled skills) into DSH.
 #   ./install.sh                 → install everything: preset, compute lane, and the
-#                                  plugin (model router + settings card) into a profile
+#                                  plugin (model router + its Plugins-page card) into a profile
 #   ./install.sh --skill-only    → install only the skills, for use with any preset
 #                                  and WITHOUT the plugin
 #   ./install.sh --uninstall     → remove everything this script installed
@@ -25,8 +25,9 @@ Usage: $0 [--skill-only] [--uninstall] [--profile <name>] [--version] [--help]
 
   (no args)      Install everything: the RigorQuant preset, the shared compute
                  lane under \$DSH_HOME/share/rigorquant, and the plugin (role
-                 model router + its Settings card) into the '$PROFILE' profile.
-                 The plugin supplies the skills, so no global copies are made.
+                 model router + its card on the Plugins page) into the
+                 '$PROFILE' profile. The plugin supplies the skills, so no
+                 global copies are made.
   --skill-only   Install ONLY the skills into \$DSH_HOME/skills, for use with
                  any preset and without the plugin.
   --uninstall    Remove the preset, skills, shared lane, and the plugin.
@@ -145,7 +146,7 @@ install_plugin() {
     spec="dsh-rigorquant@${VERSION:-latest}"
   fi
   if dsh plugin --profile "$PROFILE" add "$spec" >/dev/null 2>&1; then
-    echo "Installed the plugin ($spec) into the '$PROFILE' profile (model router + Settings card)."
+    echo "Installed the plugin ($spec) into the '$PROFILE' profile (model router + its card on the Plugins page)."
   else
     printf 'warning: `dsh plugin --profile %s add %s` failed; the preset and lane are installed, the plugin is not.\n' "$PROFILE" "$spec" >&2
   fi

@@ -230,7 +230,7 @@ cordis.patch.yml            bundle patch：技能层 + rq-model-router +
                             rq-activity + rq-preset-sync 行
 dsh/                        宿主半（rq-model-router 路由、rq-activity 监视器、
                             rq-preset-sync 启动同步）与 web 客户端包
-                            （设置卡片 + 活动悬浮件）
+                            （路由卡片 + 活动悬浮件）
 agent-presets/rigorquant/   preset 组合 + persona + 内置技能
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   元校验器（唯一正式副本）

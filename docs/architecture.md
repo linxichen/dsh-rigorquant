@@ -301,7 +301,7 @@ composition.
   provider's own output ceiling is safer than imposing an arbitrary cap on
   proof-heavy reports. The new `modelSelectionSettings` allow-list is not
   enabled for these role tools because caller-selected routes would undermine
-  the forced tier matrix; the Settings card remains the explicit override
+  the forced tier matrix; the routing card remains the explicit override
   surface.
 
 Guarded by tests: every role persona must keep its tag, the router's ROLES list
