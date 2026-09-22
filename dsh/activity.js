@@ -109,7 +109,13 @@ function isChildHeader(header) {
  *
  * Neither accessor means this is not a Session this build can observe. THROW
  * rather than return an empty array: the whole failure mode being fixed here
- * was a removed API degrading into an empty panel with no diagnostic. */
+ * was a removed API degrading into an empty panel with no diagnostic.
+ *
+ * @deprecated Both accessors are deprecated as of 0.1.6 (synchronous session
+ * event reads). Existing logic may remain unmigrated for now, but new calls
+ * are prohibited — which is why every read in this module goes through this
+ * one helper. This module retires with the classic mechanism: the native team
+ * view replaces the panel, and a teammate's role comes from its name. */
 function ownEventsOf(session) {
   if (typeof session?.ownEvents === 'function') return session.ownEvents()
   if (typeof session?.snapshotEvents === 'function') return session.snapshotEvents()

@@ -198,6 +198,16 @@ owning decision: docs/architecture.md Decision 14.
 
 Each orchestrator round = fan-out → ground truth → adversary → synthesize.
 
+**The pool bounds every fan-out in this loop.** The host allows **eight** live
+children per root at a time (`maxActiveSubagents`, Plugins → Subagent,
+default 8). Count before you launch: four literature lines plus two explorers
+plus a second DoubleChecker is seven, one short of the ceiling — so stagger
+the round rather than launching all of it in one message. Over the bound the
+call fails with `ACTIVATION_LIMIT_REACHED` — **wait for a teammate to settle,
+never retry in a loop**. Nothing clears that error but a teammate finishing,
+so a retry spends the budget on the error path and changes nothing.
+(Owning decision: docs/architecture.md Decision 20.)
+
 1. **Fan-out (explorers, method track, OPEN):** launch 1–2 `subagent_explorer`
    calls in one message (the explorer role; blank context). Diversify the portfolio
    (formulations, invariants, reductions, algebraic viewpoints, structural

@@ -6,9 +6,12 @@
 # publish a service sit only inside an `isolate` group; host-plane services
 # (jobs, goals, skills registry, subagents registry, web, token meter) are
 # consumed from here, never re-registered. The fixed-tier child rows use
-# `agentOptions.reasoningEffort` (DSH >= 0.1.2-alpha.1) and the persona row
-# uses the `prefix`/`suffix` split (DSH >= 0.1.3-alpha.2); together with the
-# `present` tool this file requires DSH >= 0.1.5-alpha.2.
+# `agentOptions.reasoningEffort` (DSH >= 0.1.2-alpha.1), the persona row uses
+# the `prefix`/`suffix` split (DSH >= 0.1.3-alpha.2) and the deliverables flow
+# uses `present` (DSH >= 0.1.5). The distribution's floor is higher than any
+# row here: DSH >= 0.1.6-alpha.2, because the bundle's browser half registers
+# into slots 0.1.6 introduced and the router's fallback names a model only the
+# 0.1.6 catalog lists.
 
 # ── identity ────────────────────────────────────────────────
 
@@ -578,7 +581,7 @@
       config:
         provider: codex
         toolName: subagent_codex
-        enableRunInBackground: false
+        backgroundMode: one-shot
         maxDepth: provider-managed
 
     - id: tool-subagent-claude-code
@@ -587,7 +590,7 @@
       config:
         provider: claude-code
         toolName: subagent_claude_code
-        enableRunInBackground: false
+        backgroundMode: one-shot
         maxDepth: provider-managed
 
     # The workflow engine and its model-facing tool are DISABLED
@@ -599,8 +602,15 @@
     # the goal-round driver plus the per-role delegation tools; a deployment
     # that wants workflows should use another preset, not this one. While
     # these rows are disabled no deny list may name `workflow`.
-    - id: workflow-worker-thread
-      name: '@deepseek-ai/dsh-workflow-worker-thread'
+    #
+    # The engine row follows the 0.1.6 rename: `workflow-worker-thread` no
+    # longer exists as a package. A disabled row is never imported, so the
+    # stale name mounted nothing either way — but it read as a typo and the
+    # harness probe reported it UNRESOLVED. Enabled it would be fatal:
+    # discovery marks a preset naming a missing package "Failed to load" and
+    # the picker hides it.
+    - id: workflow-ptc
+      name: '@deepseek-ai/dsh-workflow-ptc'
       disabled: true
       config:
         provider: spawn

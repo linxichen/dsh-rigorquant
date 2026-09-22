@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from conftest import REPO, SKILL_DIR
+from conftest import CORDIS, REPO, SKILL_DIR, composition_rows
 
 SKILL_SCRIPTS = ("rq_check.py", "provision-lean.sh")
 ROUTER_PROBE = REPO / "tests/router_probe.cjs"
@@ -87,15 +87,37 @@ def test_native_agent_options_floor_is_declared_and_enforced():
     The binding constraint is no longer `agentOptions.reasoningEffort`
     (0.1.2-alpha.1): 0.1.3-alpha.2 replaced the persona row's single `text` key
     with a required `prefix`, and a row whose config fails rejects the WHOLE
-    preset mount. 0.1.5-alpha.2 is where the persona split, the
-    final-assistant-message delivery contract and the `present` row all hold.
+    preset mount. 0.1.6-alpha.2 is where the routing card's slot, the
+    main-view session lookup the floater needs, and the `deepseek-flash`
+    fallback all hold — on 0.1.5 this release's card and floater render
+    nothing.
+
+    One floor, stated in six places: a reader who finds an older number in
+    any of them learns the wrong minimum. `dsh/sync.js` is in the list
+    because the bundle install path (`dsh plugin add`) runs it INSTEAD of
+    `install.sh` and so never reaches the runtime check — that path can only
+    state the floor, never enforce it.
     """
-    floor = "0.1.5-alpha.2"
+    floor = "0.1.6-alpha.2"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
     assert "version_at_least" in install
-    for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
-        assert floor in path.read_text(), "%s omits the DSH floor" % path.name
+    stale = "0.1.5-alpha.2"
+    for path in (REPO / "README.md", REPO / "README.zh-CN.md",
+                 REPO / "agent-presets/rigorquant/agent.cordis.yml",
+                 REPO / "dsh/sync.js"):
+        text = path.read_text()
+        assert floor in text, "%s omits the DSH floor" % path.name
+        assert stale not in text, (
+            "%s still states the superseded floor %s" % (path.name, stale))
+    # The decision record is where a reader looks for WHY the floor moved, so
+    # its own statement of the floor is pinned to the enforced one. Older
+    # versions may appear there as history; this sentence may not.
+    stated = re.findall(r"required floor is (?:now )?`DSH \u2265 (\S+?)`",
+                        (REPO / "docs/architecture.md").read_text())
+    assert stated == [floor], (
+        "docs/architecture.md states the floor as %s; install.sh enforces %s"
+        % (stated, floor))
 
 
 def test_preset_persona_row_uses_the_prefix_suffix_split():
@@ -116,17 +138,39 @@ def test_preset_persona_row_uses_the_prefix_suffix_split():
     assert "const PERSONA_SECTION = 'deployment:persona-prefix'" in router
 
 
-def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
-    """A pre-0.1.5 CLI must not receive the preset at all."""
+FLOOR = "0.1.6-alpha.2"
+
+
+def _stub_dsh_env(tmp_path, version=FLOOR):
+    """A `dsh` on PATH answering `--version`, and the env that finds it.
+
+    Every `dsh` subcommand other than `--version` prints nothing and exits 0,
+    which is what makes this a stub: `dsh plugin ... add` looks like it
+    worked, so the installer takes its normal path without a real harness.
+    Returns (env, dsh_home); dsh_home does not exist yet.
+    """
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_dsh = fake_bin / "dsh"
-    fake_dsh.write_text("#!/bin/sh\nprintf '0.1.1-rc.2\\n'\n")
+    fake_dsh.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"--version\" ]; then printf '%s\\n'; fi\n" % version
+    )
     fake_dsh.chmod(0o755)
     dsh_home = tmp_path / "dsh-home"
     env = os.environ.copy()
     env["PATH"] = "%s:%s" % (fake_bin, env.get("PATH", ""))
     env["DSH_HOME"] = str(dsh_home)
+    return env, dsh_home
+
+
+def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
+    """A pre-0.1.6 CLI must not receive the preset at all.
+
+    The stub answers with the PREVIOUS floor: the check has to reject the
+    harness this release moved off, not merely some ancient tag.
+    """
+    env, dsh_home = _stub_dsh_env(tmp_path, version="0.1.5-alpha.2")
     result = subprocess.run(
         [str(REPO / "install.sh"), "--profile", "upgrade-test"],
         cwd=REPO,
@@ -135,24 +179,13 @@ def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
         text=True,
     )
     assert result.returncode == 2
-    assert "requires dsh >= 0.1.5-alpha.2" in result.stderr
+    assert "requires dsh >= %s" % FLOOR in result.stderr
     assert not dsh_home.exists(), "the old runtime guard must run before copying"
 
 
 def test_installer_accepts_the_minimum_dsh_version(tmp_path):
     """The prerelease floor itself is supported, not merely later stable tags."""
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    fake_dsh = fake_bin / "dsh"
-    fake_dsh.write_text(
-        "#!/bin/sh\n"
-        "if [ \"$1\" = \"--version\" ]; then printf '0.1.5-alpha.2\\n'; fi\n"
-    )
-    fake_dsh.chmod(0o755)
-    dsh_home = tmp_path / "dsh-home"
-    env = os.environ.copy()
-    env["PATH"] = "%s:%s" % (fake_bin, env.get("PATH", ""))
-    env["DSH_HOME"] = str(dsh_home)
+    env, dsh_home = _stub_dsh_env(tmp_path)
     result = subprocess.run(
         [str(REPO / "install.sh"), "--profile", "upgrade-test"],
         cwd=REPO,
@@ -165,6 +198,88 @@ def test_installer_accepts_the_minimum_dsh_version(tmp_path):
     assert (dsh_home / ".agent-presets/rigorquant/agent.cordis.yml").is_file()
 
 
+# ── the Agent Teams bundles: 0.4.2 detects, 0.5.0 enables ──────────────────
+#
+# The two optional bundles the harness ships as the Beta "Agent Teams" and
+# "Agent Teams Web UI" cards on the Plugins page. 0.4.2 is the classic release
+# and runs without them, so the installer only REPORTS what it found; the
+# operator is the one who toggles.
+TEAM_BUNDLES = (
+    "@deepseek-ai/dsh-experimental-agent-team-profile",
+    "@deepseek-ai/dsh-experimental-agent-team-web-profile",
+)
+
+
+def _install_with_stub_dsh(tmp_path, bundles=None, profile="upgrade-test"):
+    """Run a full install against a stub `dsh`, optionally seeding a profile.
+
+    `bundles=None` leaves the profile manifest absent, which is what the stub
+    CLI leaves behind: it swallows `plugin ... add` instead of creating a
+    profile. A list seeds `dsh.profile.bundles` with exactly those names.
+    """
+    env, dsh_home = _stub_dsh_env(tmp_path)
+    manifest = dsh_home / "profiles" / profile / "package.json"
+    if bundles is not None:
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps(
+            {"name": "dsh-profile-%s" % profile, "private": True,
+             "dsh": {"profile": {"bundles": list(bundles)}}}, indent=2) + "\n")
+    result = subprocess.run(
+        [str(REPO / "install.sh"), "--profile", profile],
+        cwd=REPO, env=env, capture_output=True, text=True, check=True,
+    )
+    return result, manifest
+
+
+def test_installer_reports_agent_teams_off_and_prints_the_toggle(tmp_path):
+    """Off is the state the operator has to act on, so it names the action.
+
+    The bundles are optional and Beta; nothing in the harness turns them on
+    for you, and a profile without them simply has no team service. Naming
+    both packages and where the toggle lives is the whole feature.
+    """
+    result, manifest = _install_with_stub_dsh(
+        tmp_path, bundles=["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
+    assert "Agent Teams is not enabled" in result.stdout
+    for bundle in TEAM_BUNDLES:
+        assert bundle in result.stdout, "the report omits %s" % bundle
+    assert "Plugins" in result.stdout, "the report never says where to toggle"
+    # 0.4.2 DETECTS. Writing the bundles in is 0.5.0's job, and an installer
+    # that quietly edited the profile would be unreviewable.
+    assert json.loads(manifest.read_text())["dsh"]["profile"]["bundles"] == [
+        "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]
+
+
+def test_installer_reports_agent_teams_on_without_an_instruction(tmp_path):
+    """Nothing to do is reported as nothing to do — no instruction to follow."""
+    result, _ = _install_with_stub_dsh(
+        tmp_path, bundles=["@deepseek-ai/dsh-base", *TEAM_BUNDLES])
+    assert "Agent Teams is enabled" in result.stdout
+    assert "not enabled" not in result.stdout
+
+
+def test_installer_reports_one_team_bundle_as_not_enabled(tmp_path):
+    """Half the pair is not Teams: the host layer alone has no browser view."""
+    result, _ = _install_with_stub_dsh(
+        tmp_path, bundles=["@deepseek-ai/dsh-base", TEAM_BUNDLES[0]])
+    assert "Agent Teams is not enabled" in result.stdout
+    assert TEAM_BUNDLES[1] in result.stdout
+
+
+def test_installer_says_so_when_the_profile_manifest_is_unreadable(tmp_path):
+    """An unreadable manifest is reported as unknown, never as "off".
+
+    A profile the CLI has not created yet has no manifest at all. Claiming
+    the bundles are disabled would send the operator to toggle something that
+    does not exist; the install itself must still succeed.
+    """
+    result, manifest = _install_with_stub_dsh(tmp_path, bundles=None)
+    assert not manifest.exists()
+    assert "Agent Teams" in result.stdout
+    assert "could not" in result.stdout.lower()
+    assert "Installed preset" in result.stdout
+
+
 def test_architecture_record_matches_the_preset_composition():
     """docs/architecture.md described maxDepth: 0, which blocks all delegation."""
     preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
@@ -175,6 +290,164 @@ def test_architecture_record_matches_the_preset_composition():
     for claimed in claims:
         assert claimed in depths, (
             "architecture.md claims maxDepth: %s but the preset uses %s" % (claimed, depths))
+
+
+def test_installer_usage_states_the_floor_without_running_anything():
+    """`--help` is the one screen that states the floor to a human.
+
+    The usage text is an UNQUOTED heredoc, so a backtick in it is command
+    substitution: the line naming the floor used to run `--skill-only` as a
+    command, print "command not found" to stderr, and then state the floor
+    with a hole where the flag should be.
+    """
+    result = subprocess.run(
+        [str(REPO / "install.sh"), "--help"],
+        cwd=REPO, capture_output=True, text=True, check=True,
+    )
+    assert result.stderr == "", (
+        "install.sh --help writes to stderr: %r" % result.stderr)
+    assert FLOOR in result.stdout
+    assert "--skill-only does not" in result.stdout
+
+
+def test_the_disabled_workflow_row_names_a_package_that_exists():
+    """0.1.6 replaced the workflow engine; the old row can never resolve.
+
+    `@deepseek-ai/dsh-workflow-worker-thread` is gone, renamed to
+    `workflow-ptc`. A disabled row is never imported, so this is honesty
+    rather than a mount fix — but the harness probe reports it UNRESOLVED and
+    a reader cannot tell a deliberate stub from a typo. The row stays
+    DISABLED for the reason it always was (untagged, unscopeable children);
+    enabled and unresolvable it would be fatal, because discovery marks the
+    whole preset "Failed to load" and the picker hides it.
+    """
+    composition = CORDIS.read_text()
+    rows = dict(composition_rows(composition))
+    assert "workflow-worker-thread" not in rows, (
+        "the retired engine still has a row")
+    assert "workflow-ptc" in rows, "no workflow row replaced the retired one"
+    body = rows["workflow-ptc"]
+    assert "name: '@deepseek-ai/dsh-workflow-ptc'" in body
+    assert re.search(r"^\s+disabled: true\s*$", body, re.MULTILINE), (
+        "workflow-ptc must stay disabled: it mints untagged children")
+    assert "provider: spawn" in body
+    # Prose may recount the rename; a `name:` key may not, because that is the
+    # one occurrence the loader resolves.
+    named = [line for line in composition.splitlines()
+             if re.match(r"\s*name:", line) and "workflow-worker-thread" in line]
+    assert not named, "a row still names the retired package: %s" % named
+
+
+def test_disabled_external_agent_rows_track_the_shipped_background_mode():
+    """The disabled rows are documentation; stale keys document a dead API.
+
+    0.1.6's standard preset moved the external-agent rows from
+    `enableRunInBackground: false` to `backgroundMode: one-shot`. Both keys
+    still exist in `tool-subagent`'s Config, so nothing fails — which is
+    exactly why a copy left on the old key drifts unnoticed until someone
+    enables the row.
+    """
+    rows = dict(composition_rows(CORDIS.read_text()))
+    for row_id in ("tool-subagent-codex", "tool-subagent-claude-code"):
+        body = rows[row_id]
+        assert "backgroundMode: one-shot" in body, (
+            "%s does not carry the shipped background mode" % row_id)
+        assert "enableRunInBackground" not in body, (
+            "%s still carries the superseded key" % row_id)
+
+
+def test_no_delegation_row_offers_caller_selectable_models():
+    """Decision 16 routes models by ROLE, not by the caller's choice.
+
+    0.1.6's standard preset turned `modelSelectionSettings` on for
+    `tool-subagent`. RigorQuant keeps it off: a model the orchestrator picks
+    per call would override the role's routed tier and the DoubleChecker
+    could silently run on flash.
+    """
+    assert "modelSelectionSettings" not in CORDIS.read_text()
+
+
+def test_the_procedure_states_the_live_children_pool_rule():
+    """Fan-out is bounded by the host, and the bound has a retry trap.
+
+    The host allows eight live children per root (`maxActiveSubagents`,
+    default 8). Over that, a spawn throws `ACTIVATION_LIMIT_REACHED` — which
+    reads like a transient error and is not one: nothing clears it but a
+    child settling. An orchestrator that retries burns the budget on the
+    error path, so both the step that fans out and the delegation discipline
+    say to wait instead.
+    """
+    documents = (("SKILL.md", SKILL_DIR / "SKILL.md"),
+                 ("protocol.md", SKILL_DIR / "references/protocol.md"))
+    for name, path in documents:
+        # Prose wraps; the rule is what is pinned, not the line breaks.
+        text = " ".join(path.read_text().split())
+        assert "maxActiveSubagents" in text, (
+            "%s does not name the host setting that bounds fan-out" % name)
+        assert "eight" in text, "%s does not state the pool size" % name
+        assert "ACTIVATION_LIMIT_REACHED" in text, (
+            "%s does not name the error the bound raises" % name)
+        assert "never retry in a loop" in text, (
+            "%s does not forbid retrying the activation limit" % name)
+
+
+def test_every_document_that_names_the_pool_states_the_same_bound():
+    """The number is the part that drifts, and it is now in five files.
+
+    The same argument as the floor: a reader who finds "twelve" in the README
+    and "eight" in the skill has learned nothing. Any tracked file naming the
+    host setting has to state the bound, and the bound is one number.
+    """
+    offenders = []
+    for name in tracked_files():
+        path = REPO / name
+        text = " ".join(path.read_text(errors="ignore").split())
+        if "maxActiveSubagents" not in text:
+            continue
+        # Written as a word in prose, as a digit in the setting's default and
+        # in the Chinese README's "8 个存活子代理".
+        if "eight" not in text and not re.search(r"\b8\b", text):
+            offenders.append(name)
+    assert not offenders, (
+        "these name maxActiveSubagents without stating the bound: %s"
+        % offenders)
+
+
+def test_deprecated_synchronous_history_reads_carry_the_deferral_note():
+    """0.1.6 deprecated the synchronous session-event reads.
+
+    Upstream's policy is "existing logic may remain unmigrated for now, but
+    new calls are prohibited", so 0.4.2 keeps its reads (role identity moves
+    to the teammate name in 0.5.0) and says so where they are.
+
+    Two counts, because either one alone is a hole. The accessors must appear
+    ONLY inside the module's one `ownEventsOf` helper — otherwise a direct
+    `session.ownEvents()` slips in beside it — and the number of places that
+    CALL that helper is pinned, because a new read is realistically written
+    as `ownEventsOf(agent.session)`, which leaves the accessor count at two
+    and would otherwise sail through.
+    """
+    helper_calls = {"index.js": 1, "activity.js": 2}
+    for path in (REPO / "dsh/index.js", REPO / "dsh/activity.js"):
+        source = path.read_text()
+        accessors = re.findall(r"session\??\.(?:ownEvents|snapshotEvents)\(", source)
+        assert len(accessors) == 2, (
+            "%s names the deprecated accessors %d times; they belong in the "
+            "one ownEventsOf helper (which names both) and nowhere else"
+            % (path.name, len(accessors)))
+        # `- 1` drops the declaration itself; what is left are the read sites.
+        reads = len(re.findall(r"\bownEventsOf\(", source)) - 1
+        assert reads == helper_calls[path.name], (
+            "%s reads session history at %d sites, not %d; the deprecated "
+            "accessors take no new callers" % (path.name, reads,
+                                               helper_calls[path.name]))
+        # A JSDoc block wraps and prefixes each line with `*`; the sentence is
+        # what is pinned, not where it breaks.
+        prose = " ".join(" ".join(
+            re.sub(r"^\s*\*", "", line) for line in source.splitlines()).split())
+        assert "new calls are prohibited" in prose, (
+            "%s reads a deprecated accessor without the deferral note"
+            % path.name)
 
 
 def _preset_blocks(preset):

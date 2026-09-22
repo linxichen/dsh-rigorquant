@@ -164,11 +164,23 @@ generated from [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activit
 
 ## Install
 
-Requires DSH ≥ 0.1.5-alpha.2. The preset uses native child
+Requires DSH ≥ 0.1.6-alpha.2. The preset uses native child
 `agentOptions.reasoningEffort` (0.1.2-alpha.1), the `prefix`/`suffix` persona
 split (0.1.3-alpha.2 — a row whose config fails rejects the whole preset
 mount), the final-assistant-message delivery contract (`report` was removed in
-0.1.2-rc.1), and the `present` deliverables tool (0.1.5).
+0.1.2-rc.1), and the `present` deliverables tool (0.1.5). The floor is
+0.1.6-alpha.2 because the browser half registers into slots that release
+introduced and the fallback route names a model only its catalog lists — on
+0.1.5 the routing card and the activity floater render nothing, silently.
+
+Fan-out is bounded by the host: eight live children per root
+(`maxActiveSubagents`, **Plugins → Subagent**). A literature-heavy study that
+wants four lines running beside its explorers can raise it there.
+
+A full install also reports whether the harness's optional **Agent Teams**
+bundles are enabled on the target profile. This release does not use them and
+runs either way; the installer only tells you what it found and where to
+toggle it, and never edits the profile's bundle list.
 
 **One line, everything** — the preset, the compute lane, and the plugin (role
 model router + its Settings card):
@@ -198,7 +210,7 @@ package declares a `dsh.bundle` manifest whose rows include a boot-sync half
 distribution (docs/architecture.md Decision 22):
 
 ```sh
-dsh --version                 # must be >= 0.1.5-alpha.2
+dsh --version                 # must be >= 0.1.6-alpha.2
 dsh plugin --profile web add dsh-rigorquant
 ```
 
@@ -248,8 +260,9 @@ On a terminal primary failure (no adapter / HTTP 4xx, including the official
 quota response `1308` / “Usage limit reached”) the role degrades to its
 fallback for one forced retry, and recovers on the next success or after 10
 minutes. Untagged agents (other presets, workflow workers, forks) are never
-touched. The router needs DSH ≥ 0.1.5-alpha.2 (its persona-section constant
-follows the 0.1.3-alpha.2 `deployment:persona-prefix` rename). Design record:
+touched. The router needs DSH ≥ 0.1.6-alpha.2 (its persona-section constant
+follows the 0.1.3-alpha.2 `deployment:persona-prefix` rename; its card
+registers on the Plugins page's bundle-config slot, which 0.1.6 introduced). Design record:
 [docs/architecture.md](docs/architecture.md) Decision 16.
 
 ## Repository layout

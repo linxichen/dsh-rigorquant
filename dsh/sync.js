@@ -1,5 +1,14 @@
 // RigorQuant self-installing distribution — host half (boot sync).
 //
+// Floor: DSH >= 0.1.6-alpha.2, the same floor `install.sh` enforces before it
+// copies anything. This path CANNOT enforce it. By the time this row runs the
+// profile has already composed the bundle, so there is nothing left to refuse
+// — an operator who installs with `dsh plugin add` on an older harness gets a
+// preset that mounts and a browser half that renders nothing. The floor is
+// therefore stated in both READMEs next to that install command, and what
+// lands here carries the version stamp below so a reader can tell which
+// release wrote the tree.
+//
 // The harness DOES accept `agent-presets` roots from a patch row (its Config
 // takes `roots: [{ path, trust }]`), so a preset could in principle be served
 // straight out of the installed package instead of being copied. This row

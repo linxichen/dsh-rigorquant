@@ -148,11 +148,20 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 
 ## 安装
 
-需要 DSH ≥ 0.1.5-alpha.2。preset 依次用到：原生子代理
+需要 DSH ≥ 0.1.6-alpha.2。preset 依次用到：原生子代理
 `agentOptions.reasoningEffort`（0.1.2-alpha.1）、persona 的 `prefix`/`suffix` 拆分
 （0.1.3-alpha.2 —— 某一行配置校验失败会导致整个 preset 无法挂载）、
 “最终助手消息即交付”的契约（`report` 已在 0.1.2-rc.1 移除）以及 `present`
-交付物工具（0.1.5）。
+交付物工具（0.1.5）。下限之所以是 0.1.6-alpha.2：浏览器半边注册的插槽由该版本
+引入，回退路由指向的模型也只在该版本的目录中——在 0.1.5 上，模型路由卡片与活动
+悬浮条都会静默地什么都不渲染。
+
+扇出受宿主限制：每个 root 同时最多 8 个存活子代理（`maxActiveSubagents`，
+**插件 → Subagent**）。文献密集的研究若要让 4 条文献线与探索者并行，可在那里调高。
+
+完整安装还会报告目标 profile 上是否启用了宿主可选的 **智能体团队（Agent
+Teams）** bundle。本版本不使用它，启用与否都能运行；安装脚本只告诉你检测结果和
+开关位置，绝不改动 profile 的 bundle 列表。
 
 两种安装形态：
 
@@ -163,7 +172,7 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 完整框架（设计记录：docs/architecture.md 决策 22）：
 
 ```sh
-dsh --version                 # 必须 >= 0.1.5-alpha.2
+dsh --version                 # 必须 >= 0.1.6-alpha.2
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 
@@ -218,8 +227,9 @@ boot-sync 行落盘——两者写入的字节一致，最后运行者持有该�
 主选路由遇到终止性失败（无适配器 / HTTP 4xx；包括官方额度响应
 `1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他
 preset、workflow 工作进程、fork 子进程）一律不干预。固定层级子代理行使用原生
-`agentOptions.reasoningEffort`。路由器需要 DSH ≥ 0.1.5-alpha.2
-（其 persona 区段常量跟随 0.1.3-alpha.2 的 `deployment:persona-prefix` 改名）。
+`agentOptions.reasoningEffort`。路由器需要 DSH ≥ 0.1.6-alpha.2
+（其 persona 区段常量跟随 0.1.3-alpha.2 的 `deployment:persona-prefix` 改名；
+其配置卡片注册在插件页的 bundle 配置插槽上，该插槽由 0.1.6 引入）。
 设计记录见 [docs/architecture.md](docs/architecture.md) 决策 16。
 
 ## 仓库结构

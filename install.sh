@@ -15,13 +15,19 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="${DSH_PROFILE:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
-MIN_DSH_VERSION="0.1.5-alpha.2"
+MIN_DSH_VERSION="0.1.6-alpha.2"
+# The two optional bundles that carry Agent Teams — the harness's Beta "Agent
+# Teams" and "Agent Teams Web UI" cards on the Plugins page. This release runs
+# the classic mechanism and needs neither, so the installer only REPORTS what
+# it found; enabling them is the operator's call (and 0.5.0's job).
+TEAM_BUNDLE_HOST="@deepseek-ai/dsh-experimental-agent-team-profile"
+TEAM_BUNDLE_WEB="@deepseek-ai/dsh-experimental-agent-team-web-profile"
 
 usage() {
   cat <<EOF
 Usage: $0 [--skill-only] [--uninstall] [--profile <name>] [--version] [--help]
 
-  Full install requires DSH >= $MIN_DSH_VERSION. `--skill-only` does not.
+  Full install requires DSH >= $MIN_DSH_VERSION; --skill-only does not.
 
   (no args)      Install everything: the RigorQuant preset, the shared compute
                  lane under \$DSH_HOME/share/rigorquant, and the plugin (role
@@ -104,14 +110,16 @@ require_dsh_version() {
   fi
 }
 
-# The full preset is only mountable on the harness it was written against:
-# the persona row uses the `prefix`/`suffix` split (0.1.3-alpha.2 replaced the
-# single `text` key, and a row whose config fails rejects the WHOLE preset
-# mount), the child-delivery contract is the final assistant message
-# (`report` was removed in 0.1.2-rc.1), and the deliverables flow needs the
-# `present` tool (0.1.5). Fail before copying anything when the installed CLI
-# is older; a missing CLI keeps the historical warning and can be installed
-# later.
+# The full distribution is only mountable on the harness it was written
+# against: the persona row uses the `prefix`/`suffix` split (0.1.3-alpha.2
+# replaced the single `text` key, and a row whose config fails rejects the
+# WHOLE preset mount), the child-delivery contract is the final assistant
+# message (`report` was removed in 0.1.2-rc.1), the deliverables flow needs
+# the `present` tool (0.1.5), and the browser half registers into slots
+# 0.1.6-alpha.2 introduced — on 0.1.5 the routing card and the activity
+# floater render nothing at all, silently. Fail before copying anything when
+# the installed CLI is older; a missing CLI keeps the historical warning and
+# can be installed later.
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
   require_dsh_version
 fi
@@ -149,6 +157,56 @@ install_plugin() {
   else
     printf 'warning: `dsh plugin --profile %s add %s` failed; the preset and lane are installed, the plugin is not.\n' "$PROFILE" "$spec" >&2
   fi
+}
+
+# Report whether the Agent Teams bundles are enabled on PROFILE.
+#
+# DETECTION ONLY. This release runs the classic delegation mechanism and needs
+# no team service, so nothing here writes to the profile: enabling an optional
+# bundle appends a layer to the profile's stack, and an installer that did that
+# silently would change what every session in that profile composes. The
+# operator toggles it, on the Plugins page, and sees exactly what changed.
+#
+# A profile's enabled bundles are `dsh.profile.bundles` in its package.json —
+# the same list `dsh plugin add` reconciles. node reads it (already a
+# prerequisite wherever `dsh` is), exiting 3 when the file is missing or
+# carries no bundle list, which is reported as "could not tell" rather than as
+# "off": sending an operator to toggle something in a profile the CLI has not
+# created yet is worse than saying nothing.
+report_agent_teams() {
+  manifest="$DSH_HOME/profiles/$PROFILE/package.json"
+  if ! command -v node >/dev/null 2>&1; then
+    printf 'Agent Teams: node is not on PATH, so the profile was not inspected.\n'
+    return 0
+  fi
+  if ! missing="$(node - "$manifest" "$TEAM_BUNDLE_HOST" "$TEAM_BUNDLE_WEB" 2>/dev/null <<'NODE'
+const { readFileSync } = require('node:fs')
+const [manifest, ...wanted] = process.argv.slice(2)
+let bundles
+try {
+  bundles = JSON.parse(readFileSync(manifest, 'utf8'))?.dsh?.profile?.bundles
+} catch {
+  process.exit(3)
+}
+if (!Array.isArray(bundles)) process.exit(3)
+process.stdout.write(wanted.filter((name) => !bundles.includes(name)).join(' '))
+NODE
+  )"; then
+    printf 'Agent Teams: could not read %s, so nothing was detected.\n' "$manifest"
+    return 0
+  fi
+  if [ -z "$missing" ]; then
+    echo "Agent Teams is enabled on the '$PROFILE' profile."
+    return 0
+  fi
+  printf "Agent Teams is not enabled on the '%s' profile; missing:\n" "$PROFILE"
+  # Unquoted on purpose: node emits the missing names space-separated, and a
+  # package name contains no whitespace or glob character, so the split is the
+  # list and the glob cannot fire.
+  for bundle in $missing; do printf '  %s\n' "$bundle"; done
+  echo "  RigorQuant ${VERSION:-unknown} runs without it. To turn it on, open the harness's"
+  echo "  Plugins page and enable 'Agent Teams' and 'Agent Teams Web UI' (both Beta),"
+  echo "  or add the packages above to dsh.profile.bundles in $manifest."
 }
 
 # Copy SRC into a staging directory, then atomically swap it into DEST. This
@@ -221,5 +279,6 @@ else
   install_plugin
   echo "Installed preset to $DSH_HOME/.agent-presets/rigorquant"
   echo "Installed compute lane to $DSH_HOME/share/rigorquant"
+  report_agent_teams
   echo "Start a new session and pick the 'RigorQuant' preset in the session picker."
 fi
