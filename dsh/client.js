@@ -776,19 +776,31 @@ function apply(ctx) {
 // ------------------------------------------------------------------ move pill
 // The round's move, read live off the Agent Teams task board (Decision 24;
 // docs/architecture.md, docs/adr/0001-rigorquant-on-agent-teams.md). This
-// registers into the conversation's per-session header utilities slot -- the
-// same seat the Team package's own roster action uses
-// (client-ui-agent-team/src/client/mount.ts) -- so it needs no host route and
-// makes no Team RPC: the slot framework hands the component `sessionId` /
-// `useSession` for THIS session and the global `useSessions` selector, and
-// the Lead's roster+board is a session PROJECTION (`agentTeam`) the harness
-// already keeps in the client Session store -- exactly what the Team
-// package's own header action reads
-// (client-ui-agent-team/src/client/TeamAction.tsx: `useSessions(state =>
-// state.projectionsBySession[leadSessionId]?.values.agentTeam)`). Rendering
-// nothing while that projection is absent covers both "no team running" and
-// "the Team bundle is not mounted" identically -- an optional read, not a
-// service injection, so there is nothing to guard.
+// registers into the conversation's per-session header utilities slot, right
+// next to the Team package's own roster action -- which sits in the sibling
+// `conversation.session.header.actions` seat
+// (client-ui-agent-team/lib/client.js, id 'agent-team').
+//
+// The read is the Team package's OWN browser seam: the `remote.agentTeams`
+// namespace, whose `view(agentId)` answers `RemoteResult<TeamView>`
+// (agent-team `lib/typert.remote-client.d.ts`). That is the only team read the
+// installed 0.1.6-alpha.2 serves: the client Session store has no
+// `projectionsBySession` at that tag (`git grep projectionsBySession` over the
+// harness is empty), so a projection-shaped read is silently undefined and the
+// pill renders nothing on every real session. `remote.agentTeams` is INJECTED,
+// never read off the root context: the Team bundle is optional, so with the
+// bundle absent the namespace does not exist, this callback never runs, and the
+// pill never registers -- "renders nothing when the namespace is absent" is
+// that gate, not a null branch.
+//
+// The namespace answers requests, not subscriptions, so the pill re-reads on a
+// timer while a session header is on screen: one local request per interval per
+// mounted header, with no stop condition — deliberately unconditional, because
+// the normal case is a session opened BEFORE its team exists, so a read that
+// reports no team must not end the watch. The cost is bounded in practice by
+// the header being mounted; a harness that serves this view as a subscription
+// (0.1.7 turns it into a session projection) retires the timer outright.
+const MOVE_REFRESH_MS = 4000
 const MOVE_NS = 'rigorquant-move'
 const moveCopy = {
   en: {
@@ -869,10 +881,26 @@ function deriveMove(tasks) {
 
 function MovePill(props) {
   const R = React()
-  const { sessionId, useSession, useSessions, t } = props
+  const { sessionId, useSession, load, t } = props
+  // A teammate's own header shows the Lead's round: the same address hop the
+  // Team package's own action makes before it reads the view.
   const leadSessionId = useSession((snapshot) => snapshot?.subagent?.address?.parentSessionId) ?? sessionId
-  const team = useSessions((state) => state.projectionsBySession?.[leadSessionId]?.values?.agentTeam)
-  if (team == null) return null
+  const [team, setTeam] = R.useState(null)
+  R.useEffect(() => {
+    let live = true
+    const read = () => {
+      // A failed RemoteResult (no team for this Lead, or the service refusing)
+      // reads the same as an absent team: nothing to show.
+      Promise.resolve(load(leadSessionId)).then(
+        (result) => { if (live) setTeam(result?.ok === true ? result.value : null) },
+        () => { if (live) setTeam(null) },
+      )
+    }
+    read()
+    const timer = setInterval(read, MOVE_REFRESH_MS)
+    return () => { live = false; clearInterval(timer) }
+  }, [load, leadSessionId])
+  if (team === null || team === undefined) return null
   const move = deriveMove(team.tasks)
   const running = (team.members ?? []).filter(
     (member) => member.role === 'teammate' && member.status === 'running' && roleFromName(member.name) !== null)
@@ -902,16 +930,21 @@ function MovePill(props) {
 
 function applyMovePill(ctx) {
   ctx.effect(() => ctx.locale.register(MOVE_NS, moveCopy), 'rq-move: pill dictionaries')
-  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register(
-    {
-      name: 'conversation.session.header.utilities',
-      id: 'rigorquant-move',
-      order: 10,
-      locale: MOVE_NS,
-      inject: () => ({}),
-    },
-    (props) => MovePill({ ...props, t: ctx.locale.bind(MOVE_NS) }),
-  ))
+  // `ctx.inject` is the optionality seam: the callback runs only while the
+  // Team namespace exists in this composition, and reaches exactly what it
+  // named. No Team bundle, no namespace, no registration, nothing rendered.
+  ctx.inject(['remote.agentTeams'], (scope) => {
+    scope.slots.inject('conversation.session.header.utilities', () => scope.slots.register(
+      {
+        name: 'conversation.session.header.utilities',
+        id: 'rigorquant-move',
+        order: 10,
+        locale: MOVE_NS,
+        inject: () => ({ load: (leadSessionId) => scope.remote.agentTeams.view(leadSessionId) }),
+      },
+      (props) => MovePill({ ...props, t: scope.locale.bind(MOVE_NS) }),
+    ))
+  })
 }
 
 return { apply, inject }

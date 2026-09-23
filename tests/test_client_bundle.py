@@ -174,15 +174,42 @@ def test_the_retired_settings_slot_is_gone(verdict):
 
 
 def test_move_pill_renders_null_without_a_team_view(verdict):
-    """No `agentTeam` projection — no team running, or the bundle not mounted.
+    """No team view — nothing renders, and nothing throws.
 
-    Both read identically: the pill is an optional data read (`useSessions`
-    off a session projection), not a service injection, so there is nothing
-    to guard and no separate "absent" code path to get wrong.
+    The pill reads the Lead's roster and board through the Team namespace's
+    `view` request; a Lead with no team running answers a failed RemoteResult,
+    which is the pill's render-nothing state.
     """
     assert verdict["pillRenderedAbsent"] is True
     assert "pillRenderError" not in verdict, verdict.get("pillRenderError")
     assert verdict["pillNullWithoutTeam"] is True
+
+
+def test_move_pill_reads_the_team_view_through_the_team_namespace(verdict):
+    """The only team read the installed 0.1.6-alpha.2 browser half serves.
+
+    The client Session store has no `projectionsBySession` at that tag, so a
+    projection-shaped read is silently `undefined` and the pill renders nothing
+    on every real session — while its tests still pass. The read must be the
+    namespace's `view(agentId)` request, addressed to the LEAD's session id.
+    """
+    assert verdict["fictionalProjectionReads"] == 0, (
+        "dsh/client.js reads a client projection store that does not exist on "
+        "0.1.6-alpha.2; the read is silent and the pill never renders")
+    assert verdict["teamNamespaceReads"] >= 1
+    assert verdict["pillViewLeadIds"] == ["lab-lead"], verdict.get("pillViewLeadIds")
+
+
+def test_move_pill_registers_only_while_the_team_namespace_is_present(verdict):
+    """No Team bundle, no namespace, no registration — not a null branch.
+
+    `ctx.inject(['remote.agentTeams'], …)` is the optionality seam: in a profile
+    without the Team bundle the callback never runs, so the utilities ring is
+    never claimed. The card still mounts on its own services.
+    """
+    assert "pillGateError" not in verdict, verdict.get("pillGateError")
+    assert verdict["pillGateDeps"] == [["remote.agentTeams"]], verdict.get("pillGateDeps")
+    assert verdict["pillGateRings"] == ["plugins.bundle.config"], verdict.get("pillGateRings")
 
 
 def test_move_pill_derives_the_shallowest_incomplete_move(verdict):
@@ -202,7 +229,7 @@ def test_move_pill_derives_the_shallowest_incomplete_move(verdict):
 def test_move_pill_shows_a_badge_only_for_running_teammates(verdict):
     """A portrait per running role — never the Lead, never an idle teammate.
 
-    The probe's board has one RUNNING teammate (doublechecker-1), one INACTIVE
+    The probe's roster has one RUNNING teammate (doublechecker-1), one IDLE
     teammate (explorer-1), and the Lead itself (role 'lead', always excluded).
     Exactly one badge must appear, titled with the role label and the
     teammate's own name.
@@ -214,9 +241,8 @@ def test_move_pill_resolves_the_lead_session_from_a_teammate_header(verdict):
     """Opening a teammate shows the same pill, not a blank one.
 
     A teammate's own Session carries `subagent.address.parentSessionId`; the
-    pill must resolve THAT Session's `agentTeam` projection, exactly the way
-    the Team package's own header action does
-    (client-ui-agent-team/TeamAction.tsx).
+    pill must address the Team view request to THAT Lead, exactly the hop the
+    Team package's own header action makes before it loads the view.
     """
     assert verdict["pillFromTeammateRendered"] is True
 

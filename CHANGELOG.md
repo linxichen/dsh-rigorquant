@@ -46,6 +46,26 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   The router's `ROLE_TOOLS` map goes with the rows. Repo-consistency pins
   forbid the rows, pin the new L3, and pin the skill's vocabulary.
 
+### Fixed
+- **The move pill rendered nothing on every real session** (issue #13's client
+  half). It read the Lead's board off a client session projection
+  (`useSessions(state => state.projectionsBySession[…].values.agentTeam)`) that
+  does not exist on the pinned floor: `projectionsBySession` occurs nowhere in
+  the installed `0.1.6-alpha.2` harness, so the read was silently `undefined`
+  and the pill never rendered — while its own probe stayed green, because the
+  probe stubbed the same invented API. It now reads the Lead's live view through
+  the Team namespace's own request, `remote.agentTeams.view(leadSessionId)`,
+  injected rather than read off the root context, so a profile whose Team bundle
+  is absent never registers the pill at all instead of rendering a branch that
+  also swallowed every real failure. Verified live on the installed
+  `0.1.6-alpha.2`: a web profile with a running team now shows the round's move
+  in the session header (the portrait badges were not exercised live — every
+  `spawn_teammate` in that environment failed before a teammate reached
+  `status: 'running'`, so they rest on the probe).
+  `tests/client_bundle_probe.cjs` models the real seams and
+  `tests/test_client_bundle.py` pins the read, the gate, and zero fictional
+  projection reads. See `docs/upgrade-0.1.6.md` §3.14.
+
 ## [0.4.2] - 2026-09-22
 
 The last classic release (Decision 24, `docs/adr/0001-rigorquant-on-agent-teams.md`):
