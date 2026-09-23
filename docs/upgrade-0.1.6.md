@@ -875,30 +875,47 @@ a no-op, never an error.
   before installing survives `--uninstall`; and the bundle-patch override
   composes as `# == …agent-team-profile, patched by dsh-rigorquant` when the
   Team bundle precedes `dsh-rigorquant` in `dsh.profile.bundles`.
-- **Two installer follow-ups found while verifying §3.14 live (NOT fixed here;
-  both are filed as #21, since #12 is closed).** Both were reproduced against
-  the real `0.1.6-alpha.2` CLI:
-  1. **The bare-name Team-bundle install picks a bundle the core cannot boot.**
-     `install.sh` adds `@deepseek-ai/dsh-experimental-agent-team-profile` and
-     `…-agent-team-web-profile` with no version, and pnpm resolves the `latest`
-     dist-tag — `0.1.5-alpha.2` — against a core install of `0.1.6-alpha.2`. The
-     resulting profile **fails to boot**: `dsh: plugin tree failed to load …
-     typert-loader: @deepseek-ai/dsh-experimental-agent-team invocation
-     "@deepseek-ai/dsh-experimental-agent-team#agentTeams/createTask"
-     parameter codec has no create() factory`. Isolated to the bundles, not this
-     repo: a web profile with only the two bundles at `0.1.5-alpha.2` and *no*
+- **Two installer defects found while verifying §3.14 live — FIXED (issue
+  #21).** Both were reproduced against the real `0.1.6-alpha.2` CLI:
+  1. **The bare-name Team-bundle install resolved a pair the core cannot
+     boot.** `install.sh` added `@deepseek-ai/dsh-experimental-agent-team-profile`
+     and `…-agent-team-web-profile` with no version, so pnpm resolved the
+     `latest` dist-tag — `0.1.5-alpha.2` — against a core install of
+     `0.1.6-alpha.2`, and the profile **failed to boot**: `dsh: plugin tree
+     failed to load … typert-loader: … invocation
+     "@deepseek-ai/dsh-experimental-agent-team#agentTeams/createTask" parameter
+     codec has no create() factory`. Isolated to the pair, not this repo: a web
+     profile carrying only those two bundles at `0.1.5-alpha.2` and *no*
      RigorQuant code fails identically, and the same profile at `0.1.6-alpha.2`
-     boots clean — with `dsh-rigorquant` in either bundle position (the order
-     the bundle patch's `id`-targeted row depends on is not implicated). The
-     installer should pin the pair to the core install's own version.
-  2. **A git worktree installs the published package instead of the tree.**
-     `install.sh` chooses its spec with `[ -d "$HERE/.git" ]`, but in a git
-     worktree `.git` is a *file*, so the test is false and the installed profile
-     gets `dsh-rigorquant@<published>` from npm rather than `file:$HERE`. Caught
-     live: the first install into a scratch profile pulled **0.4.2** — the
-     release that still ships `dsh/activity.js`, whose `rq-activity` row showed
-     up in `--dump-config` — while the working tree has that module deleted.
-     Every agent worktree in this repo's own workflow hits this.
+     boots clean — with `dsh-rigorquant` in either bundle position, so the
+     bundle order the patch's `id`-targeted row depends on is not implicated.
+     The installer now asks the CLI for its own version once
+     (`dsh_core_version`, shared with the floor check) and adds
+     `<bundle>@<core>`. It also **reconciles a profile that already lists the
+     pair at another version** — re-pinning it, because the names being present
+     is exactly why a name-only check would leave a profile the old installer
+     broke unable to boot forever — while a bundle listed with no recorded
+     version (an operator's own enable) is still left alone. Verified live: a
+     fresh profile comes out pinned at `0.1.6-alpha.2` and boots; a profile
+     hand-pinned back to `0.1.5-alpha.2` is re-pinned by the next run, and the
+     run after that is a no-op.
+  2. **A git worktree installed the published package instead of the tree.**
+     The spec choice tested `[ -d "$HERE/.git" ]`, but in a linked worktree
+     `.git` is a *file*, so the profile got `dsh-rigorquant@<published>` from
+     npm — live, **0.4.2**, the release that still ships `dsh/activity.js`,
+     whose retired `rq-activity` row then appeared in `--dump-config` while the
+     tree has that module deleted. The same directory test also guarded the
+     pre-commit hook wiring and its `--uninstall` counterpart, so a worktree
+     silently skipped the coverage gate too. All three now go through one
+     `is_git_checkout` helper (`-d` OR `-f`). Verified live from this worktree:
+     the installer now reports `Installed the plugin (file:…)`.
+- The tests for both: `tests/test_installer_agent_teams.py`'s stub `dsh` now
+  models a `name@version` spec the way the real CLI records it (bare name into
+  `dsh.profile.bundles`, resolved version into `dependencies`), and four cases
+  join the suite — the pair is added pinned to the core's version; a profile
+  holding the stale pair is re-pinned and the repair does not repeat; a
+  worktree with a `.git` *file* installs `file:`; a plain copy with no `.git`
+  keeps installing the published name.
 
 ### 3.14 Browser goes native (2026-09-23, issue #13)
 

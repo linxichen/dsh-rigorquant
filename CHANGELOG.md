@@ -65,6 +65,20 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   `tests/client_bundle_probe.cjs` models the real seams and
   `tests/test_client_bundle.py` pins the read, the gate, and zero fictional
   projection reads. See `docs/upgrade-0.1.6.md` §3.14.
+- **`install.sh` could produce a profile that cannot boot, and installed the
+  published package from a git worktree** (issue #21, both found verifying
+  #13's client half live). The Team bundles were added by bare name, so pnpm
+  resolved the `latest` dist-tag — two prereleases behind a `0.1.6-alpha.2` core
+  — and the profile then failed to apply its plugin tree (`typert-loader: …
+  parameter codec has no create() factory`). They are now added as
+  `<bundle>@<core version>`, and a profile that already lists the pair at
+  another version is re-pinned by the next run (a bundle the operator enabled
+  with no recorded version is still left alone). The install-spec choice tested
+  `[ -d "$HERE/.git" ]`, which is false in a linked worktree (`.git` is a file),
+  so a worktree profile got `dsh-rigorquant@0.4.2` from npm — the release that
+  still ships the deleted `dsh/activity.js` — and the pre-commit hook wiring was
+  skipped there too; both now share one `is_git_checkout` helper. Verified live
+  against the installed CLI; see `docs/upgrade-0.1.6.md` §3.13.
 
 ## [0.4.2] - 2026-09-22
 

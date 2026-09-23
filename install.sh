@@ -28,6 +28,19 @@ TEAM_BUNDLE_WEB="@deepseek-ai/dsh-experimental-agent-team-web-profile"
 TEAM_PATCH_MARK_BEGIN='# >>> dsh-rigorquant BEGIN (managed by ./install.sh; see docs/adr/0001-rigorquant-on-agent-teams.md) >>>'
 TEAM_PATCH_MARK_END='# <<< dsh-rigorquant END <<<'
 
+# Whether $HERE is a git checkout OR a linked worktree. In a worktree `.git` is
+# a FILE holding the gitdir pointer rather than a directory, so `[ -d ]` alone is
+# false there — and a worktree is exactly where this repository's own agents and
+# maintainers install from. A copy npm fetched (`npx dsh-rigorquant`) has
+# neither, which is the case the `file:` decision below deliberately separates.
+is_git_checkout() { [ -d "$HERE/.git" ] || [ -f "$HERE/.git" ]; }
+
+# The version the installed CLI reports, e.g. `0.1.6-alpha.2`, read once for the
+# whole run: it gates the install (require_dsh_version) and pins the Agent Teams
+# bundles to the core they are published in lockstep with
+# (install_agent_teams). Empty when `dsh --version` cannot answer at all.
+DSH_CORE_VERSION=""
+
 usage() {
   cat <<EOF
 Usage: $0 [--skill-only] [--uninstall] [--profile <name>] [--version] [--help]
@@ -107,7 +120,7 @@ NODE
 }
 
 require_dsh_version() {
-  actual="$(dsh --version 2>/dev/null || true)"
+  actual="$DSH_CORE_VERSION"
   if [ -z "$actual" ] || ! version_at_least "$actual" "$MIN_DSH_VERSION"; then
     printf 'error: dsh-rigorquant requires dsh >= %s (found %s)\n' \
       "$MIN_DSH_VERSION" "${actual:-unknown}" >&2
@@ -127,6 +140,7 @@ require_dsh_version() {
 # the installed CLI is older; a missing CLI keeps the historical warning and
 # can be installed later.
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
+  DSH_CORE_VERSION="$(dsh --version 2>/dev/null || true)"
   require_dsh_version
 fi
 
@@ -144,16 +158,17 @@ install_plugin() {
   fi
   # Which spec to install depends on where this script is running from.
   #
-  # A git checkout is a developer's working tree: install `file:$HERE` so the
-  # profile carries a copy of THIS tree, and re-running the script refreshes
-  # it. `file:` rather than a bare path, because pnpm resolves a bare directory
-  # argument as `link:` — a live symlink into the checkout, so moving or
-  # deleting the clone would break the installed profile.
+  # A git checkout (or a linked worktree, where `.git` is a file) is a
+  # developer's working tree: install `file:$HERE` so the profile carries a copy
+  # of THIS tree, and re-running the script refreshes it. `file:` rather than a
+  # bare path, because pnpm resolves a bare directory argument as `link:` — a
+  # live symlink into the checkout, so moving or deleting the clone would break
+  # the installed profile.
   #
   # Anything else is a copy npm already fetched — `npx dsh-rigorquant` unpacks
   # into a cache directory that disappears afterwards, so a `file:` spec would
   # point at nothing. Install the published version by name instead.
-  if [ -d "$HERE/.git" ]; then
+  if is_git_checkout; then
     spec="file:$HERE"
   else
     spec="dsh-rigorquant@${VERSION:-latest}"
@@ -187,30 +202,67 @@ install_agent_teams() {
   manifest="$profile_dir/package.json"
   patch_file="$profile_dir/cordis.patch.yml"
 
-  missing="$(node - "$manifest" "$TEAM_BUNDLE_HOST" "$TEAM_BUNDLE_WEB" <<'NODE'
+  missing="$(node - "$manifest" "$DSH_CORE_VERSION" "$TEAM_BUNDLE_HOST" "$TEAM_BUNDLE_WEB" <<'NODE'
 const { existsSync, readFileSync } = require('node:fs')
-const [manifest, ...wanted] = process.argv.slice(2)
+const [manifest, coreVersion, ...wanted] = process.argv.slice(2)
 let bundles = []
+let dependencies = {}
 if (existsSync(manifest)) {
   try {
-    const parsed = JSON.parse(readFileSync(manifest, 'utf8'))?.dsh?.profile?.bundles
-    if (Array.isArray(parsed)) bundles = parsed
+    const parsed = JSON.parse(readFileSync(manifest, 'utf8'))
+    const listed = parsed?.dsh?.profile?.bundles
+    if (Array.isArray(listed)) bundles = listed
+    if (parsed?.dependencies !== null && typeof parsed?.dependencies === 'object') dependencies = parsed.dependencies
   } catch {}
 }
-process.stdout.write(wanted.filter((name) => !bundles.includes(name)).join(' '))
+// A wanted bundle is ABSENT when it is not in the profile's bundle list, and
+// STALE when the profile pins it at a version other than this core's. The
+// second case is the repair path: an installer that added the pair unpinned
+// left `latest` (two prereleases behind) in the manifest, and the names being
+// present means a name-only check would leave that profile unable to boot
+// forever. A bundle listed with no recorded version was enabled by the operator
+// rather than by us, and is left alone.
+const absent = []
+const stale = []
+for (const name of wanted) {
+  if (!bundles.includes(name)) absent.push(name)
+  else if (typeof dependencies[name] === 'string' && coreVersion !== '' && dependencies[name] !== coreVersion) stale.push(name)
+}
+process.stdout.write(absent.join(' ') + '|' + stale.join(' '))
 NODE
   )"
 
+  absent="${missing%%|*}"
+  stale="${missing#*|}"
   enabled=""
-  if [ -n "$missing" ]; then
-    # Unquoted on purpose: node emits the missing names space-separated, and a
-    # package name contains no whitespace or glob character, so the split is
-    # the argument list and the glob cannot fire.
-    if dsh plugin --profile "$PROFILE" add $missing >/dev/null 2>&1; then
-      for bundle in $missing; do echo "Enabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile."; done
-      enabled="$missing"
+  if [ -n "$absent$stale" ]; then
+    # Unpinned, `dsh plugin add` resolves the `latest` dist-tag, which is not
+    # the version this core was built against: the Team bundles are published in
+    # lockstep with the CLI and their typert codecs are validated against it, so
+    # a mismatched pair makes the whole profile fail to boot ("parameter codec
+    # has no create() factory"). Ask for the core's own version whenever the CLI
+    # can name it; with no version to go on, add unpinned and say so.
+    core="$DSH_CORE_VERSION"
+    specs=""
+    for bundle in $absent $stale; do
+      if [ -n "$core" ]; then
+        specs="$specs $bundle@$core"
+      else
+        specs="$specs $bundle"
+      fi
+    done
+    if [ -z "$core" ]; then
+      printf 'warning: could not read the dsh version; adding the Agent Teams bundles unpinned, which may not match this core.\n' >&2
+    fi
+    # Unquoted on purpose: $specs is a space-separated list, and a package name
+    # (with an optional @version) contains no whitespace or glob character, so
+    # the split is the argument list and the glob cannot fire.
+    if dsh plugin --profile "$PROFILE" add $specs >/dev/null 2>&1; then
+      for bundle in $absent; do echo "Enabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile."; done
+      for bundle in $stale; do echo "Re-pinned the Agent Teams bundle '$bundle' to $core on the '$PROFILE' profile."; done
+      enabled="$absent $stale"
     else
-      printf 'warning: `dsh plugin --profile %s add %s` failed; Agent Teams may not be fully enabled.\n' "$PROFILE" "$missing" >&2
+      printf 'warning: `dsh plugin --profile %s add %s` failed; Agent Teams may not be fully enabled.\n' "$PROFILE" "$specs" >&2
     fi
   fi
 
@@ -320,7 +372,7 @@ if [ "$mode" = uninstall ]; then
       || true
   fi
   # Undo the hook wiring only when it still points at ours.
-  if [ -d "$HERE/.git" ] && [ "$(cd "$HERE" && git config core.hooksPath 2>/dev/null)" = ".githooks" ]; then
+  if is_git_checkout && [ "$(cd "$HERE" && git config core.hooksPath 2>/dev/null)" = ".githooks" ]; then
     (cd "$HERE" && git config --unset core.hooksPath) 2>/dev/null || true
     echo "Disabled the pre-commit coverage gate (unset core.hooksPath)."
   fi
@@ -329,10 +381,11 @@ if [ "$mode" = uninstall ]; then
 fi
 
 # Developer convenience for git checkouts only: point git at the repo's hooks
-# so every commit runs the coverage gate (.githooks/pre-commit). Non-fatal by
+# so every commit runs the coverage gate (.githooks/pre-commit). A linked
+# worktree counts (its `.git` is a file, see is_git_checkout). Non-fatal by
 # design: exported tarballs / npx cache copies have no .git, and a failed `git
 # config` must never fail an install.
-if [ -d "$HERE/.git" ] && [ -x "$HERE/.githooks/pre-commit" ]; then
+if is_git_checkout && [ -x "$HERE/.githooks/pre-commit" ]; then
   if (cd "$HERE" && git config core.hooksPath .githooks) 2>/dev/null; then
     echo "Enabled the pre-commit coverage gate (git config core.hooksPath .githooks)."
   fi

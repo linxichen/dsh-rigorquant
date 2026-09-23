@@ -79,11 +79,24 @@ if (existsSync(manifestPath)) {
 }
 manifest.dsh = manifest.dsh || {}
 manifest.dsh.profile = manifest.dsh.profile || {}
+manifest.dependencies = manifest.dependencies || {}
 const bundles = Array.isArray(manifest.dsh.profile.bundles) ? manifest.dsh.profile.bundles : []
-for (const pkg of pkgs) {
-  const at = bundles.indexOf(pkg)
-  if (action === 'add' && at === -1) bundles.push(pkg)
-  if (action === 'remove' && at !== -1) bundles.splice(at, 1)
+for (const raw of pkgs) {
+  // `dsh plugin add <pkg>` accepts a `name@version` spec and records BOTH: the
+  // bare name in dsh.profile.bundles and the resolved version in dependencies
+  // (that is the shape the real 0.1.6-alpha.2 CLI leaves, and what an install
+  // that pins the Team bundles to the core's version must produce). A scoped
+  // name's leading '@' is not a version separator, so the search is for the
+  // LAST '@' past position 0.
+  const at = raw.lastIndexOf('@')
+  const name = at > 0 ? raw.slice(0, at) : raw
+  const version = at > 0 ? raw.slice(at + 1) : undefined
+  const index = bundles.indexOf(name)
+  if (action === 'add') {
+    if (index === -1) bundles.push(name)
+    if (version !== undefined) manifest.dependencies[name] = version
+  }
+  if (action === 'remove' && index !== -1) bundles.splice(index, 1)
 }
 manifest.dsh.profile.bundles = bundles
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
@@ -120,20 +133,45 @@ def _stub_dsh_env(tmp_path, version=FLOOR):
     return env, dsh_home, log_path
 
 
-def _seed_profile(dsh_home, profile, bundles):
+def _seed_profile(dsh_home, profile, bundles, dependencies=None):
     profile_dir = dsh_home / "profiles" / profile
     profile_dir.mkdir(parents=True)
-    (profile_dir / "package.json").write_text(json.dumps(
-        {"name": "dsh-profile-%s" % profile, "private": True,
-         "dsh": {"profile": {"bundles": list(bundles)}}}, indent=2) + "\n")
+    manifest = {"name": "dsh-profile-%s" % profile, "private": True,
+                "dsh": {"profile": {"bundles": list(bundles)}}}
+    if dependencies is not None:
+        manifest["dependencies"] = dict(dependencies)
+    (profile_dir / "package.json").write_text(json.dumps(manifest, indent=2) + "\n")
     (profile_dir / "cordis.patch.yml").write_text(PATCH_TEMPLATE)
     return profile_dir
 
 
-def _install(env, profile, *extra_args):
+def _manifest_dependencies(dsh_home, profile):
+    manifest = dsh_home / "profiles" / profile / "package.json"
+    return json.loads(manifest.read_text()).get("dependencies", {})
+
+
+def _copy_installer_tree(tmp_path, name):
+    """A standalone copy of the tree the installer runs from.
+
+    The real checkout cannot be used for the `.git` cases: this repository is
+    itself a worktree, and the point of those cases is what the installer does
+    when `$HERE/.git` is a directory, a file, or absent.
+    """
+    dest = tmp_path / name
+    shutil.copytree(
+        REPO, dest,
+        ignore=shutil.ignore_patterns(
+            ".git", ".uv-cache", ".venv", "__pycache__", ".pytest_cache",
+            ".coverage*", "node_modules"),
+        symlinks=True,
+    )
+    return dest
+
+
+def _install(env, profile, *extra_args, here=REPO):
     return subprocess.run(
-        [str(REPO / "install.sh"), "--profile", profile, *extra_args],
-        cwd=REPO, env=env, capture_output=True, text=True,
+        [str(here / "install.sh"), "--profile", profile, *extra_args],
+        cwd=here, env=env, capture_output=True, text=True,
     )
 
 
@@ -206,6 +244,93 @@ def test_full_install_leaves_an_already_enabled_bundle_alone(tmp_path):
     add_calls = _team_bundle_calls(log_path, "add")
     assert not any(TEAM_BUNDLE_HOST in l for l in add_calls), (
         "installer re-added a bundle that was already enabled: %s" % add_calls)
+
+
+def test_full_install_pins_the_team_bundles_to_the_cores_version(tmp_path):
+    """The Team bundles are published in lockstep with the core.
+
+    An unpinned `dsh plugin add` resolves the `latest` dist-tag, which sits two
+    prereleases behind a `0.1.6-alpha.2` core, and the profile then fails to
+    boot ("parameter codec has no create() factory"). Every Team-bundle add must
+    name the core's own version, and the profile manifest must record it.
+    """
+    env, dsh_home, log_path = _stub_dsh_env(tmp_path, version=FLOOR)
+    result = _install(env, "rq-team")
+    assert result.returncode == 0, result.stderr
+
+    add_calls = _team_bundle_calls(log_path, "add")
+    assert len(add_calls) == 1, add_calls
+    for bundle in (TEAM_BUNDLE_HOST, TEAM_BUNDLE_WEB):
+        assert "%s@%s" % (bundle, FLOOR) in add_calls[0], add_calls
+    dependencies = _manifest_dependencies(dsh_home, "rq-team")
+    for bundle in (TEAM_BUNDLE_HOST, TEAM_BUNDLE_WEB):
+        assert dependencies.get(bundle) == FLOOR, dependencies
+
+
+def test_a_profile_holding_stale_team_bundles_is_reconciled_to_the_cores_version(tmp_path):
+    """Re-running the installer repairs a profile the unpinned installer made.
+
+    Such a profile lists both bundles but pins `0.1.5-alpha.2`, which the core
+    rejects at boot: the names are present, so a name-only check would leave it
+    broken forever. Re-pinning is recorded like an enable, and stays idempotent.
+    """
+    stale = "0.1.5-alpha.2"
+    env, dsh_home, log_path = _stub_dsh_env(tmp_path, version=FLOOR)
+    _seed_profile(
+        dsh_home, "rq-team",
+        ["@deepseek-ai/dsh-base", TEAM_BUNDLE_HOST, TEAM_BUNDLE_WEB],
+        dependencies={TEAM_BUNDLE_HOST: stale, TEAM_BUNDLE_WEB: stale},
+    )
+
+    result = _install(env, "rq-team")
+    assert result.returncode == 0, result.stderr
+    for bundle in (TEAM_BUNDLE_HOST, TEAM_BUNDLE_WEB):
+        assert "Re-pinned the Agent Teams bundle '%s'" % bundle in result.stdout, result.stdout
+    add_calls = _team_bundle_calls(log_path, "add")
+    assert len(add_calls) == 1, add_calls
+    for bundle in (TEAM_BUNDLE_HOST, TEAM_BUNDLE_WEB):
+        assert "%s@%s" % (bundle, FLOOR) in add_calls[0], add_calls
+    dependencies = _manifest_dependencies(dsh_home, "rq-team")
+    for bundle in (TEAM_BUNDLE_HOST, TEAM_BUNDLE_WEB):
+        assert dependencies.get(bundle) == FLOOR, dependencies
+    # The reconcile is a one-time repair: the next run finds nothing to do.
+    log_path.unlink()
+    second = _install(env, "rq-team")
+    assert second.returncode == 0, second.stderr
+    assert "Re-pinned" not in second.stdout
+    assert _team_bundle_calls(log_path, "add") == [], "the repair ran twice"
+
+
+def test_a_git_worktree_installs_the_tree_not_the_published_package(tmp_path):
+    """In a linked worktree `.git` is a FILE, so `[ -d "$HERE/.git" ]` is false.
+
+    The installer then installs the published package instead of `file:$HERE` —
+    how a worktree (every agent worktree in this repo's own workflow) gets a
+    profile holding 0.4.2 and its retired `rq-activity` row while the tree has
+    that module deleted.
+    """
+    here = _copy_installer_tree(tmp_path, "worktree")
+    (here / ".git").write_text("gitdir: /nonexistent/.git/worktrees/rq\n")
+    env, _, _ = _stub_dsh_env(tmp_path, version=FLOOR)
+
+    result = _install(env, "rq-team", here=here)
+    assert result.returncode == 0, result.stderr
+    assert "Installed the plugin (file:%s)" % here in result.stdout, result.stdout
+
+
+def test_a_plain_copy_installs_the_published_package(tmp_path):
+    """The control for the worktree case: no `.git` at all is a fetched copy.
+
+    `npx dsh-rigorquant` unpacks into a cache directory that disappears
+    afterwards, so a `file:` spec there would point at nothing; that path must
+    keep installing by name.
+    """
+    here = _copy_installer_tree(tmp_path, "fetched")
+    env, _, _ = _stub_dsh_env(tmp_path, version=FLOOR)
+
+    result = _install(env, "rq-team", here=here)
+    assert result.returncode == 0, result.stderr
+    assert "Installed the plugin (dsh-rigorquant@" in result.stdout, result.stdout
 
 
 def test_second_run_writes_nothing_new(tmp_path):

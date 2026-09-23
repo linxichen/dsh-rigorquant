@@ -1167,10 +1167,18 @@ def test_a_fetched_copy_installs_the_published_version():
     """A checkout installs itself; an npx copy must not use a `file:` spec.
 
     npx unpacks into a cache directory that disappears after the run, so a
-    `file:` spec would leave the profile pointing at nothing.
+    `file:` spec would leave the profile pointing at nothing. A linked worktree
+    counts as a checkout — `.git` is a FILE there — because that is where this
+    repository's own agents install from, and reading it as a fetched copy is
+    how a worktree profile ended up holding the published 0.4.2 (issue #21).
     """
     script = (REPO / "install.sh").read_text()
-    assert 'if [ -d "$HERE/.git" ]' in script, "install.sh no longer distinguishes checkout from fetched copy"
+    assert re.search(
+        r"is_git_checkout\(\)\s*\{[^}]*\[ -d \"\$HERE/\.git\" \][^}]*\[ -f \"\$HERE/\.git\" \]",
+        script,
+    ), "install.sh no longer recognises a linked worktree (where `.git` is a file)"
+    assert "if is_git_checkout; then" in script, (
+        "install.sh no longer distinguishes checkout from fetched copy")
     assert 'spec="dsh-rigorquant@${VERSION:-latest}"' in script, (
         "the fetched-copy path must install the published version by name")
 
