@@ -61,7 +61,12 @@
    tag, and workflow `agent()` calls express neither a per-child persona nor a
    per-child toolFilter, so the preset declares them out of scope rather than
    minting unscoped, root-persona'd agents. Fan-out remains the goal-round
-   driver plus the per-role delegation tools.)*
+   driver plus the per-role delegation tools.)* *(Amended by Decision 24:
+   the per-role delegation rows, the subagent control/list rows and the fork
+   row are gone; teammates are created by `spawn_teammate` as `<role>-<n>`,
+   awaited with `wait_agent`, and coordinated as a task DAG on the Team
+   board. No delegation row remains enabled, so no row sets a `maxDepth` and
+   depth one holds by construction: no teammate can create teammates.)*
 9. **Model routing** — one model everywhere (user's choice); reasoning-effort
    knob available per role; independence comes from context separation.
    *(Superseded by Decision 16: routing is per-role through the
@@ -724,10 +729,16 @@ probe and its tests are deleted outright, along with the client bundle's
 floater/panel/geometry code — the deprecated synchronous session-event reads
 this repo carried a deferral note for have no caller left anywhere. In their
 place, a move pill registers on the conversation's per-session
-`conversation.session.header.utilities` slot: it reads the Lead's `agentTeam`
-session projection through the props that slot's `scope: 'session'` already
-supplies (`useSession`/`useSessions`, the same seam the Team package's own
-header action reads) — no host route, no Team RPC, nothing to inject for it.
+`conversation.session.header.utilities` slot (the sibling seat of the Team
+package's own roster action, which sits in
+`conversation.session.header.actions`): it reads the Lead's live roster and
+board through the Team namespace's `remote.agentTeams.view(leadSessionId)`
+request — the only team read the installed `0.1.6-alpha.2` browser half serves.
+That namespace is injected optionally, so a profile with no Team bundle never
+registers the pill at all and renders nothing. The read is addressed to the
+Lead (a teammate's own header resolves back through
+`subagent.address.parentSessionId`), and re-read on a short interval, because
+that namespace answers requests rather than subscriptions.
 The move is derived structurally from the task board's `blockedBy` DAG (a
 task's layer is one past its deepest blocker; the shallowest layer with
 incomplete work is the move), never from task text, so it needs no
@@ -736,6 +747,20 @@ nothing while the projection is absent covers "no team running" and "the
 Team bundle is not mounted" identically. The static hub-and-spoke topology
 figure in the docs is untouched; the README's own "The team, live" section
 and its activity-panel screenshot are a later issue's rewrite (#15).
+**Team-only preset and procedure under issue #14**: the seven per-role
+delegation rows, `tool-subagent-control`, `tool-subagent-list-agents` and the
+disabled fork row leave the preset (the
+external-agent rows and the checker lane stay disabled, `present` stays), so
+the Team tools are the only delegation mechanism and the `[[rq:role=…]]` tag
+has no carrier left. The orchestrator persona's ISOLATION paragraph now says
+role by name, tool budget by scope, topology by guard — still not a network
+wall — and states that a RigorQuant study is the explicit request the Team
+policy asks for, spawning only while the "guard armed" line is present.
+SKILL.md Step 3 runs the round as five moves on `spawn_teammate` /
+`wait_agent` / `send_message` over a layered task DAG (explore → ground-truth
+→ attack → certify, one `blocked_by` layer per move, which is exactly what
+the move pill reads); protocol.md carries the brief contract, the roster
+policy, the rewritten L3, the pool rule and the lifetime-cap BUDGET rule.
 
 ## Repo map
 

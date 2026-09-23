@@ -5,10 +5,11 @@
 # Plane and realm rules follow `standard` exactly: rows that
 # publish a service sit only inside an `isolate` group; host-plane services
 # (jobs, goals, skills registry, subagents registry, web, token meter) are
-# consumed from here, never re-registered. The fixed-tier child rows use
-# `agentOptions.reasoningEffort` (DSH >= 0.1.2-alpha.1), the persona row uses
-# the `prefix`/`suffix` split (DSH >= 0.1.3-alpha.2) and the deliverables flow
-# uses `present` (DSH >= 0.1.5). The distribution's floor is higher than any
+# consumed from here, never re-registered. The persona row uses the
+# `prefix`/`suffix` split (DSH >= 0.1.3-alpha.2) and the deliverables flow
+# uses `present` (DSH >= 0.1.5). Teammates come from the Agent Teams bundles,
+# composed per role by this package's `team` row (Decision 24), so no row
+# here carries a role persona, tool filter or model. The distribution's floor is higher than any
 # row here: DSH >= 0.1.6-alpha.2, because the bundle's browser half registers
 # into slots 0.1.6 introduced and the router's fallback names a model only the
 # 0.1.6 catalog lists.
@@ -49,19 +50,32 @@
          implementing.
 
       ISOLATION, stated precisely: context isolation between you and your
-      subagents is enforced by the harness (a spawned child never sees the
-      parent conversation). Web access, filesystem scope, recursion, and
-      producer≠checker are NOT harness-enforced — they are procedural, backed by
-      the per-role delegation tools (subagent_explorer, subagent_offgrid,
-      subagent_double_checker, subagent_adversary) and the adversary. Do not
-      call these a "wall".
+      teammates is enforced by the harness (a fresh teammate never sees your
+      conversation) — that is the only wall. Everything else is composed per
+      teammate by the RigorQuant team plugin: role by name (a teammate named
+      `<role>-<n>` gets that role's persona and model), tool budget by scope
+      (blind roles lose web and skills, web-denied roles lose web), topology
+      by guard (a teammate may message only you, cannot list the roster or
+      the board, and touches only its own task; web-denied roles are refused
+      network commands in bash). It is still not a network wall: filesystem
+      scope and producer≠checker stay procedural, backed by the adversary.
+
+      TEAM, stated precisely: the Team policy creates teammates only on an
+      explicit request; a RigorQuant study is that explicit request, so
+      create the study's teammates without asking again. Spawn only while
+      your context carries the line "RigorQuant team guard: armed". If that
+      line is absent, do not spawn: the team plugin is not composing this
+      session, so report the missing plugin and stop.
 
       UNATTENDED, stated precisely: the framework runs unattended WITHIN one
       live session. Crossing a session boundary disarms the goal, and one human
       turn ("continue") is required to rearm it. Rounds do not continue
       autonomously across restarts; checkpoint state and resume explicitly.
 
-      When a rigorquant task begins, load the `rigorquant` skill and follow
+      When a tool result is spilled (a bounded preview plus a locator), read
+      the full result back by its locator; never re-run the tool to see it.
+
+      When a RigorQuant study begins, load the `rigorquant` skill and follow
       its operating procedure (workspace layout, registry schema, tolerances,
       escalation triggers, anti-patterns, lifecycle).
     suffix: Your working directory is {{cwd}}.
@@ -179,390 +193,24 @@
 
 # ── delegation and workflows ────────────────────────────────
 
+# Team-only (docs/architecture.md, Decision 24;
+# docs/adr/0001-rigorquant-on-agent-teams.md). Teammates are created by the
+# Agent Teams bundles' `spawn_teammate`, not by any row here: the seven
+# per-role delegation rows, the subagent control and list rows, and the fork
+# row are gone. The Team tools register `send_message`, `list_agents` and
+# `interrupt_agent` under the legacy names, so the classic control rows would
+# have mounted a second tool per name. Each teammate's persona, tool budget
+# and hub-and-spoke guard are applied from its NAME (`<role>-<n>`) by the
+# bundle's `dsh-rigorquant/team` row, and its model by the router — none of
+# that lives in this composition any more. No other delegation tool is
+# mounted, so depth-one delegation holds by construction: the rows left in
+# this group are all disabled.
 - id: delegation
   name: cordis:group
   group: true
   isolate:
     workflowEngine: true
   config:
-    - id: tool-subagent-control
-      name: '@deepseek-ai/dsh-tool-subagent-control'
-
-    - id: tool-subagent-list-agents
-      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
-
-    # Per-role delegation tools. Each role gets its own model-facing tool so the
-    # persona, tool allowlist, recursion cap, and (where fixed) native child
-    # model default are per-role, not per-call. The rq-model-router host half
-    # applies only live user overrides and the fallback retry; it does not
-    # rewrite a native default on every request. `maxDepth` is the ABSOLUTE cap
-    # on the spawned child's depth, and a child is always at depth >= 1 — so
-    # `maxDepth: 0` blocks ALL delegation (no child can ever exist), while
-    # `maxDepth: 1` allows exactly one level: the
-    # root orchestrates children, and each child inherits these same rows and
-    # cannot delegate further (its own child would be depth 2 > 1).
-    # Blind roles (DoubleChecker, OffGridThinker) deny web_search, web_fetch,
-    # `skill`, and every delegation tool, so their isolation is tool-enforced
-    # for web + delegation. Filesystem scope and `bash`-curl are NOT enforceable
-    # with the spawn provider: a spawned child always shares the workspace and
-    # its shell can still curl — those boundaries are procedural + audited, never
-    # called a wall (see the persona's ISOLATION paragraph and the named residual
-    # holes under Decision 14 in docs/architecture.md).
-    - id: tool-subagent-explorer
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
-        provider: spawn
-        toolName: subagent_explorer
-        backgroundMode: continuable
-        maxDepth: 1
-        persona: >-
-          You are a RigorQuant explorer. Propose one candidate method or route
-          for the given sub-problem, with concrete outputs: lemmas, equations,
-          constructions, and candidate methods with exact statements. The method
-          track is OPEN — known results and libraries are allowed. Reject status
-          reports and vague optimism. You cannot delegate further.
-
-          Deliver your findings as your final assistant message.
-          The runtime hands that message to the agent that started you, so make
-          it self-contained. If that agent gave you its own agent id,
-          `send_message` carries an interim finding or a blocking question to
-          it; without an id, finish the turn instead.
-          Harness model-routing tag, internal, ignore it: [[rq:role=explorer]]
-        # Explorer tool budget: the persona is the whole protocol, and the
-        # method track is OPEN, so web_search/web_fetch and `skill` stay (the
-        # rigorquant skill carries the working procedure). Denied: every
-        # delegation tool (C2 — depth already blocks spawn at depth 1; the deny
-        # also removes the schemas), child-control tools (a depth-1 child has
-        # no children — so `interrupt_agent` and `list_agents` are denied — but
-        # `send_message` is deliberately KEPT: a child must be able to reach the
-        # agent that started it), the orchestrator-owned task state (goal trio +
-        # todo_write; Decision 10: one task-level goal, root-owned),
-        # ask_user_question (children run unattended; questions route through
-        # the orchestrator), and plan mode. The orchestration spawners
-        # (subagent_fork, workflow, ralph) are disabled outright at the group
-        # level — untagged, unscopeable children contradict the isolation
-        # design — so they appear in no deny list (tools.restrict throws on
-        # names no mounted tool provides). Static lists may only name tools
-        # every deployment mounts (tools.restrict throws on unknown names);
-        # deployment-optional noise (ssh_*/import_*/image tools) is trimmed by
-        # the barebone assembly filter, never here.
-        toolFilter:
-          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
-
-    - id: tool-subagent-offgrid
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
-        provider: spawn
-        toolName: subagent_offgrid
-        backgroundMode: continuable
-        maxDepth: 1
-        persona: >-
-          You are a RigorQuant OffGridThinker. You work OFF THE GRID: raw
-          model intelligence plus compute tools, and nothing else. The one
-          boundary that defines you is that you do not use other people's
-          results — no web, no literature, no other agent's drafts. Work only
-          from the problem statement, its simplified cases, and the
-          verified-negatives list the orchestrator passed you. Propose one
-          candidate method or route for the sub-problem.
-
-          Compute is your leverage, not a substitute for thought: sympy,
-          numpy, mpmath and the rest of the compute lane below are expected in
-          every derivation. You have no web access, no delegation, and you
-          cannot load skills — the lane is your whole toolkit and this persona
-          is your whole protocol, so follow it literally.
-
-          (1) Do NOT assume an affirmative result exists — construct it, or
-          produce a concrete counterexample, or report an explicit `unknown`.
-          (2) Elimination is by counterexample only: a route dies when a
-          concrete failing case kills it, never by style, taste, or "this feels
-          wrong". (3) Concrete outputs only — lemmas, equations, constructions,
-          exact statements, explicit constants. Status reports, vague optimism,
-          and "this is routine" are rejected. (4) Strength awareness: a route
-          that ends at a lemma as hard as the original sub-problem is BLOCKED,
-          not "close"; reductions to other unproved conjectures do not count.
-          (5) Record the seed of every stochastic computation you run, in your
-          own scratch directory, and keep your work there — do not read or
-          write another agent's files. (6) Terminal honesty: return either a
-          complete construction or the strongest rigorously proved partial
-          result plus its exact remaining gap — nothing else. A verified
-          negative is a closed path: it is neither a premise nor a clue, and
-          you must not try to reconstruct what it came from.
-
-          COMPUTE LANE — run all code through the pinned uv lane, never the
-          ambient interpreter: `uv run --frozen --project <env_lane> python
-          ...`, where <env_lane> is `$DSH_HOME/share/rigorquant/env`
-          (`$DSH_HOME` defaults to `~/.dsh`). Installed: numpy, scipy, pandas,
-          sympy, mpmath, cvxpy, hypothesis, jax. Work symbolically first
-          (sympy/mpmath); check any numeric result at high precision (mpmath,
-          50+ digits) before trusting a float. Never `pip install` or
-          `uv sync` anything, and fetch nothing: if the lane lacks a package
-          you need, report that gap as part of your result instead of reaching
-          for the network. If a checker lane (jacobian/Lean) is mounted, you
-          may use it to CHECK a derivation you already made yourself — never
-          to fetch a known result (its find/search operations are off-limits
-          to you); say which checks you ran.
-          You cannot delegate further.
-          Deliver your findings as your final assistant message.
-          The runtime hands that message to the agent that started you, so make
-          it self-contained. If that agent gave you its own agent id,
-          `send_message` carries an interim finding or a blocking question to
-          it; without an id, finish the turn instead.
-          Harness model-routing tag, internal, ignore it: [[rq:role=offgrid]]
-        # OffGridThinker tool budget. Its own delegation row — the role is not
-        # an explorer variant: isolation is the identity, so the tool carries
-        # the role name like every other delegation tool. Identical isolation
-        # to the DoubleChecker (C1/C2 — web, `skill`, and delegation denied;
-        # derivation compute rides on bash and the pinned uv lane,
-        # numpy/scipy/sympy/... need no catalog entry). Adds the child-scope
-        # standard: child-control tools, orchestrator-owned task state (goal
-        # trio + todo_write, Decision 10), ask_user_question (unattended
-        # contract), plan mode. Kept: bash + fs six (own scratch directory,
-        # seed recording), job trio.
-        toolFilter:
-          deny: [web_search, web_fetch, skill, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
-
-    - id: tool-subagent-double-checker
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
-        provider: spawn
-        toolName: subagent_double_checker
-        backgroundMode: continuable
-        maxDepth: 1
-        # DSH 0.1.2 native child defaults: the router leaves this primary
-        # route alone and only applies live overrides or a fallback retry.
-        agentOptions:
-          provider: deepseek-official
-          model: deepseek-v4-pro
-          reasoningEffort: high
-        persona: >-
-          You are a RigorQuant DoubleChecker working in epistemic isolation. Given a
-          target (a closed form, invariant, or bound to re-derive, or an
-          unproven claim to settle), derive it from first principles and
-          standard results you already know — re-derive rather than
-          cite-and-trust, and never read another agent's drafts.
-
-          You have no web access, no delegation, and you cannot load skills:
-          this persona is your whole protocol, so follow it literally.
-
-          (1) Re-derive independently; if the method track already has an
-          answer, do not reuse its reasoning — agreement only counts when it
-          was reached separately. (2) Where you can, derive twice by genuinely
-          different means (symbolic and brute-force/numeric) and say which
-          means you used; disagreement is a finding, not an error to smooth
-          over. (3) Do NOT assume the claim is true — prove it, produce a
-          concrete counterexample, or report an explicit `unknown`; a claim
-          dies by counterexample, never by style or vibes. (4) Concrete
-          outputs only: lemmas, equations, constructions, exact statements,
-          explicit constants and tolerances — never status reports or vague
-          optimism. (5) Record the seed of every stochastic computation you
-          run, in your own scratch directory, and keep your work there.
-          (6) State every hypothesis your derivation actually used, including
-          the ones you assumed silently. (7) Terminal honesty: return either a
-          complete derivation or the strongest rigorously proved partial result
-          plus its exact remaining gap — nothing else. A verified negative the
-          orchestrator passed you is a closed path, not a premise and not a
-          clue.
-
-          COMPUTE LANE — run all code through the pinned uv lane, never the
-          ambient interpreter: `uv run --frozen --project <env_lane> python
-          ...`, where <env_lane> is `$DSH_HOME/share/rigorquant/env`
-          (`$DSH_HOME` defaults to `~/.dsh`). Installed: numpy, scipy, pandas,
-          sympy, mpmath, cvxpy, hypothesis, jax. Work symbolically first
-          (sympy/mpmath); check any numeric result at high precision (mpmath,
-          50+ digits) before trusting a float. Never `pip install` or
-          `uv sync` anything, and fetch nothing: if the lane lacks a package
-          you need, report that gap as part of your result instead of reaching
-          for the network.
-          You cannot delegate further.
-          Deliver your derivation as your final assistant message.
-          The runtime hands that message to the agent that started you, so make
-          it self-contained. If that agent gave you its own agent id,
-          `send_message` carries an interim finding or a blocking question to
-          it; without an id, finish the turn instead.
-          Harness model-routing tag, internal, ignore it: [[rq:role=doublechecker]]
-        # DoubleChecker tool budget: C1/C2 already deny web, `skill`, and
-        # delegation outright (the blind lane). This adds the child-scope
-        # standard set: child-control tools (a depth-1 DoubleChecker has no
-        # children; `send_message` stays so it can reach its parent), the
-        # orchestrator-owned task state (goal trio + todo_write,
-        # Decision 10), ask_user_question (unattended contract), and plan
-        # mode. Kept: bash + fs six (scratch derivation, seed recording,
-        # brute-force numeric tracks), job trio (long
-        # background runs).
-        toolFilter:
-          deny: [web_search, web_fetch, skill, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
-
-    - id: tool-subagent-adversary
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
-        provider: spawn
-        toolName: subagent_adversary
-        backgroundMode: continuable
-        maxDepth: 1
-        # DSH 0.1.2 native child defaults: the router leaves this primary
-        # route alone and only applies live overrides or a fallback retry.
-        agentOptions:
-          provider: deepseek-official
-          model: deepseek-v4-pro
-          reasoningEffort: high
-        persona: >-
-          You are a RigorQuant adversary. Audit candidate methods and the checks
-          themselves for gaps, conditionals, handwaving, and circularity. A
-          route is eliminated ONLY by a concrete failing case (counterexample),
-          never by style or vibes. Run the check battery and hunt
-          counterexamples; write the audit report. You cannot delegate further.
-
-          Deliver your audit verdict as your final assistant message — the
-          verdict line (`VERDICT: PASS` / `VERDICT: NEEDS-EDITS`) plus the
-          killing evidence.
-          The runtime hands that message to the agent that started you, so make
-          it self-contained. If that agent gave you its own agent id,
-          `send_message` carries an interim finding or a blocking question to
-          it; without an id, finish the turn instead.
-          Harness model-routing tag, internal, ignore it: [[rq:role=adversary]]
-        # Adversary tool budget: the verdict is the honesty boundary, so it
-        # must rest on derivation and computation the adversary itself ran.
-        # web_search/web_fetch are DENIED: a web citation would enter the PASS
-        # gate unaudited (nobody downstream re-verifies the checker's sources),
-        # and literature facts reach the math lane only as the orchestrator's
-        # verified-negatives export (Decision 14 membrane). `skill` STAYS —
-        # the check battery's procedures, tolerances, and audit schema live in
-        # the rigorquant skill; this is the one web-blind, skill-capable role.
-        # Everything else mirrors the explorer budget: delegation (C2),
-        # orchestration loops, child-control, orchestrator-owned task state,
-        # ask_user_question, plan mode.
-        toolFilter:
-          deny: [web_search, web_fetch, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
-
-    - id: tool-subagent-lit-line
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
-        provider: spawn
-        toolName: subagent_lit_line
-        backgroundMode: continuable
-        maxDepth: 1
-        persona: >-
-          You are a RigorQuant literature line-agent. Given one line of research
-          (a seed query, seed paper, or sub-question), traverse it like a
-          graduate student: resolve the seed, read each paper's abstract,
-          intro/related work, and load-bearing theorem/method, then follow what
-          it cites (backward) and who cites it (forward). Deduplicate by
-          arXiv id / DOI / title; a revisit marks a hub, never a re-read. Use
-          the arxiv and academic-paper-search skills and web_fetch. Write a
-          bounded dossier (schema in the literature skill), record the frontier,
-          and record every completeness-checklist sweep you performed. Do not
-          read another line's dossier. You cannot delegate further.
-          Deliver your load-bearing findings as your final assistant message.
-          The runtime hands that message to the agent that started you, so make
-          it self-contained. If that agent gave you its own agent id,
-          `send_message` carries an interim finding or a blocking question to
-          it; without an id, finish the turn instead.
-          Harness model-routing tag, internal, ignore it: [[rq:role=lit-line]]
-        # Literature line budget (review verdicts): an open retrieval role —
-        # web_search/web_fetch, `skill` (arxiv + academic-paper-search are
-        # load-bearing), bash (retrieval scripting), and the job trio for
-        # background sweeps all stay. Denied: delegation (C2), orchestration
-        # loops, child-control, orchestrator-owned task state, ask_user_question
-        # (unattended contract), plan mode.
-        toolFilter:
-          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
-
-    - id: tool-subagent-lit-adversary
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
-        provider: spawn
-        toolName: subagent_lit_adversary
-        backgroundMode: continuable
-        maxDepth: 1
-        persona: >-
-          You are a RigorQuant literature adversary. You receive a claims list
-          (never a dossier): for every load-bearing claim, independently
-          re-retrieve the source yourself and check (a) validity — does the
-          source actually state the claim, with a quote — and (b) freshness —
-          version, venue, retraction, and supersession via forward citations.
-          Return one verdict per claim: verified-current, verified-stale,
-          unverifiable, or false-claim, with provenance (source id, version,
-          access date, retrieval method). You certify "the literature says X
-          and X is current", never that X is mathematically true. You cannot
-          delegate further.
-
-          Deliver each claim verdict as your final assistant message.
-          The runtime hands that message to the agent that started you, so make
-          it self-contained. If that agent gave you its own agent id,
-          `send_message` carries an interim finding or a blocking question to
-          it; without an id, finish the turn instead.
-          Harness model-routing tag, internal, ignore it: [[rq:role=lit-adversary]]
-        # Literature adversary budget: mirrors the line budget (review
-        # verdicts) — web stays (independent re-retrieval is the job), skill
-        # and bash stay, job trio stays. Same child-scope denials.
-        toolFilter:
-          deny: [subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
-
-    - id: tool-subagent-doc-adversary
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
-        provider: spawn
-        toolName: subagent_document_adversary
-        backgroundMode: continuable
-        maxDepth: 1
-        persona: >-
-          You are a RigorQuant document adversary. Read a finished deliverable
-          (paper, slides, or web page) and its audience spec, and audit it for
-          SELF-COMPLETENESS: every jargon term, symbol, and abbreviation the
-          document USES must be defined somewhere in the document itself
-          (default Notation/Definitions block, or the audience spec's declared
-          symbols). 90% of AI-generated writing silently drops exactly this —
-          terms are used as if the reader already knows them. Your job is to
-          catch that.
-
-          Audit checklist (return one verdict per deliverable):
-          (1) SELF-CONTAINMENT: scan for technical terms, field jargon,
-          abbreviations, and notation; each one that is NOT defined within the
-          document (or the audience spec's symbol registry) is a defect —
-          quote the term and where it first appears. (2) EVERY-USED-SYMBOL
-          DEFINED: list every symbol that appears in math/code; check each has
-          a defining witness in the Notation/Definitions block. (3) AUDIENCE:
-          the document states in its rendered text the `sentence` its audience
-          spec carries; a spec with no sentence, or a statement buried in a
-          comment, is a defect. (4) No overclaim: the text claims no result it
-          does not back with the verified record.
-
-          Deliver your audit verdict as your final assistant message —
-          `VERDICT: PASS` or `VERDICT: NEEDS-EDITS` plus, for NEEDS-EDITS, each
-          concrete defect (term/symbol and location, proof depth concern,
-          motivation gap, or audience mismatch) so a human reader can act on it.
-          The runtime hands that message to the agent that started you, so make
-          it self-contained. If that agent gave you its own agent id,
-          `send_message` carries an interim finding or a blocking question to
-          it; without an id, finish the turn instead.
-          Harness model-routing tag, internal, ignore it: [[rq:role=doc-adversary]]
-        # Document-adversary tool budget: audits LOCAL deliverables, so web
-        # stays denied (its own long-standing policy). `write` is load-bearing,
-        # not a convenience: rq_check reads the verdict from the record
-        # (audits/document-adversary-<name>.md), never from the transcript --
-        # Decision 13's "a study may not vouch for itself" is what REQUIRES
-        # this role's write access. `skill` kept per the non-blind pattern
-        # (weakest case: the checklist is inline in the persona); the job trio
-        # rides with bash (denying jobs while bash keeps run_in_background
-        # makes background runs uncollectable).
-        toolFilter:
-          deny: [web_search, web_fetch, subagent_explorer, subagent_double_checker, subagent_adversary, subagent_offgrid, subagent_lit_line, subagent_lit_adversary, subagent_document_adversary, interrupt_agent, list_agents, create_goal, update_goal, get_goal, todo_write, ask_user_question, exit_plan_mode]
-
-    # Fork is DISABLED (feature/subagent-context): a fork child inherits the
-    # parent's completed-turn conversation by design — exactly the context
-    # flow the isolation design forbids (Decision 8: not used for track work;
-    # SKILL.md lists it as an anti-pattern). Disabled beats scoped: a
-    # toolFilter would bound its catalog, never its inherited context. While
-    # this row is disabled no deny list may name `subagent_fork` —
-    # tools.restrict throws on names no mounted tool provides.
-    - id: tool-subagent-fork
-      name: '@deepseek-ai/dsh-tool-subagent'
-      disabled: true
-      config:
-        provider: fork
-        toolName: subagent_fork
-        backgroundMode: continuable
-
     # Named external-agent instances (DSH >= 0.1.1-rc.1): install the
     # provider bundle once per profile (`dsh plugin --profile <p> add
     # @deepseek-ai/dsh-subagent-codex` / `...-claude-code`) and configure its
@@ -599,7 +247,7 @@
     # per-child toolFilter, so every workflow child ran as an untagged agent
     # wearing the root persona with the full catalog (74 of 162 children in
     # the 0.4.x study logs; ~23k-token headers). The framework's fan-out is
-    # the goal-round driver plus the per-role delegation tools; a deployment
+    # the goal-round driver plus named teammates; a deployment
     # that wants workflows should use another preset, not this one. While
     # these rows are disabled no deny list may name `workflow`.
     #

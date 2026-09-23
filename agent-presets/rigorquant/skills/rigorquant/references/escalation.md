@@ -45,7 +45,7 @@ Escalation flow when a trigger fires:
    preset row already appends ~/.elan/bin to the lane's child PATH, so the
    toolchain resolves at call time with no dsh restart.
 6. Never block the method work on the lane: while any install runs, fall back
-   to Lane 2 (isolated proof subagent) and record in the audit what was
+   to Lane 2 (isolated proof teammate) and record in the audit what was
    installed and that it succeeded.
 
 Caveats: jacobian is pre-stable; its catalog decides what it can check — read
@@ -56,9 +56,9 @@ Mathlib); the full machine-check lane is `lean.check`, which additionally needs
 the pinned Mathlib runtime (elan toolchain + lake build — provisioned by
 scripts/provision-lean.sh). See mcp/jacobian.md for details.
 
-## Lane 2 — isolated proof subagent (full Jin protocol)
+## Lane 2 — isolated proof teammate (full Jin protocol)
 
-When jacobian lacks the operation: launch ONE `subagent_double_checker` with the
+When jacobian lacks the operation: create ONE fresh `doublechecker-<n>` with the
 Jin prompt (protocol.md), isolated (no web/context). Do **not** assume an
 affirmative result exists — ask it to return either a complete derivation of
 the claim or a concrete counterexample / its exact gap. The claim is settled

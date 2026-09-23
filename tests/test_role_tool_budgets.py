@@ -1,48 +1,38 @@
-"""Per-role tool budgets, asserted as the VISIBLE catalog each child sees.
+"""Per-role tool budgets: the invariants a static deny list must keep.
 
-test_blind_deny_list.py pins what each delegation row DENIES. This module pins
-the other half and the more meaningful one: what a spawn child of each role
-actually SEES in its request. The child catalog is simulated the way
-applyChildComposition composes it (packages/subagent/src/child-agent.ts): the
-mounted universe restricted by the row's toolFilter deny list.
-
-Three invariants are asserted, in descending order of importance:
+Under Decision 24 every role's budget is a `tools.restrict({ deny })` the team
+plugin (`dsh/team.js`) applies on the teammate's own scope, keyed by its name.
+What each role then SEES is observed through the team probe
+(tests/test_team_plugin.py); the tier tables are pinned against the glossary
+in tests/test_blind_deny_list.py. This module keeps the two invariants that
+are about the composition around them:
 
 1. SPAWN SAFETY — a static deny list may only name tools the preset or the
    dsh-base host mounts in EVERY deployment. tools.restrict() throws on an
-   unknown name at child creation (core/tools restrict(): "names unknown
-   global tool"), so a plugin-optional name in a shipped deny list (ssh_*,
-   import_*, third-party image tools) would break every delegation on any
-   machine without that plugin. Plugin-optional noise is the barebone
-   assembly filter's job, never a static list's.
-2. EXACT BUDGETS — each landed role's visible set is asserted EQUAL to the
-   budget table below, over the guaranteed universe. Adding a deny name,
-   dropping one, or mounting a new guaranteed tool surfaces as a test diff
-   instead of a silent catalog change. Roles are pinned here as their budgets
-   land on the feature branch; unlanded roles are covered only by the
-   universal invariants.
-3. UNIVERSAL CHILD SCOPE — every delegation child, landed or not: no
-   delegation tools, `send_message` + bash visible (send_message is the child's
-   push channel to its direct parent — the one-way `report` tool it replaced
-   was removed in 0.1.2-rc.1, and a child's normal delivery is its final
-   assistant message; bash is C1's kept capability for the blind lane and the
-   compute lane for everyone else). The orchestrator-owned set joins this floor
-   when the last persona's budget lands.
+   unknown name ("names unknown global tool"), so a plugin-optional name in a
+   shipped deny list (ssh_*, import_*, third-party image tools) would break
+   composition for every teammate on any machine without that plugin. The
+   scoped Team tools (`send_message`, `list_agents`, `team_task_*`,
+   `spawn_teammate`, …) are not global and cannot be restricted at all —
+   that is the guard's job — so they may not appear either.
+2. NO UNSCOPED SPAWNERS — fork, workflow and ralph mint children the team
+   plugin never composes (no name, no persona, no budget), so their rows stay
+   disabled.
 
-Parser caveat: like test_blind_deny_list.py this module reads the composition
-by structural convention (see conftest), not with a yaml parser — the test
-venv has no yaml module and the file embeds `!!js` runtime expressions.
+Parser caveat: the composition is read by structural convention (see
+conftest), not with a yaml parser — the test venv has no yaml module and the
+file embeds `!!js` runtime expressions.
 """
 
-from conftest import (CORDIS, DELEGATION, ORCHESTRATOR_TOOLS, composition_rows,
-                      deny_of, tool_name_of)
+import re
 
-# Tools mounted for EVERY deployment that runs this preset: the preset's own
-# rows plus the dsh-base host composition (fs, jobs, web, skill registry,
-# goals, todo, ask-user, plan mode, subagent control, and the preset's own
-# `present` row). Deliberately NOT here: pwsh (win32-gated), structured_output
-# (child-scoped, structured workflow runs only), and everything
-# plugin-optional. `report` is absent on purpose — the tool no longer exists.
+from conftest import CORDIS, REPO, composition_rows, is_disabled
+
+# Global tools mounted for EVERY deployment that runs this preset: the
+# preset's own rows plus the dsh-base host composition. Deliberately NOT here:
+# pwsh (win32-gated), structured_output (child-scoped), everything
+# plugin-optional, and the Team tools (registered per member scope, never
+# global, so `tools.restrict` cannot name them).
 GUARANTEED = frozenset({
     # shell + filesystem (preset tool-bash/tool-fs/tool-fs-search rows)
     "bash", "read", "write", "edit", "glob", "grep",
@@ -50,171 +40,48 @@ GUARANTEED = frozenset({
     "web_search", "web_fetch", "skill",
     # background compute (preset tool-jobs row; bash run_in_background needs them)
     "job_output", "job_kill", "job_list",
-    # orchestrator-owned state and channels
+    # orchestrator-owned state (goal rows, tool-todo, tool-ask-user, plan mode)
     "create_goal", "update_goal", "get_goal", "todo_write",
     "ask_user_question", "exit_plan_mode",
-    "send_message", "interrupt_agent", "list_agents",
-    # delegation (the preset's own spawn rows). The untagged spawner rows
-    # (subagent_fork, workflow, ralph, workflow-ptc) are disabled outright and
-    # mount nothing, so they appear neither here nor in any deny list
-    # (tools.restrict throws on unmounted names).
-    "subagent_explorer", "subagent_double_checker", "subagent_adversary",
-    "subagent_offgrid", "subagent_lit_line", "subagent_lit_adversary",
-    "subagent_document_adversary",
 })
 
-# toolName -> the exact visible set a spawned child of that role must see.
-# Kept sets, not deny sets: a budget change is a reviewable diff in this table.
-# A role enters this table only when its budget lands through persona review;
-# until then it is covered by the universal invariants below.
-BUDGETS = {
-    # explorer: open track — web for known-result checks; skill carries the
-    # working procedure.
-    "subagent_explorer": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
-    # adversary: web-blind verdict (a cited page would enter the PASS gate
-    # unaudited); skill stays (the check battery lives there).
-    "subagent_adversary": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
-                                        | {"web_search", "web_fetch"}),
-    # blind lane: C1/C2 — no web, no skill, delegation denied outright. The
-    # compute lane rides on bash (C1's kept capability), so derivation tools
-    # (numpy/scipy/sympy/...) need no catalog entry of their own.
-    "subagent_double_checker": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
-                                             | {"web_search", "web_fetch", "skill"}),
-    # offgrid (OffGridThinker): its own delegation row, decoupled from the
-    # explorer — the boundary is other people's results, not tools. Same
-    # isolation as the DoubleChecker; compute leverage is bash + the pinned
-    # lane (sympy/numpy/... need no catalog entry).
-    "subagent_offgrid": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
-                                      | {"web_search", "web_fetch", "skill"}),
-    # literature pair: open retrieval roles (review verdicts) — web, the
-    # vendored retrieval skills, bash (scripting), and background sweeps all
-    # stay; only delegation and orchestrator-owned state are denied.
-    "subagent_lit_line": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
-    "subagent_lit_adversary": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS),
-    # document adversary: audits local deliverables — web denied (own policy),
-    # write is load-bearing (rq_check reads the verdict file from the record).
-    "subagent_document_adversary": GUARANTEED - (DELEGATION | ORCHESTRATOR_TOOLS
-                                                 | {"web_search", "web_fetch"}),
-}
 
-# Roles whose budgets are landed and therefore pinned EXACTLY by this module.
-LANDED_BUDGETS = frozenset(BUDGETS)
-
-BLIND_LANED = {"subagent_double_checker", "subagent_offgrid"}
-
-
-def _spawn_rows(text):
-    """(row_id, toolName, visible) for every spawn delegation row with a filter."""
-    for row_id, body in composition_rows(text):
-        name = tool_name_of(body)
-        if name is None or name not in DELEGATION or "provider: spawn" not in body:
-            continue
-        visible = GUARANTEED - deny_of(body)
-        yield row_id, name, visible
-
-
-def _composition():
-    return CORDIS.read_text()
+def _team_deny_names():
+    team = (REPO / "dsh/team.js").read_text()
+    names = set()
+    for const in ("EVERY_TEAMMATE_DENY", "WEB_DENY"):
+        m = re.search(r"const %s = \[([^\]]*)\]" % const, team)
+        assert m, "dsh/team.js no longer declares %s" % const
+        names |= set(re.findall(r"'([a-z_]+)'", m.group(1)))
+    # The blind tier appends `skill` inline.
+    names |= set(re.findall(r"\.\.\.WEB_DENY, '([a-z_]+)'", team))
+    return names
 
 
 def test_every_static_deny_name_is_guaranteed_mounted():
-    """Spawn safety: no shipped deny list may name a plugin-optional tool.
-
-    tools.restrict() throws on unknown names at child creation, so one
-    plugin-optional name (ssh_exec, import_chatgpt, ...) in a shipped deny
-    list breaks EVERY delegation on machines without that plugin. This is the
-    invariant that forces the static/dynamic split the budgets rely on.
-    """
-    unknown = {}
-    for row_id, body in composition_rows(_composition()):
-        denied = deny_of(body)
-        if not denied:
-            continue
-        missing = sorted(denied - GUARANTEED)
-        if missing:
-            unknown[row_id] = missing
+    """Spawn safety: no shipped deny list may name a plugin-optional tool."""
+    names = _team_deny_names()
+    assert "skill" in names, "the blind tier's inline `skill` deny was not found"
+    unknown = sorted(names - GUARANTEED)
     assert not unknown, (
-        "deny list(s) name tools outside the guaranteed-mounted universe: %r. "
-        "A static deny of a plugin-optional tool throws at child spawn; move "
-        "it to the barebone assembly filter." % unknown)
-
-
-def test_landed_roles_see_exactly_their_budget():
-    """Each landed role's visible catalog equals its budget, name by name."""
-    text = _composition()
-    seen = {}
-    for row_id, name, visible in _spawn_rows(text):
-        if name not in BUDGETS:
-            continue
-        budget = BUDGETS[name]
-        extra = sorted(visible - budget)
-        lacked = sorted(budget - visible)
-        assert not extra and not lacked, (
-            "%s (%s) visible catalog drifted: sees %r, missing %r "
-            "(expected the pinned budget; update BUDGETS only through review)"
-            % (row_id, name, extra, lacked))
-        seen[name] = row_id
-    assert set(seen) == set(BUDGETS), (
-        "budgeted role(s) %r have no spawn row (or no toolFilter) in the "
-        "composition" % sorted(set(BUDGETS) - set(seen)))
-
-
-def test_every_delegation_child_is_child_scoped():
-    """Universal floor for every spawn child, landed or not.
-
-    Delegation must be catalog-invisible everywhere (C2 is not depth-only),
-    and every child keeps its delivery channels (its final assistant message,
-    plus `send_message` to its direct parent) and its compute lane (bash, C1).
-    The orchestrator-owned set is asserted per role as each budget lands; it
-    becomes part of this universal floor when the last persona lands.
-    """
-    text = _composition()
-    leaked = {}
-    for row_id, name, visible in _spawn_rows(text):
-        forbidden = DELEGATION & visible
-        if forbidden:
-            leaked[row_id] = sorted(forbidden)
-        assert "send_message" in visible, (
-            "%s lost `send_message`: a child's only push channel to its parent "
-            "(the one-way `report` tool was removed in 0.1.2-rc.1)" % row_id)
-        assert "bash" in visible, "%s lost bash (C1 compute lane)" % row_id
-    assert not leaked, (
-        "spawn child(ren) still see delegation tools: %r" % leaked)
-    rows = {name for _, name, _ in _spawn_rows(text)}
-    assert LANDED_BUDGETS <= rows, (
-        "landed role(s) %r missing from the composition" % sorted(LANDED_BUDGETS - rows))
-
-
-def test_blind_lane_sees_no_web_and_no_skill():
-    """C1/C2 for the visible catalog: the blind lane is blind in its request."""
-    for row_id, name, visible in _spawn_rows(_composition()):
-        if name not in BLIND_LANED:
-            continue
-        leaked = sorted({"web_search", "web_fetch", "skill"} & visible)
-        assert not leaked, "%s (%s) leaks blind-lane capabilities: %r" % (row_id, name, leaked)
+        "dsh/team.js denies tools outside the guaranteed-mounted global "
+        "universe: %r. A static deny of a plugin-optional tool throws at "
+        "composition; a scoped Team tool belongs to the guard." % unknown)
 
 
 def test_untagged_spawner_rows_are_disabled():
-    """fork/workflow/ralph cannot mint untagged children in this preset.
+    """fork/workflow/ralph cannot mint uncomposed children in this preset.
 
-    Their children carry no role tag (the router never routes them), and for
-    workflow `agent()` calls neither a persona nor a per-child toolFilter is
-    expressible — the engine's start path takes only prompt/parent/route/
-    schema. 74 of the 162 children in the 0.4.x study logs were untagged
-    workers wearing the root persona with the full catalog. The preset
-    declares these spawners out of scope instead; disabled rows mount no
-    tools, which is also why no deny list may name them
-    (tools.restrict throws on unmounted names).
+    Their children carry no `<role>-<n>` name (the team plugin never composes
+    them, the router never routes them), and for workflow `agent()` calls
+    neither a persona nor a per-child budget is expressible. 74 of the 162
+    children in the 0.4.x study logs were untagged workers wearing the root
+    persona with the full catalog. The fork row is gone entirely under
+    Decision 24; the others stay disabled.
     """
-    import re
-
-    for row_id, body in composition_rows(_composition()):
-        if row_id in ("tool-subagent-fork", "workflow-ptc",
-                      "tool-workflow", "tool-ralph"):
-            assert re.search(r"^\s+disabled: true\s*$", body, re.MULTILINE), (
-                "%s must stay disabled: it mints untagged, unscopeable children"
-                % row_id)
-            name = tool_name_of(body)
-            assert name not in GUARANTEED, (
-                "%s is disabled but its tool %r is still listed as "
-                "guaranteed-mounted" % (row_id, name))
+    rows = dict(composition_rows(CORDIS.read_text()))
+    assert "tool-subagent-fork" not in rows
+    for row_id in ("workflow-ptc", "tool-workflow", "tool-ralph"):
+        assert row_id in rows, "the preset lost the disabled %s row" % row_id
+        assert is_disabled(rows[row_id]), (
+            "%s must stay disabled: it mints uncomposed children" % row_id)

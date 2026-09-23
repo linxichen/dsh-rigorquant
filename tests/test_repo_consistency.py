@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from conftest import CORDIS, REPO, SKILL_DIR, composition_rows
+from conftest import CORDIS, REPO, SKILL_DIR, composition_rows, is_disabled, top_level_rows
 
 SKILL_SCRIPTS = ("rq_check.py", "provision-lean.sh")
 ROUTER_PROBE = REPO / "tests/router_probe.cjs"
@@ -248,15 +248,21 @@ def test_the_cap_override_ships_in_the_bundle_patch_too():
 
 
 def test_architecture_record_matches_the_preset_composition():
-    """docs/architecture.md described maxDepth: 0, which blocks all delegation."""
-    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
-    depths = set(re.findall(r"^\s*maxDepth:\s*(\S+)", preset, re.MULTILINE))
+    """Decision 8 once described `maxDepth: 0`, which blocks all delegation.
+
+    Under Decision 24 no enabled row sets a depth at all: depth one holds
+    by construction because no teammate can create teammates, and Decision 8
+    must carry that amendment rather than a depth the preset no longer sets.
+    """
+    preset = CORDIS.read_text()
+    numeric = [row_id for row_id, body in composition_rows(preset)
+               if re.search(r"^\s*maxDepth:\s*\d", body, re.MULTILINE)
+               and not is_disabled(body)]
+    assert not numeric, "enabled rows still set a delegation depth: %s" % numeric
     arch = (REPO / "docs/architecture.md").read_text()
-    claims = re.findall(r"each `maxDepth:\s*(\S+?)`", arch)
-    assert claims, "architecture.md no longer states the delegation depth"
-    for claimed in claims:
-        assert claimed in depths, (
-            "architecture.md claims maxDepth: %s but the preset uses %s" % (claimed, depths))
+    d8 = arch[arch.index("8. **Multi-agent mechanism**"):arch.index("9. **Model routing**")]
+    assert "Amended by Decision 24" in d8 and "by construction" in d8, (
+        "Decision 8 does not record the Decision 24 amendment")
 
 
 def test_installer_usage_states_the_floor_without_running_anything():
@@ -429,64 +435,160 @@ def test_router_resolves_role_from_team_membership_only():
             "the Team membership name" % gone)
 
 
-def _preset_blocks(preset):
-    """Yield (id, block) for every row of the preset composition."""
-    for match in re.finditer(r"^\s{4}- id: (\S+)\n((?:\s{6,}.*\n|\n)*)", preset, re.MULTILINE):
-        yield match.group(1), match.group(2)
+CLASSIC_ROWS = (
+    "tool-subagent-control", "tool-subagent-list-agents", "tool-subagent-fork",
+    "tool-subagent-explorer", "tool-subagent-offgrid",
+    "tool-subagent-double-checker", "tool-subagent-adversary",
+    "tool-subagent-lit-line", "tool-subagent-lit-adversary",
+    "tool-subagent-doc-adversary",
+)
 
 
-def test_every_role_persona_carries_its_router_tag():
-    """The classic per-role delegation rows still identify roles by
-    [[rq:role=X]] in the persona. Nothing reads this tag any more — the model
-    router stopped in issue #11 (role identity now comes from the Team
-    membership name) and the activity monitor, its last reader, is deleted
-    under issue #13 — but the classic rows themselves persist until a later
-    issue removes them, so a stray or wrong tag would still be silent drift
-    in a row this repo still ships.
+def test_the_preset_carries_no_classic_delegation_rows():
+    """Decision 24: team-only. The Team tools replace the legacy controls.
+
+    `@deepseek-ai/dsh-experimental-tool-agent-team` registers `send_message`,
+    `list_agents` and `interrupt_agent` under the legacy names, so a
+    composition that keeps the classic control rows mounts two tools per
+    name; and any enabled spawn row is a second, unguarded way to create a
+    child. With none left, depth-one delegation holds by construction.
     """
-    roles = {
-        "tool-subagent-explorer": "explorer",
-        "tool-subagent-offgrid": "offgrid",
-        "tool-subagent-double-checker": "doublechecker",
-        "tool-subagent-adversary": "adversary",
-        "tool-subagent-lit-line": "lit-line",
-        "tool-subagent-lit-adversary": "lit-adversary",
-        "tool-subagent-doc-adversary": "doc-adversary",
-    }
-    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
-    blocks = dict(_preset_blocks(preset))
-    for row_id, role in roles.items():
-        block = blocks.get(row_id)
-        assert block is not None, "preset lost the %s row" % row_id
-        assert "[[rq:role=%s]]" % role in block, (
-            "%s must carry the routing tag [[rq:role=%s]]" % (row_id, role))
-        # No stray tags: a copy-pasted persona would route under the wrong role.
-        for _, other in roles.items():
-            if other != role:
-                assert "[[rq:role=%s]]" % other not in block, (
-                    "%s carries the wrong tag [[rq:role=%s]]" % (row_id, other))
+    preset = CORDIS.read_text()
+    rows = dict(composition_rows(preset))
+    present = sorted(r for r in CLASSIC_ROWS if r in rows)
+    assert not present, "classic delegation rows still in the preset: %s" % present
+    for row_id, body in rows.items():
+        if is_disabled(body):
+            continue
+        assert "dsh-tool-subagent" not in body, (
+            "%s mounts a classic delegation tool" % row_id)
+        assert "toolFilter" not in body and "persona: >-" not in body, (
+            "%s still carries a role persona or tool filter; those live in "
+            "dsh/personas/ and dsh/team.js now" % row_id)
+    for gone in ("[[rq:role=", "agentOptions:"):
+        assert gone not in preset, "the preset still carries %r" % gone
 
 
-def test_fixed_tier_roles_delegate_their_primary_to_native_agent_options():
-    """The native 0.1.2 child route owns shipped primary defaults.
+def test_the_kept_delegation_rows_stay_disabled_and_the_checker_lane_pinned():
+    """What the classic cut keeps: external agents off, the checker lane off
+    and pinned, and `present` on."""
+    preset = CORDIS.read_text()
+    rows = dict(composition_rows(preset))
+    top = top_level_rows(preset)
+    rows.update(top)
+    for row_id in ("tool-subagent-codex", "tool-subagent-claude-code", "mcp-jacobian"):
+        assert row_id in rows, "the preset lost %s" % row_id
+        assert is_disabled(rows[row_id]), "%s must stay disabled" % row_id
+    assert "jacobian@0.12.0" in rows["mcp-jacobian"], "the checker lane lost its pin"
+    assert "present" in top, "the `present` row left the preset"
+    assert not is_disabled(top["present"]), "the `present` row must stay on"
 
-    The host router still owns live overrides and fallback retries, but a normal
-    DoubleChecker/adversary request must be able to use the tool row's
-    agentOptions without an unconditional agent/request rewrite.
-    """
-    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
-    blocks = dict(_preset_blocks(preset))
-    for row_id in ("tool-subagent-double-checker", "tool-subagent-adversary"):
-        block = blocks.get(row_id)
-        assert block is not None, "preset lost the fixed-tier row %s" % row_id
-        assert re.search(
-            r"agentOptions:\s+provider:\s+deepseek-official\s+"
-            r"model:\s+deepseek-v4-pro\s+reasoningEffort:\s+high",
-            block,
-        ), "%s must declare the native 0.1.2 primary" % row_id
-        assert "maxTokens:" not in block, "%s must not impose a proof-output cap" % row_id
-        assert "modelSelectionSettings:" not in block, (
-            "%s must keep caller-selected model routes disabled" % row_id)
+
+def _persona_prefix():
+    preset = CORDIS.read_text()
+    m = re.search(r"prefix: >-\n(.*?)\n    suffix:", preset, re.DOTALL)
+    assert m, "the persona row lost its prefix"
+    return " ".join(m.group(1).split())
+
+
+def test_the_persona_isolation_paragraph_describes_the_team_mechanism():
+    """Role by name, tool budget by scope, topology by guard — and still no
+    network wall (Decision 24; the guard denies network verbs at the call,
+    but context isolation remains the only wall)."""
+    prefix = _persona_prefix()
+    isolation = prefix[prefix.index("ISOLATION"):prefix.index("UNATTENDED")]
+    for phrase in ("role by name", "tool budget by scope", "topology by guard",
+                   "not a network wall"):
+        assert phrase in isolation, "ISOLATION lost %r" % phrase
+    assert "subagent_" not in prefix, "the persona still names a classic tool"
+
+
+def test_the_persona_owns_the_team_request_and_the_armed_guard():
+    """The Team policy creates teammates only on an explicit request; a study
+    is that request — but only while the plugin's guard is armed."""
+    prefix = _persona_prefix()
+    assert "explicit request" in prefix
+    assert "RigorQuant team guard: armed" in prefix, (
+        "the persona must quote the exact line dsh/team.js registers")
+    team = (REPO / "dsh/team.js").read_text()
+    assert "GUARD_TEXT = 'RigorQuant team guard: armed'" in team
+    assert re.search(r"absent[^.]*do not spawn", prefix, re.IGNORECASE), (
+        "the persona must forbid spawning when the armed line is absent")
+
+
+def test_the_persona_reads_a_spilled_result_back_by_its_locator():
+    prefix = _persona_prefix()
+    assert "spill" in prefix and "locator" in prefix and "re-run" in prefix
+
+
+def _protocol():
+    return " ".join((SKILL_DIR / "references/protocol.md").read_text().split())
+
+
+def test_hard_lesson_l3_keeps_freeze_and_hash_and_adopts_the_brief_rule():
+    """L3 as Decision 24 amends it: freeze-and-hash verbatim; the settled-agent
+    rule becomes the new-brief rule; the native no-resend rule replaces the
+    old discard rule."""
+    text = _protocol()
+    assert ("An artifact under adversarial review is read-only until the "
+            "verdict lands, and the verdict records the audited snapshot's "
+            "SHA-256.") in text, "L3 lost its freeze-and-hash half"
+    assert ("a reused teammate only ever receives a new hash-bound brief, "
+            "never a follow-up about an artifact under audit, and only while "
+            "the roster shows it idle or inactive") in text.lower(), (
+        "L3 lacks the new-brief rule")
+    assert "if it is running, wait on it first" in text
+    assert "a queued message is already stored; never resend it" in text
+    for gone in ("discarded without action", "never message an in-flight",
+                 "Do not send follow-up messages to a settled"):
+        assert gone not in text, "L3 still carries the retired rule %r" % gone
+
+
+def test_the_brief_contract_names_task_snapshot_and_role_only_description():
+    text = _protocol()
+    contract = text[text.index("Brief contract"):]
+    for needle in ("task id", "snapshot", "SHA-256", "role label"):
+        assert needle in contract, "the brief contract omits %r" % needle
+
+
+def test_the_skill_round_loop_runs_on_the_team_tools():
+    """SKILL Step 3: create / wait / message and the task DAG."""
+    skill = (SKILL_DIR / "SKILL.md").read_text()
+    step3 = " ".join(skill[skill.index("## Step 3"):skill.index("**Stage order")].split())
+    for needle in ("spawn_teammate", "wait_agent", "send_message",
+                   "team_task_create", "blocked_by", "`<role>-<n>`",
+                   "list_agents", "BUDGET", "lifetime", "eight"):
+        assert needle in step3, "SKILL Step 3 omits %r" % needle
+    for gone in ("subagent_", "settled agent"):
+        assert gone not in skill, "SKILL.md still names %r" % gone
+
+
+def test_the_roster_policy_is_stated_once_and_consistently():
+    """Fresh blank-context roles per brief; audit and literature roles reused
+    by message, only while idle or inactive."""
+    text = _protocol()
+    policy = text[text.index("Roster policy"):]
+    for fresh in ("explorer-<n>", "offgrid-<n>", "doublechecker-<n>"):
+        assert fresh in policy[:policy.index("Reused across rounds")], (
+            "%s is not listed as fresh per brief" % fresh)
+    for reused in ("adversary-<n>", "lit-adversary-<n>", "doc-adversary-<n>", "lit-line-<n>"):
+        assert reused in policy, "%s is not listed as reused" % reused
+    assert "idle or inactive" in policy
+
+
+def test_skill_text_uses_the_glossary_vocabulary():
+    """CONTEXT.md: "study" is the assignment, "task" a board item, "move" the
+    loop position, "stage" a validity stage."""
+    skills = REPO / "agent-presets/rigorquant/skills"
+    corpus = "\n".join(p.read_text() for p in skills.rglob("*.md"))
+    flat = " ".join(corpus.split())
+    for word in ("study", "task", "move", "stage"):
+        assert re.search(r"\b%s\b" % word, flat), "the skill never says %r" % word
+    for banned in ("rigorquant task", "five-move stage", "for the whole task"):
+        assert banned not in flat.lower(), "skill text still says %r" % banned
+    step3 = flat[flat.index("## Step 3"):flat.index("**Stage order")]
+    for move in ("Promise", "Fan out", "Ground-truth", "Attack", "Certify"):
+        assert move in step3, "Step 3 does not name the %s move" % move
 
 
 def test_agent_teams_geometry_attribution_keeps_the_upstream_mit_notice():
@@ -899,33 +1001,23 @@ def test_every_decision_reference_resolves():
         "references to decisions architecture.md never records:\n" + "\n".join(offenders))
 
 
-def _spawned_role_tool_names():
-    """Model-facing tool names of the enabled spawn-provider delegation rows."""
-    text = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
-    names = []
-    for part in re.split(r"\n    - id: ", text)[1:]:
-        if re.search(r"^\s*disabled: true", part, re.MULTILINE):
-            continue
-        if "provider: spawn" not in part:
-            continue
-        m = re.search(r"toolName:\s*(\S+)", part)
-        if m:
-            names.append(m.group(1))
-    return names
+def test_the_shipped_procedure_names_every_teammate_role():
+    """A role nothing routes work to is enforcement no one can reach.
 
-
-def test_the_shipped_procedure_names_every_delegation_role():
-    """A walled role nothing routes work to is enforcement no one can reach.
-
-    `subagent_offgrid` existed in the composition while every shipped procedure
-    still told the orchestrator to re-use the open explorer under the novelty
-    toggle -- the role was unreachable by instruction.
+    `subagent_offgrid` once existed in the composition while every shipped
+    procedure still told the orchestrator to re-use the open explorer under
+    the novelty toggle — the role was unreachable by instruction. Under
+    Teams the role is the teammate name, so the procedure must name each
+    `<role>-<n>` it creates.
     """
+    team = (REPO / "dsh/team.js").read_text()
+    roles = re.findall(r"'([a-z-]+)'", re.search(
+        r"export const TEAMMATE_ROLES = \[([^\]]*)\]", team).group(1))
     skills = REPO / "agent-presets/rigorquant/skills"
     corpus = "\n".join(p.read_text() for p in skills.rglob("*.md"))
-    missing = [n for n in _spawned_role_tool_names() if n not in corpus]
+    missing = [r for r in roles if "%s-<n>" % r not in corpus]
     assert not missing, (
-        "the composition defines roles no shipped skill instructs anyone to use: %s" % missing)
+        "the team composes roles no shipped skill instructs anyone to create: %s" % missing)
 
 
 def test_schemas_are_valid_json():

@@ -8,6 +8,44 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Changed
+- **The study runs on Agent Teams only** (Decision 24,
+  `docs/adr/0001-rigorquant-on-agent-teams.md`). SKILL.md Step 3 runs a round
+  as five moves (Promise → Fan out → Ground-truth → Attack → Certify) on
+  `spawn_teammate` / `wait_agent` / `send_message`. At Promise the orchestrator
+  lays the round out as a task DAG with one `blocked_by` layer per move
+  (explore per sub-problem → ground-truth per claim, two for a load-bearing
+  one → attack per sub-problem → certify per round), which is the layering
+  the move pill reads. Teammates are named `<role>-<n>` with a per-role
+  counter taken from the roster on resume, and each description is only the
+  role label. Fan out is batched to at most eight live teammates, and
+  hitting the lifetime teammate cap is a BUDGET outcome. Explorer,
+  OffGridThinker and DoubleChecker are fresh per brief. Adversary,
+  Literature adversary, Document adversary and each `lit-line-<n>` are
+  reused by message, only while idle or inactive.
+- **Hard-lesson L3 is rewritten.** Freeze-and-hash stays verbatim. "Never
+  message a settled agent" becomes the new-brief rule: a reused teammate only
+  receives a new hash-bound brief, only while idle or inactive. The native
+  "a queued message is already stored; never resend it" rule replaces the old
+  discard rule. protocol.md adds the brief contract: task id, snapshot hash,
+  and a description that is only the role label.
+- **Orchestrator persona.** The ISOLATION paragraph now says role by name,
+  tool budget by scope and topology by guard, and still not a network wall.
+  The persona states that a RigorQuant study is the explicit request the Team
+  policy asks for, and it must not spawn while the "RigorQuant team guard:
+  armed" line is absent. It reads a spilled tool result back by its locator
+  instead of re-running the tool. Each teammate persona now claims and
+  completes the task its brief names.
+
+### Removed
+- **The classic delegation rows.** The preset drops the seven per-role
+  delegation rows, `tool-subagent-control`, `tool-subagent-list-agents`, and
+  the disabled fork row. The Team tools register the control tools under the
+  same names, so the classic rows would have duplicated them. The
+  external-agent rows and the checker lane stay disabled, and `present` stays.
+  The router's `ROLE_TOOLS` map goes with the rows. Repo-consistency pins
+  forbid the rows, pin the new L3, and pin the skill's vocabulary.
+
 ## [0.4.2] - 2026-09-22
 
 The last classic release (Decision 24, `docs/adr/0001-rigorquant-on-agent-teams.md`):

@@ -41,7 +41,7 @@ session. Crossing a session boundary disarms the goal; one human turn
 ("continue") re-arms it. Checkpoint state to `study.json` / `registry.json` /
 `journal.md` every round so a resumed session can reconstruct the study.
 
-If this is the first message of a rigorquant task, run Steps 0–2 in order, then
+If this is the first message of a RigorQuant study, run Steps 0–2 in order, then
 enter the round loop.
 
 ## Step 0 — Intake
@@ -77,12 +77,12 @@ enter the round loop.
    stage 4 and references/deliverables.md). `rq_check.py` enforces the
    declaration at intake and the artifacts at PASS.
 
-For a new task, resolve the study workspace (Step 1) and create `study.json`
+For a new study, resolve the study workspace (Step 1) and create `study.json`
 before entering the round loop.
 
 ## Step 1 — Study workspace
 
-A **study** is one self-contained rigorquant task — a single directory with the
+A **study** is one self-contained RigorQuant assignment — a single directory with the
 identical internal structure in every repo. All paths in this skill are
 relative to the **study root** unless prefixed otherwise.
 
@@ -159,7 +159,7 @@ round finishes. If a second orchestrator, or an external repository
 reorganization, moves the study root while a run is in flight, the recorded
 root no longer matches the resolved root — fail loudly instead of writing.
 
-Create the goal tool objective **once, for the whole task** (`create_goal`),
+Create the goal tool objective **once, for the whole study** (`create_goal`),
 not per sub-problem. Sub-problems live in `study.json` / `registry.json` state.
 Every round the orchestrator returns; the goal-round driver relaunches it.
 
@@ -174,9 +174,9 @@ checkout: `$DSH_HOME/share/rigorquant/env` (`$DSH_HOME` defaults to `~/.dsh`;
 2. `$DSH_HOME/share/rigorquant/env`, if it contains `pyproject.toml`.
 
 Record the resolved **absolute** path in `study.json` (`env_lane`). Run
-subagent code with `uv run --frozen --project <env_lane> python ...`. If
+teammate code with `uv run --frozen --project <env_lane> python ...`. If
 neither resolves, ask the user where the lane is; never `uv sync` a stray lane
-inside the user's project. Never let subagents `pip install` into the ambient
+inside the user's project. Never let teammates `pip install` into the ambient
 interpreter: reproducibility is a gate (D).
 
 ## Step 2b — Literature lane (known/novel intake)
@@ -196,54 +196,115 @@ owning decision: docs/architecture.md Decision 14.
 
 ## Step 3 — The round loop (orchestrator)
 
-Each orchestrator round = fan-out → ground truth → adversary → synthesize.
+A round is five moves: **Promise → Fan out → Ground-truth → Attack →
+Certify**. The study runs on Agent Teams: you create teammates with
+`spawn_teammate`, brief or wake them with `send_message`, and wait on them
+with `wait_agent`; each round is laid out as a task DAG on the shared board.
+The board is coordination, never evidence — the study record
+(`registry.json`, `journal.md`, `derivations/`, `audits/`) is the only thing
+certification and `rq_check.py` read. (Owning decision: docs/architecture.md
+Decision 24.)
 
-**The pool bounds every fan-out in this loop.** The host allows **eight** live
-children per root at a time (`maxActiveSubagents`, Plugins → Subagent,
-default 8). Count before you launch: four literature lines plus two explorers
-plus a second DoubleChecker is seven, one short of the ceiling — so stagger
-the round rather than launching all of it in one message. Over the bound the
-call fails with `ACTIVATION_LIMIT_REACHED` — **wait for a teammate to settle,
-never retry in a loop**. Nothing clears that error but a teammate finishing,
-so a retry spends the budget on the error path and changes nothing.
-(Owning decision: docs/architecture.md Decision 20.)
+**Teammate names.** Every teammate is named `<role>-<n>`, where the role is
+one of `explorer`, `offgrid`, `doublechecker`, `adversary`, `lit-line`,
+`lit-adversary`, `doc-adversary`, and `n` is a per-role counter that only
+increases within the study — a name is never reused, even for a teammate that
+failed. On resume, call `list_agents` first and continue each role's counter
+from the highest `n` on the roster. The name is the role: the team plugin
+gives a teammate its persona, tool budget and model from the name alone, and
+refuses a `spawn_teammate` whose name does not parse to a role. The
+`description` is the role label only (`DoubleChecker`, `Adversary`, …),
+never the brief; the brief goes in `prompt`. Always `context: fresh` — a fork
+inherits your conversation and is refused.
 
-1. **Fan-out (explorers, method track, OPEN):** launch 1–2 `subagent_explorer`
-   calls in one message (the explorer role; blank context). Diversify the portfolio
-   (formulations, invariants, reductions, algebraic viewpoints, structural
-   inductions, decompositions, embeddings, extremal arguments, computational
-   sanity checks). Do not tell most of them the favored approach. Require
-   concrete outputs: lemmas, equations, constructions, candidate methods with
-   exact statements — reject status reports and "routine".
-2. **Ground-truth track (semi-isolated):** launch `subagent_double_checker`
-   calls that receive ONLY the problem statement and the simplified case, each
-   assigned a different means (one symbolic derivation, one independent
-   brute-force/special-case computation). Two independent calls are mandatory
-   only when the claim is load-bearing (the whole study rests on it);
-   otherwise one suffices — never one agent performing both "independent"
-   derivations. They must not see each other's output or the explorers'
-   drafts. Store the derivations in `derivations/`.
-3. **Adversary:** one `subagent_adversary` reads BOTH tracks' outputs. It runs
-   the check battery (below) and hunts counterexamples. A route is eliminated
-   ONLY by a concrete failing case. It writes the audit report — and the
-   report is the deliverable: brief it as ending in `VERDICT: PASS` or
-   `VERDICT: NEEDS-EDITS`, and a child delivers that verdict as the final
-   assistant message of its turn (the runtime hands it to the agent that
-   started it, which is what wakes the orchestrator; the old `report` tool no
-   longer exists). If a child settles without the verdict line — in that final
-   message or written — read its results JSON once, record the verdict, and do
-   NOT re-dispatch for prose (hard-lessons L2). Freeze the
-   audited artifact until the verdict lands (hash-bound verdicts); never edit
-   a document under audit and never message an in-flight or settled agent
-   (L3).
-4. **Synthesize:** update `registry.json` (group by mathematical idea), mark
-   BLOCKED routes with their exact gap, redirect over-crowded families, and
-   either advance a stage or relaunch with redirection. On the SECOND
-   consecutive NEEDS-EDITS for the same claim or section, the next round
-   narrows the claim's declared scope or declares BLOCKED — never a third
-   re-patch of the same mechanism (L1). Write `status` from verdicts, never
-   before them (L4); orchestrator-produced numbers (generators, tables,
-   verification scripts) get a second instrument like any agent output (L5).
+**Roster policy.** Explorer, OffGridThinker and DoubleChecker are **fresh per
+brief** (`explorer-<n>`, `offgrid-<n>`, `doublechecker-<n>`): blank context is
+the point, so each brief gets a new teammate. Adversary, Literature adversary,
+Document adversary and each literature line (`adversary-<n>`,
+`lit-adversary-<n>`, `doc-adversary-<n>`, `lit-line-<n>` with `n` = the line
+number) are **reused across rounds by message**: their accumulated knowledge
+is the job. A reused teammate receives a new hash-bound brief with
+`send_message` only while `list_agents` shows it idle or inactive — if it is
+running, wait on it first (hard-lessons L3, protocol.md).
+
+**The pool and the cap bound every Fan out.** The host allows **eight** live
+teammates at a time (`maxActiveSubagents`, Plugins → Subagent, default 8), so
+Fan out is batched to at most eight live teammates: count before you create —
+four literature lines plus two explorers plus a second DoubleChecker is
+seven, one short of the ceiling. Over the bound `spawn_teammate` fails with
+`ACTIVATION_LIMIT_REACHED` — **wait for a teammate to settle, never retry in
+a loop**. Nothing clears that error but a teammate finishing, so a retry
+spends the budget on the error path and changes nothing. The team's teammate
+cap (`maxMembers`, 64 as `install.sh` writes it) is a **lifetime** cap that
+counts every teammate ever created, failed ones included. When
+`spawn_teammate` fails on that cap, it is a BUDGET-class outcome: checkpoint
+the study record, report the cap, end the turn; one human turn re-arms (and
+may raise the override). Never reuse an Explorer, OffGridThinker or
+DoubleChecker to save a slot.
+
+**Waiting.** Between moves, wait natively: `wait_agent`, then re-list with
+`list_agents` after every wake or timeout. A `noProgress` return means no
+teammate is running — wake the one you need with `send_message` first. Never
+poll. `wait_agent` stops at one hour; a long DoubleChecker run is waited on
+again, not abandoned.
+
+**Every brief** names its task id, the snapshot hash (SHA-256) of anything
+the teammate is to judge, and the deliverable. The teammate claims its task
+(`team_task_update` `claim`), works in its role's scratch directory,
+completes the task, and ends its turn with the derivation or verdict as its
+final message — that message is what wakes you. The full brief contract is
+in [references/protocol.md](references/protocol.md).
+
+1. **Promise:** lay the round out on the board with `team_task_create`, one
+   layer per move, each task `blocked_by` the layer before it: one `explore`
+   task per sub-problem; one `ground-truth` task per claim (two for a
+   load-bearing claim), `blocked_by` its sub-problem's `explore` task; one
+   `attack` task per sub-problem, `blocked_by` its `ground-truth` tasks; one
+   `certify` task per round, `blocked_by` every `attack` task. Every
+   sub-problem's success criterion is at least one claim, so every `attack`
+   task has a `ground-truth` task to wait on and the layers never skip. Set each task's
+   `write_scopes` to its role's scratch directory (`interim/explorer-reports/`,
+   `interim/gt-scripts/`, `audits/`) — advisory, not a lock. The move pill in
+   the session header reads the move from this layering. Freeze and hash
+   anything a later move will judge.
+2. **Fan out (explorers, method track, OPEN):** create 1–2 fresh
+   `explorer-<n>` teammates per `explore` task (`offgrid-<n>` under the
+   off-grid toggle below). Diversify the portfolio (formulations, invariants,
+   reductions, algebraic viewpoints, structural inductions, decompositions,
+   embeddings, extremal arguments, computational sanity checks). Do not tell
+   most of them the favored approach. Require concrete outputs: lemmas,
+   equations, constructions, candidate methods with exact statements — reject
+   status reports and "routine".
+3. **Ground-truth (semi-isolated):** create one fresh `doublechecker-<n>` per
+   `ground-truth` task. Each receives ONLY the problem statement and the
+   simplified case, and each is assigned a different means (one symbolic
+   derivation, one independent brute-force/special-case computation). Two
+   independent DoubleCheckers are mandatory only when the claim is
+   load-bearing (the whole study rests on it); otherwise one suffices — never
+   one teammate performing both "independent" derivations. They must not see
+   each other's output or the explorers' drafts. Store the derivations in
+   `derivations/`.
+4. **Attack:** brief `adversary-<n>` (created at the study's first Attack
+   move, reused afterwards) per `attack` task, naming BOTH tracks' outputs by
+   hash. It runs the check battery (below) and hunts counterexamples. A route
+   is eliminated ONLY by a concrete failing case. It writes the audit report —
+   and the report is the deliverable: brief it as ending in `VERDICT: PASS` or
+   `VERDICT: NEEDS-EDITS`, delivered as the final message of its turn. If the
+   turn ends without the verdict line — in that final message or written —
+   read its results once, record the verdict, and do NOT re-brief it for prose
+   (hard-lessons L2). Freeze the audited artifact until the verdict lands
+   (hash-bound verdicts); never edit a document under audit, and never send
+   the auditor a follow-up about it (L3).
+5. **Certify:** claim the `certify` task yourself and synthesize: update
+   `registry.json` (group by mathematical idea), mark BLOCKED routes with
+   their exact gap, redirect over-crowded families, and either advance a stage
+   or plan the next round with redirection. On the SECOND consecutive
+   NEEDS-EDITS for the same claim or section, the next round narrows the
+   claim's declared scope or declares BLOCKED — never a third re-patch of the
+   same mechanism (L1). Write `status` from verdicts, never before them (L4);
+   orchestrator-produced numbers (generators, tables, verification scripts)
+   get a second instrument like any teammate output (L5). Certify from the
+   study record, never from the board; then complete the task.
 
 **Stage order (each sub-problem passes only by its own success criterion):**
 
@@ -271,9 +332,9 @@ so a retry spends the budget on the error path and changes nothing.
 4. **Audience consultation (research-complete gate)** — when stages 1–3 are
    done, the study enters the explicit `research-complete` state (visible in
    `study.json.status`). Research never down-shifts for an audience. A
-   consulting subagent reads the study record + artifacts and drafts, per
-   declared deliverable (paper / slides / web), an **audience spec**; the user
-   accepts or edits it once. Fail closed on no answer (the checkpointed
+   consulting pass (the orchestrator — no teammate role holds it) reads the
+   study record + artifacts and drafts, per declared deliverable (paper /
+   slides / web), an **audience spec**; the user accepts or edits it once. Fail closed on no answer (the checkpointed
    questionnaire waits, `deliverables.consultation_pending: true`). Full
    mechanics, dial-back (claim-driven invalidation only), and the two-tier
    enforcement: [references/deliverables.md](references/deliverables.md).
@@ -282,7 +343,7 @@ so a retry spends the budget on the error path and changes nothing.
    `artifacts/web/index.html` when required) by ASSEMBLING the validated
    records (registry, derivations, audits, battery results) and writing them
    against the confirmed audience specs — never by writing new claims. Then
-   dispatch `subagent_document_adversary` (one call per deliverable) to audit
+   brief `doc-adversary-<n>` (one brief per deliverable, reused by message) to audit
    each artifact for SELF-COMPLETENESS — every jargon term, symbol, and
    abbreviation it uses is defined — and commit its verdict as
    `audits/document-adversary-<name>.md` (name in `paper`, `slides`, `web`); a
@@ -364,14 +425,15 @@ method track to **full Jin isolation**: no web, no prior context, no local
 files, no one else's results — raw model intelligence plus compute tools only.
 Do not assume an affirmative result exists — prove it or find a counterexample.
 
-The toggle is a **different agent, not a different instruction**: call
-`subagent_offgrid` — the OffGridThinker — instead of `subagent_explorer`. That
-row (like `subagent_double_checker`) denies `web_search`, `web_fetch`, `skill`
-and every delegation tool, so the isolation is enforced by the composition
-rather than by asking an open role to pretend. The boundary is results, not
+The toggle is a **different teammate, not a different instruction**: create
+`offgrid-<n>` — the OffGridThinker — instead of `explorer-<n>`. Its name
+gives it (like a `doublechecker-<n>`) a budget without `web_search`,
+`web_fetch` or `skill`, and no teammate can create teammates, so the isolation
+is enforced by the team plugin rather than by asking an open role to
+pretend. The boundary is results, not
 tools: OffGridThinker keeps the pinned compute lane (sympy/numpy/mpmath, Lean
-checkers when provisioned) and loses the literature. Never re-use
-`subagent_explorer` with "please ignore the web".
+checkers when provisioned) and loses the literature. Never brief an
+`explorer-<n>` with "please ignore the web".
 
 The only thing you may pass a blind role beyond the problem statement and its
 simplified cases is the **verified-negatives list** from the literature lane,
@@ -396,7 +458,8 @@ automatic:
   dir>/scripts/provision-lean.sh` (idempotent; installs elan + pinned Lean
   toolchain + jacobian's Mathlib runtime; first run takes minutes — use a
   background job with a long timeout), then retry the call.
-- While any install runs, fall back to an isolated proof subagent; record what
+- While any install runs, fall back to an isolated proof teammate (a fresh
+  `doublechecker-<n>`, escalation.md Lane 2); record what
   was installed in the audit.
 
 Triggers and the full approval-gated flow:
@@ -406,12 +469,15 @@ Triggers and the full approval-gated flow:
 
 PASS → auto-implement + proceed. BLOCKED (same exact gap, 3 consecutive
 rounds) → deliver strongest derivation + exact gap. BUDGET (3 orchestrator
-rounds) → checkpoint + report. Schema and rules:
+rounds, or the team's lifetime teammate cap) → checkpoint + report. Schema and rules:
 [references/lifecycle.md](references/lifecycle.md).
 
 ## Anti-patterns (never do)
 
-- `subagent_fork` for track work (it shares the parent conversation).
+- `context: fork` for a teammate (it inherits your conversation; the team
+  plugin refuses it).
+- Reusing an Explorer, OffGridThinker or DoubleChecker for a second brief
+  (blank context is the point; create a fresh `<role>-<n>`).
 - The ground-truth track reading the explorers' drafts (self-certification).
 - One ground-truth agent performing both "independent" derivations.
 - Eliminating a route on style/vibes instead of a counterexample.
@@ -428,11 +494,11 @@ rounds) → checkpoint + report. Schema and rules:
 - Auto-installing remote toolchains without user approval.
 - A third re-patch of the same claim's mechanism instead of narrowing its
   scope (hard-lessons L1: after two NEEDS-EDITS, narrow or BLOCKED).
-- Re-dispatching a settled agent for prose when its structured verdict
-  already landed (L2); waiting on a report instead of reading the verdict JSON
-  once.
-- Editing a document under adversarial audit, or messaging an in-flight or
-  settled agent mid-audit (L3) — freeze on audit, hash-bound verdicts.
+- Re-briefing a teammate for prose when its structured verdict already
+  landed (L2); waiting on a report instead of reading the verdict once.
+- Editing a document under adversarial audit, sending a teammate a follow-up
+  about an artifact under audit, or resending a queued message (L3) — freeze
+  on audit, hash-bound briefs and verdicts.
 - Certifying your own repair in `status` before an independent verdict lands
   (L4); status prose that no verdict file or frozen hash backs.
 - Trusting orchestrator-produced tables/scripts/status without a second

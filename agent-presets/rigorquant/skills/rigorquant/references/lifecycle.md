@@ -246,15 +246,21 @@ stage-5 evidence is invalid, and the meta-validator
   track found no proof (or the correct answer is impossibility /
   non-identifiability / divergence). Record it as `unknown`; do not relabel it
   PASS or BLOCKED.
-- **BUDGET** — 3 orchestrator rounds reached without PASS or a stable block.
-  Checkpoint registry.json + journal.md, deliver a status report, halt. Budget
+- **BUDGET** — 3 orchestrator rounds reached without PASS or a stable block,
+  or `spawn_teammate` refused by the team's lifetime teammate cap
+  (`maxMembers`, which counts every teammate ever created, failed ones
+  included). Checkpoint registry.json + journal.md, deliver a status report
+  naming which budget tripped, halt; one human turn re-arms (after a cap trip
+  it may raise the override). Budget
   fields (`max_cost_usd`, `max_wall_minutes`) may be set to impose limits;
   unset means unbounded.
 
 ## Round accounting
 
-Each orchestrator round = one full fan-out → ground-truth → adversary →
-synthesize cycle (Step 3 of SKILL.md). Increment `rounds` on synthesis.
+Each orchestrator round = one pass through the five moves, Promise → Fan out
+→ Ground-truth → Attack → Certify (Step 3 of SKILL.md). Increment `rounds` at
+Certify. The board's tasks coordinate the round; they are never evidence and
+never counted — the round count lives in `study.json`.
 BLOCKED counting is per sub-problem: consecutive rounds where the same
 `blockedReason` appears for that `SPn`; any materially new mechanism resets its
 `blockedRounds`.
@@ -265,7 +271,13 @@ The lane is entered at intake (Step 2b of SKILL.md) — mandatorily, unless the
 user explicitly asserts known/novel there, which is recorded as
 `phase: "skipped"` plus a verbatim `skip_reason` — and is **re-enterable per
 round** on a recorded trigger — "is X still open after the adversary's
-counterexample?" is a legitimate reason to re-open it mid-study. Its budget
+counterexample?" is a legitimate reason to re-open it mid-study. Each line is
+one teammate for the whole study, `lit-line-<n>` with `n` the line number
+(lines are numbered 1, 2, … in the order they are created, so the line number
+is the role's counter), and the study's one literature adversary is
+`lit-adversary-<n>`: a re-entry briefs the existing teammates by message (only
+while idle or inactive, protocol.md L3) rather than creating new ones, and a
+new line takes the next number. Its budget
 (`literature.budget`: `max_lines` / `max_depth` / `max_papers_per_line` /
 `max_rounds`) is the **default finish target, not a floor**: a line concludes
 at the budget with the strongest completed dossier and its remaining
@@ -316,7 +328,7 @@ alongside the audit.
 
 ## Goal wiring
 
-Create the goal tool objective **once, for the whole task** (`create_goal`);
+Create the goal tool objective **once, for the whole study** (`create_goal`);
 `max_goal_rounds` = remaining budget. There is no per-sub-problem goal — the
 goal service supports one current same-session goal, and creating another
 before the first is `complete` raises. Represent sub-problems in `registry.json`

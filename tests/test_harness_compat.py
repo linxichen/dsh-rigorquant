@@ -51,9 +51,10 @@ def test_every_preset_row_validates_against_the_installed_harness():
 def test_the_probe_finds_the_roles_delivery_and_present_rows():
     """A green run must mean the ROWS ARE THERE, not that the probe gave up.
 
-    The probe prints one line per row; this pins that the preset still mounts
-    the delegation tools, the `present` row the deliverables flow needs, and
-    the `command-goal` row that supplies `/goal`.
+    The probe prints one line per row; this pins that the preset still carries
+    the (disabled) external-agent rows, the `present` row the deliverables
+    flow needs, and the `command-goal` row that supplies `/goal` — and no
+    longer the classic subagent control row, which the Team tools replace.
     """
     node = shutil.which("node")
     if node is None:
@@ -69,4 +70,6 @@ def test_the_probe_finds_the_roles_delivery_and_present_rows():
         "@deepseek-ai/dsh-persona",
     ):
         assert needle in out.stdout, "%s is no longer mounted" % needle
+    assert "dsh-tool-subagent-control" not in out.stdout, (
+        "the classic subagent control row is back; the Team tools replace it")
     assert "0 hard failure(s)" in out.stdout, out.stdout

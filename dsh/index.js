@@ -50,16 +50,6 @@ const inject = ['settings']
 const NS = 'rigorquant-models'
 /** Every routable role, in card order. */
 export const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
-/** Tool row → role, for the repo-consistency test and the docs to stay honest. */
-export const ROLE_TOOLS = {
-  explorer: 'subagent_explorer',
-  offgrid: 'subagent_offgrid',
-  doublechecker: 'subagent_double_checker',
-  adversary: 'subagent_adversary',
-  'lit-line': 'subagent_lit_line',
-  'lit-adversary': 'subagent_lit_adversary',
-  'doc-adversary': 'subagent_document_adversary',
-}
 /** Every teammate role, i.e. `ROLES` minus the Lead-only `root` — the same
  *  set `dsh/team.js`'s `TEAMMATE_ROLES` names. Declared here rather than
  *  imported: `dsh/client.js`'s browser bundle carries the same set as a

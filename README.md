@@ -19,14 +19,14 @@ computational econ/finance.
 RigorQuant is an agent preset + bundled skills that turns one DSH session into a
 context-isolated multi-agent research lab:
 
-- **Parallel explorers** propose candidate methods (`subagent_explorer`, blank
+- **Parallel explorers** propose candidate methods (`explorer-<n>`, blank
   context).
-- An **OffGridThinker** (`subagent_offgrid`) works off the grid when a route
+- An **OffGridThinker** (`offgrid-<n>`) works off the grid when a route
   must be isolated: raw model intelligence plus compute tools (sympy, numpy,
   mpmath, Lean checkers) — no web, no literature, no other agents' results.
 - A **ground-truth track** re-derives the analytic closed forms, invariants, and
   bounds for simplified cases — twice, by different means (two independent
-  `subagent_double_checker` calls).
+  fresh `doublechecker-<n>` teammates).
 - An **adversary** eliminates routes by counterexample only.
 - A **four-part check battery** (closed-form equality, exact invariants,
   analytic bounds, statistical hardening) runs BEFORE numerical implementation.
@@ -67,35 +67,35 @@ idea dies only on a concrete counterexample, never on style or vibes.
 
 <img src="docs/figs/avatar-explorer.png" align="left" width="200" alt="Explorer">
 
-**Explorer** · `subagent_explorer` — blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected.
+**Explorer** · `explorer-<n>` — blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected.
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-offgrid.png" align="left" width="200" alt="OffGridThinker">
 
-**OffGridThinker** · `subagent_offgrid` — the off-grid lane. Raw model intelligence plus the pinned compute lane (sympy, numpy, mpmath, cvxpy, hypothesis, jax; Lean checkers when provisioned) — and nothing else: no web, no skills, no delegation, no other agents' results. Its own agent, not an Explorer variant: isolation is the identity.
+**OffGridThinker** · `offgrid-<n>` — the off-grid lane. Raw model intelligence plus the pinned compute lane (sympy, numpy, mpmath, cvxpy, hypothesis, jax; Lean checkers when provisioned) — and nothing else: no web, no skills, no delegation, no other agents' results. Its own agent, not an Explorer variant: isolation is the identity.
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-doublechecker.png" align="left" width="200" alt="DoubleChecker">
 
-**DoubleChecker** · `subagent_double_checker` — blind (no web, no skills, no delegation, no drafts). Re-derives the load-bearing claims from first principles, twice by different means.
+**DoubleChecker** · `doublechecker-<n>` — blind (no web, no skills, no delegation, no drafts). Re-derives the load-bearing claims from first principles, twice by different means.
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-adversary.png" align="left" width="200" alt="Adversary">
 
-**Adversary** · `subagent_adversary` — runs the check group and hunts counterexamples. Ends in a verdict: `PASS` or `NEEDS-EDITS`.
+**Adversary** · `adversary-<n>` — runs the check group and hunts counterexamples. Ends in a verdict: `PASS` or `NEEDS-EDITS`.
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-literature.png" align="left" width="200" alt="Literature">
 
-**Literature** · `subagent_lit_line` · `_adversary` — a walled citation-graph sweep, then an independent adversary re-retrieves each claim and certifies it's real **and** current.
+**Literature** · `lit-line-<n>` · `lit-adversary-<n>` — a walled citation-graph sweep, then an independent adversary re-retrieves each claim and certifies it's real **and** current.
 
 <br clear="left">
 
@@ -109,7 +109,7 @@ idea dies only on a concrete counterexample, never on style or vibes.
 
 <img src="docs/figs/avatar-document-adversary.png" align="left" width="200" alt="Document adversary">
 
-**Document adversary** · `subagent_document_adversary` — an independent agent that audits each finished deliverable for **self-completeness** (the thing 90% of AI-generated writing drops): every jargon term, symbol, and abbreviation the document uses must be defined in the artifact itself or the audience spec's symbol registry. Returns `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`; a `NEEDS-EDITS` is a blocking gap the validator refuses a `PASS` without.
+**Document adversary** · `doc-adversary-<n>` — an independent agent that audits each finished deliverable for **self-completeness** (the thing 90% of AI-generated writing drops): every jargon term, symbol, and abbreviation the document uses must be defined in the artifact itself or the audience spec's symbol registry. Returns `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`; a `NEEDS-EDITS` is a blocking gap the validator refuses a `PASS` without.
 
 <br clear="left">
 

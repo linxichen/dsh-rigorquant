@@ -6,7 +6,7 @@
 // `rigorquant-models` settings namespace this package's host half serves. Each
 // role row stages an explicit primary override (model + reasoning effort) and a
 // per-role fallback choice; "inherit" clears the user layer for that field so
-// the native tool-subagent default (fixed-tier roles) or the parent/session
+// the router's shipped tier matrix (fixed-tier roles) or the parent/session
 // route (root and inherit roles) governs again. Only a save writes: the last
 // saved selection is the persistent one (the settings user layer), and leaving
 // the page drops whatever was staged.
@@ -803,7 +803,8 @@ const moveCopy = {
 // One layer per move past Promise, in loop order; a task's layer is
 // STRUCTURAL (its `blockedBy` depth), never guessed from its id or subject --
 // the board's own DAG is the only contract the orchestrator's task-creation
-// text (a later issue) has to honor for the pill to read it correctly.
+// text (SKILL.md Step 3's Promise move: one `blocked_by` layer per move) has
+// to honor for the pill to read it correctly.
 const MOVE_ORDER = ['promise', 'fan-out', 'ground-truth', 'attack', 'certify']
 
 /** role → (badge initials, tooltip label), mirroring dsh/team.js's TEAMMATE_ROLES

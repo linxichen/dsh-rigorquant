@@ -1,29 +1,40 @@
-"""Delegation-denial is tool-denied, not just prompt-asked.
+"""The blind roles are tool-denied, not just prompt-asked.
 
-docs/architecture.md Decision 14 (C1, C2): the blind roles (the DoubleChecker,
-the OffGridThinker) must deny web_search, web_fetch, skill, and every
-delegation tool in the composition itself, and every other role that denies
-delegation
-(literature line/adversary, document adversary) must deny the same delegation
-set. This is the one piece of the lane's isolation that IS enforceable; the
-residual bash-curl and filesystem holes are documented as procedural, and named
-as such under Decision 14.
+docs/architecture.md Decision 14 (C1, C2), carried onto Agent Teams by
+Decision 24: the team plugin (`dsh/team.js`) reads a teammate's role from its
+name and denies the blind roles (OffGridThinker, DoubleChecker) web_search,
+web_fetch and `skill`, and the web-denied roles (the blind roles plus the
+Adversary and Document adversary) web_search and web_fetch. No teammate can
+create teammates at all (only the orchestrator holds `spawn_teammate`), so the
+per-row delegation deny lists the classic preset carried have nothing left to
+deny. The deny tables are pinned here against CONTEXT.md's glossary; what
+each role actually SEES is observed through the team probe
+(tests/test_team_plugin.py).
 
-`BLIND_TOOLS` must name every delegation tool the composition can mount — a
-new delegation row whose toolName is absent here silently re-opens C2 for every
-previously blind child. The self-name is included on purpose (each row denies
-its own toolName too), mirroring the shipped deny lists.
+Because `skill` is denied, a blind role cannot load the rigorquant skill: its
+persona file (`dsh/personas/<role>.md`) has to carry the derivation protocol
+and the pinned compute lane itself.
 """
 
 import re
 
-from conftest import (BLIND_TOOLS, CORDIS, DELEGATION, ORCHESTRATOR_TOOLS,
-                      SKILL_DIR, composition_rows, deny_of, tool_name_of)
+from conftest import CORDIS, REPO, SKILL_DIR
+
+TEAM = REPO / "dsh/team.js"
+PERSONAS = REPO / "dsh/personas"
+BLIND = ("offgrid", "doublechecker")
 
 
-def _persona(body):
-    m = re.search(r"persona: >-\n(.*?)\n(?=\s{8}\S|\s{4}- id:)", body, re.DOTALL)
-    return m.group(1) if m else ""
+def _js_set(name):
+    m = re.search(r"const %s = new Set\(\[([^\]]*)\]\)" % name, TEAM.read_text())
+    assert m, "dsh/team.js no longer declares %s" % name
+    return set(re.findall(r"'([a-z-]+)'", m.group(1)))
+
+
+def _js_list(name):
+    m = re.search(r"const %s = \[([^\]]*)\]" % name, TEAM.read_text())
+    assert m, "dsh/team.js no longer declares %s" % name
+    return set(re.findall(r"'([a-z_]+)'", m.group(1)))
 
 
 def test_fetch_is_enabled():
@@ -31,20 +42,26 @@ def test_fetch_is_enabled():
         "tool-web fetch must be true so web_fetch exists for the lit roles"
 
 
-def test_blind_roles_deny_web_skill_and_delegation():
-    text = CORDIS.read_text()
-    blind_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
-                  if tool_name_of(b) in ("subagent_double_checker", "subagent_offgrid")}
-    assert set(blind_rows) == {"tool-subagent-double-checker", "tool-subagent-offgrid"}, \
-        "both blind rows must exist"
-    for row_id, denied in blind_rows.items():
-        missing = sorted(BLIND_TOOLS - denied)
-        assert not missing, "%s is missing from its deny list: %s" % (row_id, missing)
+def test_the_deny_tiers_match_the_glossary():
+    """CONTEXT.md: blind = OffGridThinker + DoubleChecker; web-denied = the
+    blind roles plus the Adversary and Document adversary."""
+    assert _js_set("BLIND_ROLES") == set(BLIND)
+    assert _js_set("WEB_DENIED_ROLES") == {"adversary", "doc-adversary"}
+    assert _js_list("WEB_DENY") == {"web_search", "web_fetch"}
+    team = TEAM.read_text()
+    assert "[...EVERY_TEAMMATE_DENY, ...WEB_DENY, 'skill']" in team, (
+        "the blind tier no longer denies web and skill")
+    glossary = " ".join((REPO / "CONTEXT.md").read_text().split())
+    assert "no web, no skills and nobody's draft: OffGridThinker, DoubleChecker" in glossary
+    assert "the blind roles plus the Adversary and Document adversary" in glossary
 
 
-def _persona(body):
-    m = re.search(r"persona: >-\n(.*?)\n(?=\s{8}\S|\s{4}- id:)", body, re.DOTALL)
-    return m.group(1) if m else ""
+def test_every_teammate_is_denied_the_orchestrator_owned_tools():
+    """Decision 10: one study-level goal, root-owned; the unattended contract
+    keeps ask_user_question and plan mode off every teammate."""
+    assert _js_list("EVERY_TEAMMATE_DENY") == {
+        "create_goal", "update_goal", "get_goal", "todo_write",
+        "ask_user_question", "exit_plan_mode"}
 
 
 def test_blind_personas_carry_the_protocol_they_cannot_load():
@@ -54,100 +71,18 @@ def test_blind_personas_carry_the_protocol_they_cannot_load():
     what these roles had before the deny list existed; the derivation protocol
     has to travel in the persona itself.
     """
-    text = CORDIS.read_text()
-    for row_id, body in composition_rows(text):
-        if tool_name_of(body) not in ("subagent_double_checker", "subagent_offgrid"):
-            continue
-        persona = _persona(body).lower()
+    for role in BLIND:
+        persona = (PERSONAS / ("%s.md" % role)).read_text().lower()
         assert len(persona) > 800, (
             "%s persona is a stub (%d chars); it cannot load a skill, so the "
-            "protocol must be in it" % (row_id, len(persona)))
+            "protocol must be in it" % (role, len(persona)))
         for required in ("counterexample",   # elimination rule
                          "cannot load",      # states its own blindness honestly
                          "exact remaining gap",  # terminal honesty
                          "seed"):            # stochastic convention
-            assert required in persona, "%s persona never states %r" % (row_id, required)
+            assert required in persona, "%s persona never states %r" % (role, required)
         assert "load the `rigorquant` skill" not in persona, (
-            "%s is told to load a skill it is denied" % row_id)
-
-
-def test_lit_roles_are_delegation_denied_leaves_that_keep_web():
-    text = CORDIS.read_text()
-    lit_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
-                if tool_name_of(b) in ("subagent_lit_line", "subagent_lit_adversary")}
-    assert set(lit_rows) == {"tool-subagent-lit-line", "tool-subagent-lit-adversary"}, \
-        "both literature rows must exist"
-    for row_id, denied in lit_rows.items():
-        missing = sorted(DELEGATION - denied)
-        assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
-        missing = sorted(ORCHESTRATOR_TOOLS - denied)
-        assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
-        for kept in ("web_search", "web_fetch", "skill", "bash"):
-            assert kept not in denied, \
-                "%s must keep %s (open retrieval role)" % (row_id, kept)
-
-
-def test_document_adversary_is_delegation_denied():
-    """The document adversary audits local deliverables: no web, no delegation."""
-    text = CORDIS.read_text()
-    doc_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
-                if tool_name_of(b) == "subagent_document_adversary"}
-    assert set(doc_rows) == {"tool-subagent-doc-adversary"}, \
-        "the document-adversary row must exist"
-    for row_id, denied in doc_rows.items():
-        missing = sorted(DELEGATION - denied)
-        assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
-        missing = sorted(ORCHESTRATOR_TOOLS - denied)
-        assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
-        assert "web_search" in denied and "web_fetch" in denied, \
-            "%s must keep web_search/web_fetch denied" % row_id
-        assert "write" not in denied, \
-            "%s must keep write: rq_check reads the verdict from the record" % row_id
-
-
-def test_adversary_is_delegation_denied_web_blind_and_skill_capable():
-    """The math adversary audits offline; the battery lives in the skill.
-
-    Its verdict gates auto-implementation, so it rests only on derivation and
-    computation the adversary itself ran: web is denied (a cited page would
-    enter the PASS gate unaudited), `skill` stays (check-battery procedures,
-    tolerances, audit schema), and the child-scope set is denied like every
-    other role.
-    """
-    text = CORDIS.read_text()
-    adv_rows = {rn: deny_of(b) for rn, b in composition_rows(text)
-                if tool_name_of(b) == "subagent_adversary"}
-    assert set(adv_rows) == {"tool-subagent-adversary"}, \
-        "the adversary row must exist"
-    for row_id, denied in adv_rows.items():
-        missing = sorted(DELEGATION - denied)
-        assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
-        missing = sorted(ORCHESTRATOR_TOOLS - denied)
-        assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
-        assert "web_search" in denied and "web_fetch" in denied, \
-            "%s must keep web_search/web_fetch denied" % row_id
-        assert "skill" not in denied, "%s must keep skill (check battery)" % row_id
-
-
-def test_explorer_is_delegation_denied_and_child_scoped():
-    """The open-track explorer keeps web and `skill`, and nothing orchestrator-owned.
-
-    The method track is open (web stays for known-result checks; off-grid
-    isolation lives on the separate subagent_offgrid row), and `skill` stays because
-    the rigorquant skill carries the working procedure. Everything else the
-    root owns is denied: delegation, orchestration loops, child-control, task
-    state, ask_user_question, plan mode.
-    """
-    text = CORDIS.read_text()
-    explorer_rows = {rn: deny_of(b) for rn, b in composition_rows(text) if tool_name_of(b) == "subagent_explorer"}
-    assert set(explorer_rows) == {"tool-subagent-explorer"}, "the explorer row must exist"
-    for row_id, denied in explorer_rows.items():
-        missing = sorted(DELEGATION - denied)
-        assert not missing, "%s is missing from its delegation deny list: %s" % (row_id, missing)
-        missing = sorted(ORCHESTRATOR_TOOLS - denied)
-        assert not missing, "%s is missing from its child-scope deny list: %s" % (row_id, missing)
-        for kept in ("web_search", "web_fetch", "skill"):
-            assert kept not in denied, "%s must keep %s (open track)" % (row_id, kept)
+            "%s is told to load a skill it is denied" % role)
 
 
 LANE_INVOCATION = "uv run --frozen --project"
@@ -159,52 +94,19 @@ def test_blind_personas_carry_the_pinned_compute_lane():
     Blind roles keep bash (C1), so derivation compute reaches them only
     through the pinned uv lane. Both blind personas must instruct the exact
     invocation SKILL.md Step 2 sanctions (`uv run --frozen --project ...`),
-    anchor the lane location, and prohibit installs/fetches (the bash-network
-    residual hole is procedural + audited, never called a wall). This pins the
-    persona block against silent removal and against drifting from the skill's
-    documented form.
+    anchor the lane location, and prohibit installs/fetches (the guard now
+    refuses those verbs at the call, but the persona is what tells the role
+    why). This pins the persona text against silent removal and against
+    drifting from the skill's documented form.
     """
-    text = CORDIS.read_text()
-    checked = 0
-    for row_id, body in composition_rows(text):
-        if tool_name_of(body) not in ("subagent_double_checker", "subagent_offgrid"):
-            continue
-        persona = _persona(body)
-        checked += 1
+    for role in BLIND:
+        persona = " ".join((PERSONAS / ("%s.md" % role)).read_text().split())
         assert LANE_INVOCATION in persona, \
-            "%s persona lost the compute-lane invocation" % row_id
+            "%s persona lost the compute-lane invocation" % role
         assert "$DSH_HOME/share/rigorquant/env" in persona, \
-            "%s persona lost the lane anchor" % row_id
+            "%s persona lost the lane anchor" % role
         assert "pip install" in persona and "uv sync" in persona, \
-            "%s persona lost the no-install/no-fetch discipline" % row_id
-    assert checked == 2, "both blind rows must exist"
+            "%s persona lost the no-install/no-fetch discipline" % role
     skill = (SKILL_DIR / "SKILL.md").read_text()
     assert LANE_INVOCATION in skill, \
         "SKILL.md no longer documents the invocation the personas teach"
-
-
-def test_blind_deny_sets_carry_every_delegation_row():
-    """BLIND_TOOLS must name every delegation toolName the composition mounts.
-
-    A new delegation row that forgets to extend this set (and the shipped deny
-    lists with it) silently re-opens Decision 14's C2 for every previously
-    blind child: the tool stays in the catalog at depth 1.
-    """
-    text = CORDIS.read_text()
-    mounted = {tool_name_of(b) for _, b in composition_rows(text)
-               if tool_name_of(b) is not None and "provider: spawn" in b}
-    delegation_rows = {name for name in mounted if name.startswith("subagent")}
-    missing_from_set = sorted(delegation_rows - DELEGATION)
-    assert not missing_from_set, (
-        "delegation toolName(s) %r are mounted by the composition but absent "
-        "from BLIND_TOOLS/DELEGATION; extend the set and every delegation "
-        "deny list" % missing_from_set)
-    # End-state invariant: every spawn row ships a complete toolFilter. A row
-    # mounted without one puts the whole catalog (its own spawn tool included)
-    # in front of the child at depth 1.
-    unfiltered = sorted(row_id for row_id, body in composition_rows(text)
-                        if tool_name_of(body) in delegation_rows and not deny_of(body))
-    assert not unfiltered, (
-        "delegation row(s) %r mount without a toolFilter deny list; every "
-        "child-facing delegation row must deny DELEGATION (and, unless the "
-        "role is deliberately excepted, ORCHESTRATOR_TOOLS and web)" % unfiltered)

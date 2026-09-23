@@ -4,12 +4,10 @@
 // (on the orchestrator, the harness's `role: 'lead'` membership) a runtime
 // fact that the guard is armed — purely from the teammate's NAME (e.g.
 // `doublechecker-1`), resolved through the harness's native Agent Teams
-// service. This is the first Teams tracer bullet
-// (docs/architecture.md, Decision 24;
-// docs/adr/0001-rigorquant-on-agent-teams.md): the classic
-// `[[rq:role=...]]` tag mechanism (dsh/index.js) and the seven classic
-// delegation rows (agent-presets/rigorquant/agent.cordis.yml) are UNTOUCHED
-// and coexist with this module until a later issue removes them.
+// service (docs/architecture.md, Decision 24;
+// docs/adr/0001-rigorquant-on-agent-teams.md). The preset carries no classic
+// delegation row any more, so this module is the ONLY place a teammate's
+// persona, tool budget and topology come from.
 //
 // The `agentTeams` service is OPTIONAL and reached duck-typed by service
 // name (`ctx.get('agentTeams')`) — this module never imports any of the

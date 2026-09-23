@@ -18,12 +18,12 @@
 RigorQuant 是一个 Agent preset + 内置技能，把一次 DSH 会话变成一个上下文隔离的
 多智能体研究实验室：
 
-- **并行探索者**提出候选方法（`subagent_explorer`，空白上下文）。
-- **离网思考者（OffGridThinker）**（`subagent_offgrid`）在路线需要隔离时上
+- **并行探索者**提出候选方法（`explorer-<n>`，空白上下文）。
+- **离网思考者（OffGridThinker）**（`offgrid-<n>`）在路线需要隔离时上
   场：只凭模型自身的推理加上计算工具（sympy、numpy、mpmath、Lean 校验器）
   ——无网络、无文献、不使用他人的结果。
 - **真值轨道**独立重推导简化情形下的解析闭式解、不变量与界——用两种不同手段
-  各推一遍（两次独立的 `subagent_double_checker` 调用）。
+  各推一遍（两个独立的全新 `doublechecker-<n>` 队友）。
 - **对抗者**只凭反例淘汰路线。
 - **四项检验**（闭式解相等、精确不变量、解析界、统计强化）在数值实现
   **之前**运行。
@@ -58,35 +58,35 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 <img src="docs/figs/avatar-explorer.png" align="left" width="200" alt="Explorer">
 
-**探索者** · `subagent_explorer`——白纸上下文、刻意发散。给出引理、方程、构造与带精确陈述的候选方法；拒绝状态汇报式输出。
+**探索者** · `explorer-<n>`——白纸上下文、刻意发散。给出引理、方程、构造与带精确陈述的候选方法；拒绝状态汇报式输出。
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-offgrid.png" align="left" width="200" alt="OffGridThinker">
 
-**离网思考者（OffGridThinker）** · `subagent_offgrid`——离网通道。只凭模型自身的推理加上固定的计算通道（sympy、numpy、mpmath、cvxpy、hypothesis、jax；已配置时还有 Lean 校验器）——除此之外什么都没有：无联网、无技能、无委派、不使用他人的结果。它是独立的智能体，不是探索者的变体：隔离即身份。
+**离网思考者（OffGridThinker）** · `offgrid-<n>`——离网通道。只凭模型自身的推理加上固定的计算通道（sympy、numpy、mpmath、cvxpy、hypothesis、jax；已配置时还有 Lean 校验器）——除此之外什么都没有：无联网、无技能、无委派、不使用他人的结果。它是独立的智能体，不是探索者的变体：隔离即身份。
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-doublechecker.png" align="left" width="200" alt="DoubleChecker">
 
-**双重复核（DoubleChecker）** · `subagent_double_checker`——盲态（无联网、无技能、无委派、无草稿）。从第一性原理把关键命题重推两遍，方法各异。
+**双重复核（DoubleChecker）** · `doublechecker-<n>`——盲态（无联网、无技能、无委派、无草稿）。从第一性原理把关键命题重推两遍，方法各异。
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-adversary.png" align="left" width="200" alt="Adversary">
 
-**对抗者** · `subagent_adversary`——执行检验组、专找反例。以裁决收尾：`PASS` 或 `NEEDS-EDITS`。
+**对抗者** · `adversary-<n>`——执行检验组、专找反例。以裁决收尾：`PASS` 或 `NEEDS-EDITS`。
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-literature.png" align="left" width="200" alt="Literature">
 
-**文献线** · `subagent_lit_line` · `_adversary`——封闭式引文图遍历，再由独立对抗者重取每条主张，确认其真实**且**不过时。
+**文献线** · `lit-line-<n>` · `lit-adversary-<n>`——封闭式引文图遍历，再由独立对抗者重取每条主张，确认其真实**且**不过时。
 
 <br clear="left">
 
@@ -100,7 +100,7 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 <img src="docs/figs/avatar-document-adversary.png" align="left" width="200" alt="Document adversary">
 
-**文档对抗** · `subagent_document_adversary`——一个独立智能体，逐一审计每份交付物的**自足性**（约九成 AI 生成内容恰恰会省略这点）：文档用到的每个专业术语、符号与缩写，都必须在文档自身或受众规范的符号表中有定义。返回 `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`；`NEEDS-EDITS` 是阻塞性缺陷，校验器在缺失时会拒绝 `PASS`。
+**文档对抗** · `doc-adversary-<n>`——一个独立智能体，逐一审计每份交付物的**自足性**（约九成 AI 生成内容恰恰会省略这点）：文档用到的每个专业术语、符号与缩写，都必须在文档自身或受众规范的符号表中有定义。返回 `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`；`NEEDS-EDITS` 是阻塞性缺陷，校验器在缺失时会拒绝 `PASS`。
 
 <br clear="left">
 
