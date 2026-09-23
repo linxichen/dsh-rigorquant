@@ -56,8 +56,16 @@ function makeAgent(id, preset) {
   return { agent, recorder: { sections, contexts, restricts, guards, disposedSections } }
 }
 
+/** A point-in-time copy — `recorder`'s arrays are live and keep mutating, so
+ * a caller comparing two points in time (e.g. before/after a re-trigger)
+ * must snapshot each side, not alias the same underlying arrays. */
 function pick(recorder) {
-  return { sections: recorder.sections, contexts: recorder.contexts, restricts: recorder.restricts, guardCount: recorder.guards.length }
+  return {
+    sections: recorder.sections.slice(),
+    contexts: recorder.contexts.slice(),
+    restricts: recorder.restricts.slice(),
+    guardCount: recorder.guards.length,
+  }
 }
 
 /** Drive one fake call through a registered guard, returning the denial
@@ -235,6 +243,51 @@ async function runResumeScenario(mod) {
   return { firstSections, disposedAfterResume, secondSections }
 }
 
+/**
+ * A session created under a non-rigorquant preset, later switched to
+ * rigorquant via `AgentPresets.select()` — found live (docs/upgrade-0.1.6.md
+ * §3.11): `agent/created` already ran (and skipped, composedPreset still
+ * reporting the old preset) before the switch, so without a second trigger
+ * the Lead never gets composed for the rest of its life. Simulates the
+ * harness's own ordering: `recompose()` lands on `agent.ctx` BEFORE
+ * `agent-preset/selected` is announced (mutate `__preset` first, emit
+ * second), matching `packages/preset/agent-presets/src/index.ts`'s `swap()`.
+ */
+async function runLatePresetSelectionScenario(mod) {
+  const listeners = new Map()
+  const membershipByAgent = new Map()
+  const agentsById = new Map()
+  const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
+  const ctx = {
+    logger: { warn: () => {} },
+    on: (name, handler) => {
+      if (!listeners.has(name)) listeners.set(name, [])
+      listeners.get(name).push(handler)
+    },
+    get: (name) => {
+      if (name === 'agents') return { list: () => [], get: (id) => agentsById.get(id) }
+      if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
+      if (name === 'agentTeams') return teamsService
+      return undefined
+    },
+  }
+  const emit = (name, ...args) => { for (const h of listeners.get(name) ?? []) h(...args) }
+
+  const lead = makeAgent('lead-late', 'standard')
+  membershipByAgent.set(lead.agent, { role: 'lead', name: 'lead' })
+  agentsById.set(lead.agent.id, lead.agent)
+
+  mod.apply(ctx)
+  emit('agent/created', { agent: lead.agent, source: 'startup' })
+  const beforeSwitch = pick(lead.recorder)
+
+  lead.agent.ctx.__preset = 'rigorquant'
+  emit('agent-preset/selected', lead.agent.id, 'rigorquant')
+  const afterSwitch = pick(lead.recorder)
+
+  return { beforeSwitch, afterSwitch }
+}
+
 async function main() {
   const [, , modulePath] = process.argv
   const mod = await import(pathToFileURL(modulePath).href)
@@ -242,8 +295,9 @@ async function main() {
   const { mountError, present, guardChecks } = await runPresentScenario(mod)
   const absent = await runAbsentScenario(mod)
   const resume = await runResumeScenario(mod)
+  const latePresetSelection = await runLatePresetSelectionScenario(mod)
 
-  process.stdout.write(JSON.stringify({ mountError, present, guardChecks, absent, resume }))
+  process.stdout.write(JSON.stringify({ mountError, present, guardChecks, absent, resume, latePresetSelection }))
 }
 
 main().catch((error) => {

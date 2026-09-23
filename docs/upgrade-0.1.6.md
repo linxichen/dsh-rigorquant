@@ -630,6 +630,60 @@ blindness were still procedural, not enforced, until this issue.
   daily profile; both were torn down after this demo (server stopped,
   `~/.dsh/profiles/rq6` and `~/.dsh/profiles/rq16` removed).
 
+### 3.11 The turn-1 guard-armed gap, found and fixed (2026-09-22)
+
+The incidental finding at the end of §3.10 was real, not cosmetic. Root
+cause, confirmed by decompressing both session logs
+(`~/.dsh/sessions/.../session.v3.jsonl.zstd`, `zstd -d`): the "Team guard
+diagnostic checks" session's header recorded `"agentPreset":"standard"` —
+`agent/created` had already fired (and, seeing a non-rigorquant
+`composedPreset`, correctly skipped installing anything) *before* the UI's
+later `agent-preset/selected` switch to `rigorquant` landed, ~12 seconds
+before the first message. None of `dsh/team.js`'s four re-trigger sources
+(`startup`/`resume`/`clear`/`compact`) fire on a mid-session preset switch,
+so the Lead's guard-armed context and its own `spawn_teammate` guard were
+never installed — not just absent from turn 1, absent for the session's
+entire life (the log holds exactly one runtime-context snapshot, ever,
+without the guard-armed section). `doublechecker-1`, spawned mid-session,
+was unaffected — a teammate "joins its parent's composition in the
+creation window, before `agent/created`" (confirmed: its own session
+header already read `"agentPreset":"rigorquant"` at creation), so this
+gap is Lead-only, and every teammate-side finding in §3.10 stands.
+
+**Fix**: `dsh/team.js` now also listens for the plain cordis event
+`agent-preset/selected` (`packages/preset/agent-presets/src/index.ts`:
+`ctx.emit('agent-preset/selected', session.id, event.data.agentPreset)`,
+re-broadcasting the session's own durable event of the same name) and
+re-runs the existing dispose-then-reinstall `maybeInstall` for that
+session's live agent. Reading `packages/preset/agent-presets/src/index.ts`'s
+`swap()` confirmed the ordering that makes this safe: `recompose(agent.ctx,
+...)` — which reparents the agent's whole tool/prompt scope to the new
+preset — completes *before* the event is appended and re-broadcast, so
+`composedPreset(agent.ctx)` is never stale by the time the new listener
+reads it.
+
+- `tests/team_probe.cjs`: a new `runLatePresetSelectionScenario` creates a
+  Lead agent composed as `standard`, fires `agent/created` (asserts nothing
+  is installed — the bug's own precondition, reproduced), mutates the fake
+  `composedPreset` to `rigorquant` and fires `agent-preset/selected`
+  (asserts the guard-armed context and the Lead's guard now land). Building
+  this surfaced and fixed a probe bug of its own: `pick()` was returning
+  live array references, so an earlier before/after snapshot silently
+  aliased the later one — `pick()` now `.slice()`s.
+- `tests/test_team_plugin.py` (+2): drives the same before/after through
+  the probe's JSON output.
+- **Verified live** against a freshly recreated `rq6` (same recipe as
+  §3.10, fresh `dsh plugin add file:...` this time rather than reusing a
+  stale copy): repeated the exact bug-triggering flow (New Session →
+  Standard mode by default → switch to RigorQuant → first message) and
+  asked the orchestrator to quote any runtime-context line naming
+  "RigorQuant team guard". It answered `RigorQuant team guard: armed` on
+  turn 1; the raw session log confirms the same section present in the
+  *first* runtime-context snapshot this time — the same session header
+  precondition as §3.10's bug (`"agentPreset":"standard"` at creation), now
+  fixed. `rq6` was deleted again afterward.
+- Full suite: 341 passed; coverage unchanged at 96.3%.
+
 ---
 
 ## 4. The centrepiece — RigorQuant on Agent Teams

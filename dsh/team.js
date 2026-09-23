@@ -47,6 +47,25 @@
 // an unparseable-named teammate exists, the Lead's guard already should have
 // refused creating it; this module's own skip is defense in depth, not the
 // enforcement point.
+//
+// A brand-new top-level session is NOT necessarily composed as `rigorquant`
+// at the moment its own `agent/created` fires: the harness creates a session
+// under a default preset first, and a later UI/API `AgentPresets.select()`
+// call reparents it (`agent.ctx.get('agentPresets').composedPreset(...)`)
+// as a SEPARATE step, recorded as its own `agent-preset/selected` session
+// event and re-broadcast as the plain cordis event of the same name — found
+// live (docs/upgrade-0.1.6.md §3.11) when a session created under "Standard
+// mode" then switched to RigorQuant in the picker left its Lead with no
+// "team guard: armed" line and no `spawn_teammate` guard for its entire
+// life, because `agent/created` had already run (and skipped, seeing the
+// still-default preset) before the switch. A spawned TEAMMATE does not have
+// this gap — it "joins its parent's composition in the creation window,
+// before `agent/created`" (confirmed live: the same session's teammate was
+// correctly composed) — so only the Lead path needs a second trigger:
+// listening for `agent-preset/selected` and re-running the same
+// dispose-then-reinstall `maybeInstall` once the recompose has already
+// landed on `agent.ctx` (the harness composes before appending the event,
+// so the composed-preset read below is never stale at that point).
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -302,6 +321,15 @@ function apply(ctx, config = {}) {
   for (const agent of ctx.get('agents')?.list() ?? []) maybeInstall(agent)
   ctx.on('agent/created', ({ agent }) => maybeInstall(agent))
   ctx.on('agent/disposed', ({ agent }) => disposeFor(agent))
+  // A session composed as rigorquant only AFTER its own agent/created already
+  // ran (see module header) needs a second trigger, once the recompose that
+  // event announces has actually landed. `sessionId` and `agent.id` are the
+  // same identity; a session with no live agent (already gone, or one this
+  // profile never tracked) is silently skipped — nothing to (re)install.
+  ctx.on('agent-preset/selected', (sessionId) => {
+    const agent = ctx.get('agents')?.get(sessionId)
+    if (agent !== undefined) maybeInstall(agent)
+  })
 }
 
 export { name, inject, apply, roleFromName }

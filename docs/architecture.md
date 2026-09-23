@@ -688,6 +688,13 @@ a persona slot).
 cannot mask on the scoped Team tools — hub-and-spoke messaging, roster/board
 blindness, own-task-only board access, the bash network-verb denial for
 web-denied roles, and the orchestrator's `spawn_teammate` name/fork refusal.
+**A Lead-only composition gap, found live and fixed** (`docs/upgrade-0.1.6.md`
+§3.11): a session composed as `rigorquant` only *after* its own
+`agent/created` already ran (the ordinary "New Session, then pick a preset"
+UI flow) left the Lead's guard-armed context and `spawn_teammate` guard
+uninstalled for the session's entire life — teammates are unaffected, since
+a teammate's preset is already settled at spawn time. `dsh/team.js` now
+also re-triggers composition on the harness's `agent-preset/selected` event.
 Router role-resolution by membership is a later issue; the classic mechanism
 coexists with `rq-team` until the preset rows are removed.
 
