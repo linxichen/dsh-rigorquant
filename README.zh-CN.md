@@ -162,9 +162,14 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 扇出受宿主限制：每个 root 同时最多 8 个存活子代理（`maxActiveSubagents`，
 **插件 → Subagent**）。文献密集的研究若要让 4 条文献线与探索者并行，可在那里调高。
 
-完整安装还会报告目标 profile 上是否启用了宿主可选的 **智能体团队（Agent
-Teams）** bundle。本版本不使用它，启用与否都能运行；安装脚本只告诉你检测结果和
-开关位置，绝不改动 profile 的 bundle 列表。
+完整安装还会在目标 profile 上启用宿主可选的 **智能体团队（Agent Teams，
+Beta）** bundle（如果尚未启用）——RigorQuant 0.5.0 运行在其之上——并通过在
+profile 的用户补丁（`cordis.patch.yml`）中追加一段有明确标记的配置块，把团队
+服务的成员数量上限提高到 64，并打印它写入的每一行。装好之后重复运行不会再有
+变化；`--uninstall` 只会移除该标记块，并且只在该标记块记录了"是安装脚本启用
+的"时才关闭对应 bundle——你自己手动启用的 bundle 不受影响。若 PATH 上没有
+`dsh`，这一步会打印警告后跳过，其余安装步骤照常进行（参见
+docs/adr/0001-rigorquant-on-agent-teams.md）。
 
 两种安装形态：
 

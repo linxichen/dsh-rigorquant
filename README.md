@@ -181,10 +181,15 @@ Fan-out is bounded by the host: eight live children per root
 (`maxActiveSubagents`, **Plugins → Subagent**). A literature-heavy study that
 wants four lines running beside its explorers can raise it there.
 
-A full install also reports whether the harness's optional **Agent Teams**
-bundles are enabled on the target profile. This release does not use them and
-runs either way; the installer only tells you what it found and where to
-toggle it, and never edits the profile's bundle list.
+A full install also enables the harness's optional **Agent Teams** bundles
+(Beta) on the target profile when they are off — RigorQuant 0.5.0 runs on
+them — and raises the team service's lifetime member cap to 64 via a marked
+block it appends to the profile's user patch (`cordis.patch.yml`), printing
+every line it writes. Re-running changes nothing once installed;
+`--uninstall` removes the marked block and disables the bundles only if that
+block records the installer having turned them on, leaving a bundle you
+enabled yourself untouched. With no `dsh` on the path this step is skipped
+with a warning, same as the rest of the install (docs/adr/0001-rigorquant-on-agent-teams.md).
 
 **One line, everything** — the preset, the compute lane, and the plugin (role
 model router + its card on the Plugins page):

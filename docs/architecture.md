@@ -705,6 +705,18 @@ The persona-tag regex, the persona-assembly probe, and the deprecated
 synchronous session-event reads are gone from the router; the classic
 per-role delegation rows and `dsh/activity.js` still use the persona tag
 until a later issue removes them.
+**The installer enables Agent Teams under issue #12** (`docs/upgrade-0.1.6.md`
+§3.13): a full install adds whichever of the two optional bundles are
+missing from the profile's `dsh.profile.bundles` and appends the `maxMembers:
+64` cap override into that profile's `cordis.patch.yml` under a
+`dsh-rigorquant` marker that also records which bundles it enabled, printing
+every line written; idempotent on re-run. `--uninstall` removes the marker
+and disables only the bundles the marker records the installer having
+enabled — a bundle the operator already had on stays on. With no `dsh` on
+the path the whole step warns and is skipped, keeping CI's install smoke
+test green. The identical override row ships in this package's own bundle
+patch as a consistency pin, effective only when the Team layer precedes
+`dsh-rigorquant` in a profile's bundle order.
 
 ## Repo map
 

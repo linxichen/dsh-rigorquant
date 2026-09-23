@@ -214,86 +214,37 @@ def test_installer_accepts_the_minimum_dsh_version(tmp_path):
     assert (dsh_home / ".agent-presets/rigorquant/agent.cordis.yml").is_file()
 
 
-# ── the Agent Teams bundles: 0.4.2 detects, 0.5.0 enables ──────────────────
+# ── the Agent Teams bundles: enabling, the cap override, uninstall ─────────
 #
-# The two optional bundles the harness ships as the Beta "Agent Teams" and
-# "Agent Teams Web UI" cards on the Plugins page. 0.4.2 is the classic release
-# and runs without them, so the installer only REPORTS what it found; the
-# operator is the one who toggles.
-TEAM_BUNDLES = (
-    "@deepseek-ai/dsh-experimental-agent-team-profile",
-    "@deepseek-ai/dsh-experimental-agent-team-web-profile",
-)
+# 0.4.2 (the classic release) only detected the two optional bundles the
+# harness ships as the Beta "Agent Teams" and "Agent Teams Web UI" cards.
+# 0.5.0 runs team-only, so install.sh enables both and raises the team
+# service's lifetime member cap under a marker in the profile's user patch
+# (Decision 24, docs/adr/0001-rigorquant-on-agent-teams.md); the full
+# enable/idempotent/uninstall/no-dsh coverage lives in
+# tests/test_installer_agent_teams.py.
 
 
-def _install_with_stub_dsh(tmp_path, bundles=None, profile="upgrade-test"):
-    """Run a full install against a stub `dsh`, optionally seeding a profile.
+def test_the_cap_override_ships_in_the_bundle_patch_too():
+    """Decision 24: the override rides along whichever route enables Teams.
 
-    `bundles=None` leaves the profile manifest absent, which is what the stub
-    CLI leaves behind: it swallows `plugin ... add` instead of creating a
-    profile. A list seeds `dsh.profile.bundles` with exactly those names.
+    install.sh writes the override into the PROFILE's user patch; a profile
+    that instead enables Agent Teams by bundle order alone (no ./install.sh
+    run, e.g. a plugin-only install per Decision 22) still needs the raised
+    cap once dsh-rigorquant is mounted after the Team layer, so the exact
+    same row config is restated in this package's own bundle patch.
     """
-    env, dsh_home = _stub_dsh_env(tmp_path)
-    manifest = dsh_home / "profiles" / profile / "package.json"
-    if bundles is not None:
-        manifest.parent.mkdir(parents=True)
-        manifest.write_text(json.dumps(
-            {"name": "dsh-profile-%s" % profile, "private": True,
-             "dsh": {"profile": {"bundles": list(bundles)}}}, indent=2) + "\n")
-    result = subprocess.run(
-        [str(REPO / "install.sh"), "--profile", profile],
-        cwd=REPO, env=env, capture_output=True, text=True, check=True,
-    )
-    return result, manifest
-
-
-def test_installer_reports_agent_teams_off_and_prints_the_toggle(tmp_path):
-    """Off is the state the operator has to act on, so it names the action.
-
-    The bundles are optional and Beta; nothing in the harness turns them on
-    for you, and a profile without them simply has no team service. Naming
-    both packages and where the toggle lives is the whole feature.
-    """
-    result, manifest = _install_with_stub_dsh(
-        tmp_path, bundles=["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
-    assert "Agent Teams is not enabled" in result.stdout
-    for bundle in TEAM_BUNDLES:
-        assert bundle in result.stdout, "the report omits %s" % bundle
-    assert "Plugins" in result.stdout, "the report never says where to toggle"
-    # 0.4.2 DETECTS. Writing the bundles in is 0.5.0's job, and an installer
-    # that quietly edited the profile would be unreviewable.
-    assert json.loads(manifest.read_text())["dsh"]["profile"]["bundles"] == [
-        "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]
-
-
-def test_installer_reports_agent_teams_on_without_an_instruction(tmp_path):
-    """Nothing to do is reported as nothing to do — no instruction to follow."""
-    result, _ = _install_with_stub_dsh(
-        tmp_path, bundles=["@deepseek-ai/dsh-base", *TEAM_BUNDLES])
-    assert "Agent Teams is enabled" in result.stdout
-    assert "not enabled" not in result.stdout
-
-
-def test_installer_reports_one_team_bundle_as_not_enabled(tmp_path):
-    """Half the pair is not Teams: the host layer alone has no browser view."""
-    result, _ = _install_with_stub_dsh(
-        tmp_path, bundles=["@deepseek-ai/dsh-base", TEAM_BUNDLES[0]])
-    assert "Agent Teams is not enabled" in result.stdout
-    assert TEAM_BUNDLES[1] in result.stdout
-
-
-def test_installer_says_so_when_the_profile_manifest_is_unreadable(tmp_path):
-    """An unreadable manifest is reported as unknown, never as "off".
-
-    A profile the CLI has not created yet has no manifest at all. Claiming
-    the bundles are disabled would send the operator to toggle something that
-    does not exist; the install itself must still succeed.
-    """
-    result, manifest = _install_with_stub_dsh(tmp_path, bundles=None)
-    assert not manifest.exists()
-    assert "Agent Teams" in result.stdout
-    assert "could not" in result.stdout.lower()
-    assert "Installed preset" in result.stdout
+    patch = (REPO / "cordis.patch.yml").read_text()
+    assert "- id: agent-team" in patch, "cordis.patch.yml carries no agent-team override"
+    tail = patch.split("- id: agent-team", 1)[1]
+    for line in ("maxMembers: 64", "maxTasks: 256",
+                 "maxPendingMessagesPerMember: 64", "maxMessageBytes: 65536",
+                 "disposalTimeoutMs: 5000"):
+        assert line in tail, "cordis.patch.yml's agent-team override omits %s" % line
+    # A non-insert entry (no `insert:` key here) so cordis-plugin-include
+    # replaces the row's `config` wholesale by id, rather than adding a
+    # sibling row -- see install.sh's matching write for the same contract.
+    assert "insert" not in patch.split("- id: agent-team", 1)[1].split("\n", 1)[0]
 
 
 def test_architecture_record_matches_the_preset_composition():

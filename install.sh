@@ -17,11 +17,16 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
 MIN_DSH_VERSION="0.1.6-alpha.2"
 # The two optional bundles that carry Agent Teams — the harness's Beta "Agent
-# Teams" and "Agent Teams Web UI" cards on the Plugins page. This release runs
-# the classic mechanism and needs neither, so the installer only REPORTS what
-# it found; enabling them is the operator's call (and 0.5.0's job).
+# Teams" and "Agent Teams Web UI" cards on the Plugins page. RigorQuant 0.5.0
+# runs team-only, so a full install enables both and raises the team
+# service's lifetime member cap (docs/adr/0001-rigorquant-on-agent-teams.md).
 TEAM_BUNDLE_HOST="@deepseek-ai/dsh-experimental-agent-team-profile"
 TEAM_BUNDLE_WEB="@deepseek-ai/dsh-experimental-agent-team-web-profile"
+# Marks the block this installer owns inside a profile's user patch
+# (`cordis.patch.yml`), so a re-run finds it and `--uninstall` can remove
+# exactly it and nothing the operator wrote by hand.
+TEAM_PATCH_MARK_BEGIN='# >>> dsh-rigorquant BEGIN (managed by ./install.sh; see docs/adr/0001-rigorquant-on-agent-teams.md) >>>'
+TEAM_PATCH_MARK_END='# <<< dsh-rigorquant END <<<'
 
 usage() {
   cat <<EOF
@@ -160,54 +165,126 @@ install_plugin() {
   fi
 }
 
-# Report whether the Agent Teams bundles are enabled on PROFILE.
-#
-# DETECTION ONLY. This release runs the classic delegation mechanism and needs
-# no team service, so nothing here writes to the profile: enabling an optional
-# bundle appends a layer to the profile's stack, and an installer that did that
-# silently would change what every session in that profile composes. The
-# operator toggles it, on the Plugins page, and sees exactly what changed.
+# Enable the Agent Teams bundles on PROFILE and raise the team service's
+# lifetime member cap, both idempotently.
 #
 # A profile's enabled bundles are `dsh.profile.bundles` in its package.json —
-# the same list `dsh plugin add` reconciles. node reads it (already a
-# prerequisite wherever `dsh` is), exiting 3 when the file is missing or
-# carries no bundle list, which is reported as "could not tell" rather than as
-# "off": sending an operator to toggle something in a profile the CLI has not
-# created yet is worse than saying nothing.
-report_agent_teams() {
-  manifest="$DSH_HOME/profiles/$PROFILE/package.json"
-  if ! command -v node >/dev/null 2>&1; then
-    printf 'Agent Teams: node is not on PATH, so the profile was not inspected.\n'
+# the same list `dsh plugin add` reconciles, so only the bundles actually
+# absent are added (`dsh plugin add` also lazily initializes the profile
+# directory, including an empty `cordis.patch.yml`, when it does not exist
+# yet). Without `dsh` there is no way to add a bundle or safely locate/create
+# a profile, so this warns and does nothing else — the historical behaviour
+# for a missing CLI, and how CI's install smoke test (no `dsh` on PATH) stays
+# green.
+install_agent_teams() {
+  if ! command -v dsh >/dev/null 2>&1; then
+    printf 'warning: dsh is not on PATH; skipped enabling Agent Teams for the "%s" profile.\n' "$PROFILE" >&2
+    printf '         install it later and re-run, or add %s and %s\n' "$TEAM_BUNDLE_HOST" "$TEAM_BUNDLE_WEB" >&2
+    printf '         yourself (Plugins page, or dsh plugin --profile %s add <pkg>).\n' "$PROFILE" >&2
     return 0
   fi
-  if ! missing="$(node - "$manifest" "$TEAM_BUNDLE_HOST" "$TEAM_BUNDLE_WEB" 2>/dev/null <<'NODE'
-const { readFileSync } = require('node:fs')
+  profile_dir="$DSH_HOME/profiles/$PROFILE"
+  manifest="$profile_dir/package.json"
+  patch_file="$profile_dir/cordis.patch.yml"
+
+  missing="$(node - "$manifest" "$TEAM_BUNDLE_HOST" "$TEAM_BUNDLE_WEB" <<'NODE'
+const { existsSync, readFileSync } = require('node:fs')
 const [manifest, ...wanted] = process.argv.slice(2)
-let bundles
-try {
-  bundles = JSON.parse(readFileSync(manifest, 'utf8'))?.dsh?.profile?.bundles
-} catch {
-  process.exit(3)
+let bundles = []
+if (existsSync(manifest)) {
+  try {
+    const parsed = JSON.parse(readFileSync(manifest, 'utf8'))?.dsh?.profile?.bundles
+    if (Array.isArray(parsed)) bundles = parsed
+  } catch {}
 }
-if (!Array.isArray(bundles)) process.exit(3)
 process.stdout.write(wanted.filter((name) => !bundles.includes(name)).join(' '))
 NODE
-  )"; then
-    printf 'Agent Teams: could not read %s, so nothing was detected.\n' "$manifest"
-    return 0
+  )"
+
+  enabled=""
+  if [ -n "$missing" ]; then
+    # Unquoted on purpose: node emits the missing names space-separated, and a
+    # package name contains no whitespace or glob character, so the split is
+    # the argument list and the glob cannot fire.
+    if dsh plugin --profile "$PROFILE" add $missing >/dev/null 2>&1; then
+      for bundle in $missing; do echo "Enabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile."; done
+      enabled="$missing"
+    else
+      printf 'warning: `dsh plugin --profile %s add %s` failed; Agent Teams may not be fully enabled.\n' "$PROFILE" "$missing" >&2
+    fi
   fi
-  if [ -z "$missing" ]; then
-    echo "Agent Teams is enabled on the '$PROFILE' profile."
-    return 0
+
+  # Append the cap override under our marker, unless it is already there
+  # (idempotent: a second run of an already-installed profile writes
+  # nothing). A freshly-initialized patch file is a bare `[]`; a block
+  # sequence cannot follow a flow-style empty array in the same YAML
+  # document, so that placeholder is replaced rather than appended after.
+  written="$(node - "$patch_file" "$enabled" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" <<'NODE'
+const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs')
+const { dirname } = require('node:path')
+const [patchFile, enabled, markBegin, markEnd] = process.argv.slice(2)
+const content = existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : ''
+if (content.includes(markBegin)) process.exit(0)
+const block = [
+  markBegin,
+  '# rq-enabled-bundles: ' + enabled,
+  '- id: agent-team',
+  '  config:',
+  '    maxMembers: 64',
+  '    maxTasks: 256',
+  '    maxPendingMessagesPerMember: 64',
+  '    maxMessageBytes: 65536',
+  '    disposalTimeoutMs: 5000',
+  markEnd,
+  '',
+].join('\n')
+const next = /\[\]\s*$/.test(content)
+  ? content.replace(/\[\]\s*$/, '') + block
+  : (content === '' || content.endsWith('\n') ? content : content + '\n') + block
+mkdirSync(dirname(patchFile), { recursive: true })
+writeFileSync(patchFile, next)
+process.stdout.write(block)
+NODE
+  )"
+  if [ -n "$written" ]; then
+    echo "Wrote the Agent Teams maxMembers override to $patch_file:"
+    printf '%s\n' "$written" | sed 's/^/  /'
   fi
-  printf "Agent Teams is not enabled on the '%s' profile; missing:\n" "$PROFILE"
-  # Unquoted on purpose: node emits the missing names space-separated, and a
-  # package name contains no whitespace or glob character, so the split is the
-  # list and the glob cannot fire.
-  for bundle in $missing; do printf '  %s\n' "$bundle"; done
-  echo "  RigorQuant ${VERSION:-unknown} runs without it. To turn it on, open the harness's"
-  echo "  Plugins page and enable 'Agent Teams' and 'Agent Teams Web UI' (both Beta),"
-  echo "  or add the packages above to dsh.profile.bundles in $manifest."
+}
+
+# Undo exactly what install_agent_teams wrote: the marker block in the
+# profile's user patch, and the bundles it recorded having enabled (never a
+# bundle the operator had already turned on before installing).
+uninstall_agent_teams() {
+  patch_file="$DSH_HOME/profiles/$PROFILE/cordis.patch.yml"
+  [ -f "$patch_file" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  enabled="$(node - "$patch_file" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" <<'NODE'
+const { readFileSync, writeFileSync } = require('node:fs')
+const [patchFile, markBegin, markEnd] = process.argv.slice(2)
+const content = readFileSync(patchFile, 'utf8')
+const begin = content.indexOf(markBegin)
+const end = begin === -1 ? -1 : content.indexOf(markEnd, begin)
+if (begin === -1 || end === -1) process.exit(0)
+const enabledMatch = content.slice(begin, end).match(/^# rq-enabled-bundles:\s*(.*)$/m)
+let rest = content.slice(0, begin) + content.slice(end + markEnd.length)
+rest = rest.replace(/\n{3,}/g, '\n\n')
+// Removing the only block sequence entry can leave a file of nothing but
+// comments, which is not valid YAML on its own; restore the placeholder the
+// profile template ships so the file still parses as the empty array it is.
+if (!/^\s*-\s/m.test(rest.replace(/^#.*$/gm, ''))) rest = rest.replace(/\s+$/, '') + '\n[]\n'
+writeFileSync(patchFile, rest)
+process.stdout.write(enabledMatch ? enabledMatch[1].trim() : '')
+NODE
+  )"
+  echo "Removed the Agent Teams maxMembers override from $patch_file."
+  if [ -n "$enabled" ] && command -v dsh >/dev/null 2>&1; then
+    for bundle in $enabled; do
+      dsh plugin --profile "$PROFILE" remove "$bundle" >/dev/null 2>&1 \
+        && echo "Disabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile (the installer had enabled it)." \
+        || true
+    done
+  fi
 }
 
 # Copy SRC into a staging directory, then atomically swap it into DEST. This
@@ -233,6 +310,7 @@ if [ "$mode" = uninstall ]; then
   rm -rf "$DSH_HOME/skills/arxiv"
   rm -rf "$DSH_HOME/skills/academic-paper-search"
   rm -rf "$DSH_HOME/share/rigorquant"
+  uninstall_agent_teams
   if command -v dsh >/dev/null 2>&1; then
     # Removing the dependency drops it from dsh.profile.bundles in the same
     # reconcile step that added it, so no manifest is left naming a package
@@ -280,6 +358,6 @@ else
   install_plugin
   echo "Installed preset to $DSH_HOME/.agent-presets/rigorquant"
   echo "Installed compute lane to $DSH_HOME/share/rigorquant"
-  report_agent_teams
+  install_agent_teams
   echo "Start a new session and pick the 'RigorQuant' preset in the session picker."
 fi

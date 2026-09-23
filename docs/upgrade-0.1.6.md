@@ -817,6 +817,65 @@ serves every other field.
   inference call for every agent, teammates included, and determines what
   answers the turn regardless of what the roster label reads.
 
+### 3.13 Installer: enable Agent Teams + the `maxMembers` override (2026-09-23, issue #12)
+
+`install.sh` moves from 0.4.2's detect-only report (§4.2 below) to actually
+making the web profile runnable: a full install adds whichever of the two
+optional bundles (`@deepseek-ai/dsh-experimental-agent-team-profile`,
+`…-agent-team-web-profile`) are absent from `dsh.profile.bundles` via `dsh
+plugin --profile <p> add <missing…>` — the same reconcile path
+`install_plugin` already uses for the main package, confirmed live against
+the installed `0.1.6-alpha.2` CLI to lazily initialize a profile (manifest +
+`pnpm-workspace.yaml` + an empty `cordis.patch.yml` template) the first time
+any package is added to it. It then appends the `maxMembers: 64` row
+(§4.2's whole-`config` restatement, `maxTasks`/`maxPendingMessagesPerMember`/
+`maxMessageBytes`/`disposalTimeoutMs` at their shipped defaults) into that
+profile's `cordis.patch.yml`, under a `# >>> dsh-rigorquant BEGIN … >>>` /
+`# <<< dsh-rigorquant END <<<` marker that also records which bundles (if
+any) this run enabled, and prints every line written. A freshly-initialized
+patch file is the bare `[]` the template ships; since a block sequence
+cannot follow a flow-style empty array in the same YAML document, the
+installer replaces that placeholder rather than appending after it.
+`--uninstall` strips the marker block (restoring `[]` if no other patch
+entries remain) and disables only the bundles the block recorded the
+installer having enabled — a bundle the operator had already turned on
+before installing is left alone either way. With no `dsh` on the path the
+whole step is skipped with one warning, the same shape as `install_plugin`'s
+own missing-CLI warning, which is what keeps CI's install smoke test green.
+The identical override row also ships in this package's own `cordis.patch.yml`
+(the bundle patch), a non-insert id-targeted patch effective only when the
+Team layer precedes `dsh-rigorquant` in a profile's bundle order — otherwise
+`cordis-plugin-include`'s own "entry not found" warning fires and the row is
+a no-op, never an error.
+
+- `tests/test_installer_agent_teams.py` (new): a stub `dsh` on PATH answers
+  `--version` and, unlike the version-floor tests' stub, actually reconciles
+  a fake profile's `package.json` on `plugin … add|remove` and logs every
+  call, so the installer's own idempotency and uninstall logic run against
+  real state. Covers: both bundles enabled and every override line both
+  written and printed; a bundle already on before install is left alone and
+  not re-added; a second run adds nothing and calls `dsh plugin … add` for
+  no Team bundle again; `--uninstall` removes the marker, restores valid
+  `[]`, and disables only the installer-enabled bundle while leaving one the
+  operator had already enabled; no `dsh` on PATH warns on stderr and the
+  rest of the install still succeeds.
+- `tests/test_repo_consistency.py`: the stale 0.4.2 "detects, does not
+  write" tests (`test_installer_reports_agent_teams_*`,
+  `test_installer_says_so_when_the_profile_manifest_is_unreadable`) are
+  removed — 0.5.0 does write — and a new
+  `test_the_cap_override_ships_in_the_bundle_patch_too` pins the override
+  row's full `config` in `cordis.patch.yml`.
+- **Verified live against the installed `0.1.6-alpha.2` CLI** (a scratch
+  `DSH_HOME`, real `dsh plugin … add/remove`): the profile template is
+  exactly the assumed `[]` placeholder; the installer's rewrite composes
+  correctly (`dsh --dump-config` shows `maxMembers: 64` on the resulting
+  `@deepseek-ai/dsh-experimental-agent-team` row); a second install is a
+  byte-for-byte no-op; `--uninstall` restores the profile to its
+  pre-install bundle list and a valid `[]` patch file; a bundle enabled
+  before installing survives `--uninstall`; and the bundle-patch override
+  composes as `# == …agent-team-profile, patched by dsh-rigorquant` when the
+  Team bundle precedes `dsh-rigorquant` in `dsh.profile.bundles`.
+
 ---
 
 ## 4. The centrepiece — RigorQuant on Agent Teams

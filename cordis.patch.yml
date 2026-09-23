@@ -77,3 +77,20 @@
     # refusal) are a later issue — this row is composition only.
     - id: rq-team
       name: 'dsh-rigorquant/team'
+
+# Decision 24 cap consistency pin (docs/adr/0001-rigorquant-on-agent-teams.md):
+# the same `maxMembers` override ./install.sh writes into the profile's user
+# patch, restated here so a profile that enables Agent Teams through this
+# package's own bundle patch (rather than through ./install.sh) still gets
+# the raised lifetime cap. A non-insert, id-targeted patch replaces the row's
+# `config` wholesale (`@deepseek-ai/cordis-plugin-include`'s `applyEntryPatches`),
+# so this is a no-op — not an error — everywhere the Team layer is absent,
+# and effective only when it precedes this bundle in the profile's `bundles`
+# order; the loader's own "entry not found" warning fires otherwise.
+- id: agent-team
+  config:
+    maxMembers: 64
+    maxTasks: 256
+    maxPendingMessagesPerMember: 64
+    maxMessageBytes: 65536
+    disposalTimeoutMs: 5000
