@@ -748,20 +748,59 @@ serves every other field.
   `dsh --profile rq11 --dump-config`): both `rq-model-router` and `rq-team`
   rows appear in the composed profile tree under the base's patch layer,
   after `rq-team`'s own package. No mount error.
-- **Live interactive confirmation not completed.** A `dsh --profile rq11
-  headless "…"` run asking the orchestrator to confirm the guard line, then
-  `spawn_teammate` a `doublechecker-2` and wait on it, ran 32 minutes with
-  zero output and wrote no session file at all before being killed — the
-  same account-wide DeepSeek quota exhaustion (`code: 1308`) issue #9's
-  live demo hit (§3.9), this time apparently stalling the run silently
-  instead of surfacing a terminal failure the router's fallback lane could
-  degrade on. Per the user, decided not to re-attempt today; static
-  verification (mount + the full probe/consistency suite above) stands in
-  for it.
+- **First live attempt was a false negative: `dsh headless` cannot compose a
+  preset at all.** A `dsh --profile rq11 headless "…"` run hung 32+ minutes
+  with zero network I/O and no session file. Root cause, found by isolating
+  every mounted row one at a time (disabling `rq-preset-sync`, `rq-activity`,
+  `rq-model-router`, `rq-team` and finally `skill-filesystem-rigorquant` in
+  turn — the hang persisted with *everything* from this package disabled,
+  which ruled out this repo's own code) and by comparing against a
+  from-scratch control profile (`dsh rq11-control --from-default-profile
+  headless`, which answered instantly): the *original* `rq11` had silently
+  initialized from some other default template, not `headless`, because it
+  was created via `dsh plugin --profile rq11 add file:...` without
+  `--from-default-profile headless` — so `dsh --profile rq11 headless "…"`
+  was never selecting the headless runner at all; `headless` and the task
+  text were just stray positional args to whatever app the wrong template
+  boots, which sat waiting for input that never arrives. Separately, reading
+  `packages/bundle/headless/src/index.ts` confirmed the *shipped* headless
+  bundle mounts no `@deepseek-ai/dsh-agent-presets` row at all and explicitly
+  refuses to resume a session already running under a preset ("this bundle
+  composes no preset roster") — so even a correctly-templated headless
+  profile could never exercise the guard/router, which activate only on a
+  session composed as `rigorquant`. Headless mode is structurally the wrong
+  tool for this verification regardless of profile setup.
+- **Live confirmation completed on the actual web app + preset picker**
+  (`rq11w` profile: `web` template + both Team bundles pinned to
+  `0.1.6-alpha.2` + `dsh-rigorquant` from `file:`, `dsh --profile rq11w
+  --port 38117`, driven through Chrome), the same mechanism issues #9/#10
+  used. Selected the **RigorQuant** preset from the mode picker, sent one
+  message asking the Lead to (1) quote any runtime context line naming
+  "RigorQuant team guard" and (2) `spawn_teammate` a `doublechecker-2`,
+  wait, and report its reply:
+  - The Lead located `RigorQuant team guard: armed` in its runtime context
+    (correctly noting the exact string "RigorQuant team guard" as a
+    *subject* appears nowhere — only the guard's own state line — matching
+    §3.9's "not a section" framing) and reported it could not honor a
+    verbatim quote of a line that doesn't exist as asked, reporting the real
+    line instead.
+  - `spawn_teammate` created `doublechecker-2`; it replied `ack` and ended
+    its turn; the Agent Team panel showed it `Inactive`.
+  - **The roster's Model column read `deepseek-flash`** for `doublechecker-2`
+    — confirming the finding above live, on this exact run.
+  - **The teammate's OWN session log tells the true story**: decompressing
+    `doublechecker-2`'s `session.v3.jsonl.zstd` (`parentSession` matching the
+    Lead, `agentPreset: "rigorquant"`) and reading its `assistant/message`
+    event's `data.message.source` gives `{provider: "deepseek-official",
+    model: "deepseek-v4-pro", ...}` with `reasoningEffort: "high"` recorded
+    elsewhere in the same log — exactly the shipped tier matrix, exactly
+    issue #11's own example ("routes doublechecker-2 to deepseek-v4-pro at
+    high effort with no override"). The router's rewrite is real and
+    correct; only the native roster label lags it, precisely as diagnosed.
 - **The roster's per-member Model column will not show the routed model
-  yet**, independent of anything in this repo. Traced against both the
-  source clone and the installed package: the harness's Team roster panel
-  reads `agent.options.model` off the *live* agent object
+  yet**, independent of anything in this repo — now confirmed live, not
+  just by source reading. The harness's Team roster panel reads
+  `agent.options.model` off the *live* agent object
   (`agent-team/src/roster.ts:137,447`) — a value fixed once at the agent's
   construction and `readonly` in the harness's own core types
   (`packages/core/agent-loop/src/agent.ts:99`) — never what
