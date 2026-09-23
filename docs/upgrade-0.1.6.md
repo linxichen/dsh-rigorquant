@@ -592,16 +592,43 @@ blindness were still procedural, not enforced, until this issue.
   target must be the named `LEAD_TARGET` constant equal to `'lead'`, and
   `list_agents`/`team_task_list` must be denied unconditionally (no tier
   narrows that set).
-- Full suite: 338 passed; coverage unchanged at 96.3% (the guard is
+- Full suite: 339 passed; coverage unchanged at 96.3% (the guard is
   JS-side, covered by the Node probe, not the Python coverage gate).
-- **Not yet done live**: the issue's demo line ("a teammate's sibling
-  message and a DoubleChecker's `curl` show as refused in its
-  conversation") needs an interactive session against the installed
-  `0.1.6-alpha.2` profile, the way #9's demo (§3.9) ran. The installed
-  `rq6`/`rq16` profiles' `dsh-rigorquant` plugin is a copy taken from the
-  master checkout at spawn time (`dsh plugin add file:...`), not a link to
-  this worktree, so re-syncing it first is required; deferred rather than
-  spending another live session's quota on it without being asked.
+- **The interactive demo, run for real** on `rq6`: `rq6`'s `dsh-rigorquant`
+  dependency is `file:` this worktree (a pnpm-hardlinked copy, set up under
+  issue #6 specifically so worktree edits reach it), but pnpm's `file:`
+  resolution is content-addressed and does not notice an in-place edit —
+  `pnpm install`/`--force` both reported "Already up to date" against the
+  stale pre-#10 copy. Refreshed by direct `rsync -a --delete` of `dsh/` and
+  `agent-presets/` from the worktree into
+  `~/.dsh/profiles/rq6/node_modules/dsh-rigorquant/`, then booted fresh
+  (`dsh --profile rq6 --no-open --port 38116`; clean log, no `agentTeams
+  absent` warning). A new session (RigorQuant preset, `rigorquant_studies`
+  workspace) was asked to spawn `doublechecker-1` with a brief instructing
+  it to attempt exactly two tool calls and report the raw result of each
+  verbatim, then relay that report unedited. The orchestrator investigated
+  thoroughly first (confirmed via `bash`/session-transcript inspection that
+  the guard was actually armed in its own live session before spawning) and
+  then delivered both:
+  - *Check A* — `send_message(target='explorer-1', message='hello
+    sibling')`: `Error: rq-team: hub-and-spoke — doublechecker-1 may
+    message only the Lead, not 'explorer-1'`.
+  - *Check B* — `bash(command='curl https://example.com', ...)`: `Error:
+    rq-team: doublechecker-1 is web-denied — network command refused: curl
+    https://example.com`.
+
+  Both match the guard's exact denial-message format verbatim, fired
+  against the real installed `0.1.6-alpha.2` harness (not the Node probe
+  fixture). `doublechecker-1` went inactive afterward with no files
+  touched, as instructed. One incidental finding, unrelated to this issue's
+  guard work: the orchestrator's own turn-1 runtime-context snapshot did
+  not yet contain the Lead-side `RigorQuant team guard: armed` line that #9
+  registers — worth a follow-up look at context-registration timing on a
+  session's first turn, but it did not affect the per-call guard checks
+  above, which read the teammate's own live tool-call denial, not that
+  context line. `rq6`/`rq16` were scratch verification profiles, not a
+  daily profile; both were torn down after this demo (server stopped,
+  `~/.dsh/profiles/rq6` and `~/.dsh/profiles/rq16` removed).
 
 ---
 
