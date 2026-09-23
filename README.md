@@ -246,10 +246,11 @@ via the skill's `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian
 ## Role-routed models (rq-model-router)
 
 The bundled plugin gives each RigorQuant role a model + reasoning-effort
-policy, with one fallback per role. The DoubleChecker and adversary tool rows
-use DSH 0.1.2's native `agentOptions` for their shipped primary
-(`deepseek-v4-pro` @ `high`); the router only overlays explicit Settings
-choices and fallback retries. Configure overrides in **Plugins → dsh-rigorquant**
+policy, with one fallback per role. Role identity comes from the teammate's
+Team membership name (`<role>-<n>`; the Lead is the orchestrator) — the
+router carries the shipped tier matrix itself (DoubleChecker and adversary
+default to `deepseek-v4-pro` @ `high`) and overlays an explicit Settings
+choice on top when one is saved. Configure overrides in **Plugins → dsh-rigorquant**
 (the bundle's own page, under its description): only Save writes, the last
 saved selection persists (settings user layer), and leaving the page drops
 staged edits. Shipped defaults:
@@ -263,11 +264,11 @@ staged edits. Shipped defaults:
 On a terminal primary failure (no adapter / HTTP 4xx, including the official
 quota response `1308` / “Usage limit reached”) the role degrades to its
 fallback for one forced retry, and recovers on the next success or after 10
-minutes. Untagged agents (other presets, workflow workers, forks) are never
-touched. The router needs DSH ≥ 0.1.6-alpha.2 (its persona-section constant
-follows the 0.1.3-alpha.2 `deployment:persona-prefix` rename; its card
-registers on the Plugins page's bundle-config slot, which 0.1.6 introduced). Design record:
-[docs/architecture.md](docs/architecture.md) Decision 16.
+minutes. An agent outside a RigorQuant team (another preset, or with no Team
+membership at all) is never touched. The router needs DSH ≥ 0.1.6-alpha.2
+(its card registers on the Plugins page's bundle-config slot, which 0.1.6
+introduced). Design record: [docs/architecture.md](docs/architecture.md)
+Decision 16.
 
 ## Repository layout
 

@@ -215,9 +215,10 @@ boot-sync 行落盘——两者写入的字节一致，最后运行者持有该�
 ## 角色模型路由（rq-model-router）
 
 内置插件为每个 RigorQuant 角色制定模型与推理强度策略，每个角色各有一个
-回退模型。DoubleChecker 与 adversary 的工具行使用 DSH 0.1.2 原生的
-`agentOptions` 提供已发布的主选（`deepseek-v4-pro` @ `high`）；路由器只
-覆盖设置中明确的选择，并处理回退重试。配置入口：**插件 → dsh-rigorquant**
+回退模型。角色身份来自 Team 成员的名字（`<role>-<n>`；Lead 即编排者）——
+路由器自身携带已发布的层级矩阵（DoubleChecker 与 adversary 默认使用
+`deepseek-v4-pro` @ `high`），并在保存了明确的设置选择时将其覆盖在上层。
+配置入口：**插件 → dsh-rigorquant**
 （该 bundle 自己的页面，位于其描述之下）：只有“保存”才会写入，最后一次保存的选择会持久化（写入设置用户层），
 离开页面会丢弃未保存的修改。默认配置：
 
@@ -228,11 +229,10 @@ boot-sync 行落盘——两者写入的字节一致，最后运行者持有该�
 | 根编排者、探索者、离网思考者、文献/文档角色 | 继承（root 跟随聊天框选择器） | — |
 
 主选路由遇到终止性失败（无适配器 / HTTP 4xx；包括官方额度响应
-`1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。未打标签的智能体（其他
-preset、workflow 工作进程、fork 子进程）一律不干预。固定层级子代理行使用原生
-`agentOptions.reasoningEffort`。路由器需要 DSH ≥ 0.1.6-alpha.2
-（其 persona 区段常量跟随 0.1.3-alpha.2 的 `deployment:persona-prefix` 改名；
-其配置卡片注册在插件页的 bundle 配置插槽上，该插槽由 0.1.6 引入）。
+`1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。不属于 RigorQuant 团队的智能体
+（其他 preset，或完全没有 Team 成员身份）一律不受影响。路由器需要
+DSH ≥ 0.1.6-alpha.2（其配置卡片注册在插件页的 bundle 配置插槽上，该插槽由
+0.1.6 引入）。
 设计记录见 [docs/architecture.md](docs/architecture.md) 决策 16。
 
 ## 仓库结构

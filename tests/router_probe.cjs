@@ -1,11 +1,19 @@
 // Exercises dsh/index.js against a small host-context stub.
 //
-// The probe is intentionally centered on the 0.1.2 migration seam:
-// - the native DoubleChecker primary must pass through without an unconditional
-//   agent/request rewrite;
-// - a raw user primary must still override that native route;
-// - a native-primary terminal failure must enter the custom fallback lane;
-// - resetting the user layer must return to the native route.
+// The probe is centered on the Teams migration seam (issue #11): role
+// identity comes ONLY from the team plugin's membership
+// (`ctx.get('agentTeams').tryMembership(agent)`, the same call dsh/team.js
+// resolves composition from) plus the agent's live composed preset — never
+// from history or prompt text. It asserts:
+// - a teammate's role resolves from its Team membership NAME;
+// - the shipped tier matrix (DoubleChecker/adversary) applies on its own,
+//   with no native route to lean on, when there is no override;
+// - an explicit user override wins over that shipped matrix;
+// - the degrade-to-fallback lane still fires on a terminal primary failure;
+// - the orchestrator (the Lead) inherits absent an override, same as any
+//   other unrouted role;
+// - an agent with no membership, or whose live composition is not this
+//   preset, is never touched.
 const fs = require('node:fs')
 const vm = require('node:vm')
 
@@ -81,29 +89,23 @@ async function main() {
   equal(DEFAULT_PRIMARY, SHIPPED_PRIMARY, 'shipped primary')
   equal(DEFAULT_FALLBACK, SHIPPED_FALLBACK, 'shipped fallback')
   const listeners = new Map()
-  const section = {
+  const base = {
     doublecheckerPrimary: clone(DEFAULT_PRIMARY),
     doublecheckerFallback: clone(DEFAULT_FALLBACK),
     adversaryPrimary: clone(DEFAULT_PRIMARY),
     adversaryFallback: clone(DEFAULT_FALLBACK),
   }
+  // The resolved settings section: base merged with whatever the "user" layer
+  // currently holds — `ctx.settings.get()` always resolves live, so the
+  // router needs no separate document-updated listener to see a change.
   let user = {}
   const logs = []
 
-  const ctx = {
-    settings: {
-      register: () => {},
-      get: () => section,
-      describe: () => [{ ns: NS, user: clone(user) }],
-    },
-    logger: { info: (message) => logs.push(message) },
-    on: (name, handler) => {
-      if (!listeners.has(name)) listeners.set(name, [])
-      listeners.get(name).push(handler)
-      return () => {}
-    },
-    get: (name) => (name === 'llm' ? llm : undefined),
-  }
+  // The Team service stub: membership is looked up by agent OBJECT identity,
+  // exactly like the real duck-typed `agentTeams.tryMembership(agent)`.
+  const membershipByAgent = new Map()
+  const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
+  const agentPresetsService = { composedPreset: (agentCtx) => agentCtx.__preset }
 
   // Reasoning-effort surfaces the stub `llm` service reports per exact route —
   // the same metadata the model catalog serves the card from. An empty list is
@@ -125,155 +127,141 @@ async function main() {
     },
   }
 
-  const emit = async (name, ...args) => {
-    for (const handler of listeners.get(name) ?? []) await handler(...args)
+  const ctx = {
+    settings: {
+      register: () => {},
+      get: () => ({ ...base, ...user }),
+    },
+    logger: { info: (message) => logs.push(message) },
+    on: (eventName, handler) => {
+      if (!listeners.has(eventName)) listeners.set(eventName, [])
+      listeners.get(eventName).push(handler)
+      return () => {}
+    },
+    get: (serviceName) => {
+      if (serviceName === 'llm') return llm
+      if (serviceName === 'agentTeams') return teamsService
+      if (serviceName === 'agentPresets') return agentPresetsService
+      return undefined
+    },
   }
-  const waterfall = async (name, payload, resolved) => {
-    const handlers = listeners.get(name) ?? []
-    assert(handlers.length === 1, `${name}: expected one router listener`)
+
+  const emit = async (eventName, ...args) => {
+    for (const handler of listeners.get(eventName) ?? []) await handler(...args)
+  }
+  const waterfall = async (eventName, payload, resolved) => {
+    const handlers = listeners.get(eventName) ?? []
+    assert(handlers.length === 1, `${eventName}: expected one router listener`)
     return handlers[0](payload, async () => resolved)
   }
-  const makeAgent = (id, role) => {
-    const events = [{
-      type: 'subagent/descriptor',
-      data: { persona: `role [[rq:role=${role}]]` },
-    }]
-    return {
-      id,
-      session: {
-        id,
-        // `origin: 'subagent'` is what makes this a child: `parentSession` is
-        // fork lineage and cannot distinguish a forked top-level session.
-        header: { parentSession: 'root-session', agentPreset: NS, origin: 'subagent' },
-        // The current accessor: the session's OWN log, without a fork-inherited
-        // prefix. `snapshotEvents()` remains as the pre-0.1.5 fallback.
-        ownEvents: () => events,
-        snapshotEvents: () => events,
-      },
-      ctx: {
-        get: (name) => (name === 'systemPrompt'
-          ? {
-            // The section name 0.1.3-alpha.2 renamed to; a stale
-            // 'deployment:persona' lookup would return null here.
-            assemble: async () => ({
-              sections: [{ name: 'deployment:persona-prefix', text: `role [[rq:role=${role}]]` }],
-            }),
-          }
-          : undefined),
-      },
-    }
+
+  /** A teammate or the Lead: its Team membership is registered by object
+   *  identity, and its live composed preset lives on `ctx.__preset` — the
+   *  same shape dsh/team.js's own probe uses. */
+  const makeAgent = (id, membership, preset = 'rigorquant') => {
+    const agent = { id, ctx: { __preset: preset } }
+    membershipByAgent.set(agent, membership)
+    return agent
   }
 
   mod.apply(ctx, {
     presetId: 'rigorquant',
     degradeTtlMs: 600000,
-    defaults: section,
+    defaults: base,
   })
 
-  const doublechecker = makeAgent('doublechecker-1', 'doublechecker')
-  const explorer = makeAgent('explorer-1', 'explorer')
-  // A FORKED top-level session: lineage without `origin`. It must resolve the
-  // ROOT role from the live composition / header, never the child probe.
-  const forked = {
-    id: 'fork-1',
-    session: {
-      id: 'fork-1',
-      header: { parentSession: 'upstream-session', agentPreset: 'rigorquant' },
-      ownEvents: () => [],
-    },
-    ctx: { get: () => undefined },
-  }
-  const nativeRoute = clone(DEFAULT_PRIMARY)
+  const doublechecker = makeAgent('doublechecker-1', { role: 'teammate', name: 'doublechecker-1' })
+  const explorer = makeAgent('explorer-1', { role: 'teammate', name: 'explorer-1' })
+  const lead = makeAgent('lead-1', { role: 'lead', name: 'lead' })
+  const placeholderRoute = { provider: 'stale-provider', model: 'stale-model', reasoningEffort: 'medium' }
 
-  // No user primary: the route already resolved by native agentOptions must
-  // pass through unchanged.
+  // ---- Role from the membership name: the shipped matrix applies on its
+  // own, with nothing native to lean on, purely because the membership name
+  // parses to 'doublechecker'. The incoming (resolved) route is a
+  // placeholder that shares nothing with the shipped route, so a pass-through
+  // bug cannot pass this assertion by accident.
   equal(
-    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
-    nativeRoute,
-    'native doublechecker default',
+    await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
+    DEFAULT_PRIMARY,
+    'the shipped matrix applies from the membership name alone',
   )
+
+  // ---- The orchestrator (the Lead) inherits absent an override — same
+  // waterfall, same "no shipped default for this role" rule as any other
+  // unrouted role.
   const inheritedRoute = {
     provider: 'parent-provider', model: 'parent-model', reasoningEffort: 'medium',
   }
   equal(
+    await waterfall('agent/request', { agent: lead }, inheritedRoute),
+    inheritedRoute,
+    'the orchestrator inherits absent an override',
+  )
+  equal(
     await waterfall('agent/request', { agent: explorer }, inheritedRoute),
     inheritedRoute,
-    'inherited explorer route',
+    'a role outside the shipped matrix inherits absent an override',
   )
-  // The root role resolves through the preset id, so an explicit root primary
-  // is applied — proving the forked top-level session was NOT misread as a
-  // child (which would have returned the route untouched).
-  user = { rootPrimary: { provider: 'root-provider', model: 'root-model' } }
-  await emit('settings/document-updated', NS, 99)
-  equal(
-    await waterfall('agent/request', { agent: forked }, inheritedRoute),
-    { provider: 'root-provider', model: 'root-model' },
-    'forked top-level session routes as root',
-  )
-  user = {}
-  await emit('settings/document-updated', NS, 98)
 
-  // A ONE-SHOT child: its own log carries no descriptor, so the role comes
-  // from the LIVE persona section — the path the 0.1.3-alpha.2 rename broke
-  // (a stale 'deployment:persona' lookup returns null and the child silently
-  // loses its routing).
-  const oneShot = makeAgent('oneshot-1', 'doublechecker')
-  oneShot.session.ownEvents = () => []
-  oneShot.session.snapshotEvents = () => []
-  user = { doublecheckerPrimary: { provider: 'oneshot-provider', model: 'oneshot-model' } }
-  await emit('settings/document-updated', NS, 3)
+  // ---- An agent with Team membership but composed under a DIFFERENT preset
+  // is never touched, even though its name parses cleanly.
+  const otherPreset = makeAgent('doublechecker-9', { role: 'teammate', name: 'doublechecker-9' }, 'standard')
   equal(
-    await waterfall('agent/request', { agent: oneShot }, nativeRoute),
-    { provider: 'oneshot-provider', model: 'oneshot-model' },
-    'one-shot role resolved from the live persona section',
+    await waterfall('agent/request', { agent: otherPreset }, inheritedRoute),
+    inheritedRoute,
+    'a teammate composed under another preset is left alone',
   )
-  user = {}
-  await emit('settings/document-updated', NS, 4)
 
-  // A raw user primary is an intentional override. Omitting effort clears the
-  // inherited value, matching the native model-selection contract.
+  // ---- An agent with NO Team membership at all (not a team member) is
+  // never touched either.
+  const noMembership = { id: 'no-membership-1', ctx: { __preset: 'rigorquant' } }
+  equal(
+    await waterfall('agent/request', { agent: noMembership }, inheritedRoute),
+    inheritedRoute,
+    'an agent with no Team membership is left alone',
+  )
+
+  // ---- A user override wins over the shipped matrix.
   user = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model' } }
-  await emit('settings/document-updated', NS, 1)
   equal(
-    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     { provider: 'custom-provider', model: 'custom-model' },
-    'explicit doublechecker override',
+    'a user override wins over the shipped matrix',
   )
 
-  // Resetting the raw user field returns to native agentOptions rather than to
-  // another custom rewrite.
+  // ---- Clearing the override (the card's "reset") returns to the SHIPPED
+  // default, not to a bare "native" absence — there is no native route left
+  // to fall back to under Agent Teams.
   user = {}
-  await emit('settings/document-updated', NS, 2)
   equal(
-    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
-    nativeRoute,
-    'reset doublechecker override',
+    await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
+    DEFAULT_PRIMARY,
+    'reset returns to the shipped default',
   )
 
-  // The native primary still participates in the custom fallback policy. A
-  // terminal failure requests exactly one retry, and the retry uses the
-  // configured fallback route.
+  // ---- The fallback lane: a terminal failure on the shipped primary
+  // requests exactly one retry, and the retry uses the configured fallback.
   const action = await waterfall('agent/request-error', {
     agent: doublechecker,
     provider: DEFAULT_PRIMARY.provider,
     failure: { code: 'NO_ADAPTER', message: 'test failure' },
   }, undefined)
-  equal(action, { kind: 'retry' }, 'native primary failure action')
+  equal(action, { kind: 'retry' }, 'shipped primary failure action')
   equal(
-    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     DEFAULT_FALLBACK,
     'fallback retry route',
   )
   const degradedTo = `degraded to ${SHIPPED_FALLBACK.provider}/${SHIPPED_FALLBACK.model}`
   assert(logs.length === 1 && logs[0].includes(degradedTo), 'fallback log')
 
-  await emit('session/event', doublechecker.session, {
+  await emit('session/event', { id: doublechecker.id }, {
     type: 'assistant/message',
     data: { message: { source: clone(DEFAULT_FALLBACK) } },
   })
   equal(
-    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
-    nativeRoute,
+    await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
+    DEFAULT_PRIMARY,
     'primary restored after fallback success',
   )
 
@@ -287,7 +275,7 @@ async function main() {
   }, undefined)
   equal(quotaAction, { kind: 'retry' }, 'usage-limit fallback action')
   equal(
-    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     DEFAULT_FALLBACK,
     'usage-limit fallback route',
   )
@@ -301,9 +289,8 @@ async function main() {
   // explicit effort. The stored doc-adversary primary keeps its model
   // override but loses the effort; the inherited route's effort was already
   // cleared by applyChoice.
-  const docAdversary = makeAgent('doc-adversary-1', 'doc-adversary')
+  const docAdversary = makeAgent('doc-adversary-1', { role: 'teammate', name: 'doc-adversary-1' })
   user = { 'doc-adversaryPrimary': { provider: 'zai', model: 'glm-5.3-flash', reasoningEffort: 'high' } }
-  await emit('settings/document-updated', NS, 3)
   equal(
     await waterfall('agent/request', { agent: docAdversary }, { provider: 'p', model: 'm', reasoningEffort: 'medium' }),
     { provider: 'zai', model: 'glm-5.3-flash' },
@@ -320,16 +307,15 @@ async function main() {
   assert(logs.length === 3, 'the demotion log fires once per route')
 
   // Restore the doublechecker lane from the quota scenario's degrade state.
-  await emit('session/event', doublechecker.session, {
+  await emit('session/event', { id: doublechecker.id }, {
     type: 'assistant/message',
     data: { message: { source: clone(DEFAULT_FALLBACK) } },
   })
 
   // (c) An effort the model's surface lists is never touched.
   user = { doublecheckerPrimary: { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' } }
-  await emit('settings/document-updated', NS, 4)
   equal(
-    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' },
     'listed effort passes through',
   )
@@ -337,18 +323,16 @@ async function main() {
   // (d) An unresolvable route fails open: the effort rides untouched, and the
   // request path reports the route exactly as it would without the router.
   user = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model', reasoningEffort: 'high' } }
-  await emit('settings/document-updated', NS, 5)
   equal(
-    await waterfall('agent/request', { agent: doublechecker }, nativeRoute),
+    await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     { provider: 'custom-provider', model: 'custom-model', reasoningEffort: 'high' },
     'unknown route fails open',
   )
 
   // (e) A routed role's inherited (passthrough) route is sanitized too: an
   // effort the route does not list drops even without any stored choice.
-  const offgrid = makeAgent('offgrid-1', 'offgrid')
+  const offgrid = makeAgent('offgrid-1', { role: 'teammate', name: 'offgrid-1' })
   user = {}
-  await emit('settings/document-updated', NS, 6)
   equal(
     await waterfall('agent/request', { agent: offgrid }, { provider: 'stub-provider', model: 'stub-model', reasoningEffort: 'max' }),
     { provider: 'stub-provider', model: 'stub-model' },

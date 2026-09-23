@@ -684,6 +684,100 @@ reads it.
   fixed. `rq6` was deleted again afterward.
 - Full suite: 341 passed; coverage unchanged at 96.3%.
 
+### 3.12 Router role-resolution by membership (2026-09-23, issue #11)
+
+`dsh/index.js` stopped reading role identity from the classic
+`[[rq:role=…]]` persona tag entirely: the persona-tag regex, the
+persona-assembly probe (`systemPrompt.assemble` on a one-shot child), and
+the deprecated `ownEvents`/`snapshotEvents` scan are all gone from the
+router. Role now resolves the same way `dsh/team.js` resolves composition —
+`ctx.get('agentTeams').tryMembership(agent)`, the Lead as `root`, every
+other member parsed from its name — gated on the agent's live composed
+preset (`ctx.get('agentPresets').composedPreset(agent.ctx) === presetId`),
+exactly as `dsh/team.js` gates its own installation. Because a Team
+teammate carries no native per-role model row (`spawn_teammate` has no
+`agentOptions`/model field — confirmed against both the source clone and
+the installed package's `.d.ts`), the router now carries the shipped tier
+matrix itself unconditionally (DoubleChecker/adversary → resolved section's
+`{role}Primary`, which is `Config.defaults` under any live Settings
+override) rather than deferring to a native route that no longer exists;
+the former native-versus-user distinction (`NATIVE_PRIMARY`, the raw
+`ctx.settings.describe()` user-section dance) is gone, and a card reset now
+returns to the shipped default through the same resolved-section read that
+serves every other field.
+
+- `tests/router_probe.cjs`: rewritten around a stub `agentTeams`/
+  `agentPresets` pair (membership by object identity, exactly like
+  `tests/team_probe.cjs`'s own stub). Asserts: a teammate's role resolves
+  from its membership name alone (a placeholder "resolved" route with
+  nothing in common with the shipped route proves the router actively
+  supplies it, not a passthrough coincidence); the orchestrator (the Lead)
+  and an unrouted role both inherit absent an override; a teammate composed
+  under a different preset, or with no Team membership at all, is left
+  alone; a user override wins; resetting the override returns to the
+  shipped default; the degrade-to-fallback lane still fires on a terminal
+  primary failure. The pre-existing effort-fallback regression coverage
+  (a route the model's surface refuses, a passthrough route, an
+  unresolvable route) carries over unchanged.
+- `tests/test_repo_consistency.py`: the tag↔row identity test
+  (`test_every_role_persona_carries_its_router_tag`) is retargeted to the
+  activity monitor — the only remaining consumer of the preset's
+  `[[rq:role=…]]` tags, since the router no longer reads them — and the
+  router-specific tag-based identity check
+  (`test_router_roles_cover_the_tagged_roles_exactly`) is deleted outright:
+  its coverage is now redundant with the already-shipped (issue #9)
+  name↔persona identity test
+  (`test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles`),
+  which already pins the router's `ROLES` against `dsh/team.js`'s
+  `TEAMMATE_ROLES` and the persona file set — the correct identity contract
+  now that a teammate's NAME is the role. `test_team_persona_section_name_matches_the_router_constant`
+  (pinned the router's `PERSONA_SECTION` against `dsh/team.js`'s, a
+  constant the router no longer declares) is deleted with it.
+  `test_deprecated_synchronous_history_reads_carry_the_deferral_note` now
+  asserts `dsh/index.js` names neither deprecated accessor at all, and
+  keeps pinning `dsh/activity.js`'s reads (unaffected; retired only when
+  Phase 3 deletes that module). A new
+  `test_router_resolves_role_from_team_membership_only` pins that
+  `dsh/index.js` names `tryMembership`/`agentTeams` and none of the removed
+  tag-era symbols.
+- Full suite: 339 passed, 1 skipped (an unrelated external-network flake —
+  `tests/test_retrieval_boundary.py` hit a 429 from `api.semanticscholar.org`);
+  coverage unchanged at 96.3%.
+- **Confirmed composing on the installed `0.1.6-alpha.2`** (`rq11` profile,
+  Team bundles pinned to `0.1.6-alpha.2` alongside the core install,
+  `dsh --profile rq11 --dump-config`): both `rq-model-router` and `rq-team`
+  rows appear in the composed profile tree under the base's patch layer,
+  after `rq-team`'s own package. No mount error.
+- **Live interactive confirmation not completed.** A `dsh --profile rq11
+  headless "…"` run asking the orchestrator to confirm the guard line, then
+  `spawn_teammate` a `doublechecker-2` and wait on it, ran 32 minutes with
+  zero output and wrote no session file at all before being killed — the
+  same account-wide DeepSeek quota exhaustion (`code: 1308`) issue #9's
+  live demo hit (§3.9), this time apparently stalling the run silently
+  instead of surfacing a terminal failure the router's fallback lane could
+  degrade on. Per the user, decided not to re-attempt today; static
+  verification (mount + the full probe/consistency suite above) stands in
+  for it.
+- **The roster's per-member Model column will not show the routed model
+  yet**, independent of anything in this repo. Traced against both the
+  source clone and the installed package: the harness's Team roster panel
+  reads `agent.options.model` off the *live* agent object
+  (`agent-team/src/roster.ts:137,447`) — a value fixed once at the agent's
+  construction and `readonly` in the harness's own core types
+  (`packages/core/agent-loop/src/agent.ts:99`) — never what
+  `dsh/index.js`'s `agent/request` hook puts on the wire (§3.7 finding 7).
+  `SpawnTeammateRequest` (what `spawn_teammate` accepts) has no model field
+  at all — confirmed unchanged even on `0.1.7-alpha.2` (`npm pack
+  @deepseek-ai/dsh-experimental-agent-team@0.1.7-alpha.2`) — though the
+  lower-level primitive it delegates to (`ctx.subagents.startContinuable`,
+  via `SubagentStartRequest.agentOptions`) already supports exactly this;
+  the Team package's own `roster.spawn()` simply never forwards it. This is
+  the exact gap the spec's "upstream PR for teammate composition
+  pass-through" note already named and put Out of Scope for spec #3. The
+  actual routing is unaffected: `agent/request` fires on every real
+  inference call for every agent, teammates included, and determines what
+  answers the turn regardless of what the roster label reads.
+
 ---
 
 ## 4. The centrepiece — RigorQuant on Agent Teams

@@ -695,8 +695,16 @@ UI flow) left the Lead's guard-armed context and `spawn_teammate` guard
 uninstalled for the session's entire life — teammates are unaffected, since
 a teammate's preset is already settled at spawn time. `dsh/team.js` now
 also re-triggers composition on the harness's `agent-preset/selected` event.
-Router role-resolution by membership is a later issue; the classic mechanism
-coexists with `rq-team` until the preset rows are removed.
+**Router role-resolution by membership shipped under issue #11**
+(`docs/upgrade-0.1.6.md` §3.12): `dsh/index.js` resolves a routed agent's
+role the same way `dsh/team.js` resolves composition — through
+`agentTeams.tryMembership(agent)`, the Lead as `root`, every other member
+by its name — and carries the shipped tier matrix itself, since no native
+per-role model row exists once a teammate is created by `spawn_teammate`.
+The persona-tag regex, the persona-assembly probe, and the deprecated
+synchronous session-event reads are gone from the router; the classic
+per-role delegation rows and `dsh/activity.js` still use the persona tag
+until a later issue removes them.
 
 ## Repo map
 

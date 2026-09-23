@@ -23,11 +23,10 @@
 // the four persists prior composition in the agent's descriptor, so every
 // firing disposes the previous registration (if any) and reinstalls fresh.
 // The persona is registered as a system-prompt SECTION at the harness's own
-// `deployment:persona-prefix` slot (dsh/index.js's PERSONA_SECTION reads the
-// same name) — the same shadowing contract every preset persona already
-// uses. The "RigorQuant team guard: armed" line, in contrast, is a runtime
-// CONTEXT (a distinct harness API from a section — a fact about current
-// operating state, the same family as the harness's own
+// `deployment:persona-prefix` slot — the same shadowing contract every
+// preset persona already uses. The "RigorQuant team guard: armed" line, in
+// contrast, is a runtime CONTEXT (a distinct harness API from a section — a
+// fact about current operating state, the same family as the harness's own
 // SANDBOX_POLICY/APPROVAL_POLICY/SUBAGENT_DELEGATION context entries), not
 // a persona trait, so it is registered via `systemPrompt.context()`, never
 // `.section()`.
@@ -87,9 +86,9 @@ const NAME_PATTERN = new RegExp(`^(${TEAMMATE_ROLES.join('|')})-.+$`)
 
 /**
  * The persona slot's reserved section name (dsh-system-prompt contract) —
- * must equal dsh/index.js's own PERSONA_SECTION constant (pinned by
- * tests/test_repo_consistency.py, since a silent drift would leave a
- * teammate's persona written to a slot nothing reads).
+ * the same `deployment:persona-prefix` slot every preset persona registers
+ * under (pinned by tests/test_repo_consistency.py, since a silent drift
+ * would leave a teammate's persona written to a slot nothing reads).
  */
 const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'
 

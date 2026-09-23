@@ -2,19 +2,27 @@
 //
 // One settings namespace (`rigorquant-models`) maps every RigorQuant role to a
 // primary model and a per-role fallback model, each with its own reasoning
-// effort. DSH 0.1.2's native `agentOptions` supplies the shipped primary for
-// fixed-tier roles (DoubleChecker/adversary); this router rewrites only an
-// explicit user override or an active fallback. The `agent/request` waterfall remains
-// the small policy overlay that makes live settings and fallback possible.
+// effort. No native per-role model row remains under Agent Teams — a
+// teammate is created by `spawn_teammate`, which carries no model choice at
+// all — so this router carries the shipped tier matrix itself
+// (`DEFAULT_PRIMARY`/`DEFAULT_FALLBACK`, resolved through the settings
+// section like any other field) and overlays a live Settings override on top
+// of it. The `agent/request` waterfall remains the small policy overlay that
+// makes live settings and fallback possible.
 //
-// Role identity comes from the preset itself: every role persona in
-// agent-presets/rigorquant/agent.cordis.yml carries a machine-readable tag
-// `[[rq:role=<role>]]`. Continuable children persist the persona in their
-// first `subagent/descriptor` event; one-shot (foreground) children carry it
-// only in their live system prompt, so the fallback probe assembles the
-// child's prompt once and reads the persona section. Children without a tag
-// (fork, workflow workers, ralph rounds) and sessions on other presets are
-// never touched: they keep the chatbox/parent model exactly as before.
+// Role identity (docs/architecture.md Decision 24, amending Decision 23):
+// the teammate's NAME is the role. Every agent's Team membership is read
+// duck-typed off the optional `agentTeams` service
+// (`ctx.get('agentTeams').tryMembership(agent)`, the same call
+// `dsh/team.js` resolves composition from) — the Lead is the orchestrator
+// (`root`); every other member's role is parsed from its name
+// (`<role>-<n>`). An agent with no membership, or whose live composition is
+// not this preset, is never touched: it keeps the chatbox/parent model
+// exactly as before. The classic persona-tag regex, the persona-assembly
+// probe that read a one-shot child's live prompt section, and the
+// deprecated synchronous session-event reads that found a continuable
+// child's descriptor are gone — nothing here reads history or prompt text
+// to find a role anymore.
 //
 // Degrade lane: when the primary route of a routed role fails terminally
 // (no adapter, or an HTTP 4xx the route cannot recover from), the listener
@@ -32,10 +40,6 @@
 // governs and the stored choice's model override stays intact. A route whose
 // metadata cannot be resolved fails open — the request path reports it
 // exactly as before.
-//
-// The `root` role applies ONLY to sessions without a parentSession: a spawned
-// workflow worker or ralph child also runs under the rigorquant preset, but it
-// is not the root and inherits its route.
 
 import z from '@deepseek-ai/schemastery'
 
@@ -44,14 +48,6 @@ const inject = ['settings']
 
 /** Settings namespace served to the Plugins configuration tab. */
 const NS = 'rigorquant-models'
-/** Persona tag the preset stamps into every role persona. */
-const TAG = /\[\[rq:role=([a-z-]+)\]\]/
-/** The persona slot's reserved section name (dsh-system-prompt contract).
- *
- * 0.1.3-alpha.2 split the single persona section into a prefix and a suffix
- * and deleted `deployment:persona`; the per-child persona `dsh-subagent`
- * installs registers under this same name too. */
-const PERSONA_SECTION = 'deployment:persona-prefix'
 /** Every routable role, in card order. */
 export const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 /** Tool row → role, for the repo-consistency test and the docs to stay honest. */
@@ -63,6 +59,26 @@ export const ROLE_TOOLS = {
   'lit-line': 'subagent_lit_line',
   'lit-adversary': 'subagent_lit_adversary',
   'doc-adversary': 'subagent_document_adversary',
+}
+/** Every teammate role, i.e. `ROLES` minus the Lead-only `root` — the same
+ *  set `dsh/team.js`'s `TEAMMATE_ROLES` names. Declared here rather than
+ *  imported: `dsh/client.js`'s browser bundle carries the same set as a
+ *  third independent copy and structurally cannot import either Node
+ *  module, so every surface already owns its own copy pinned equal by
+ *  tests/test_repo_consistency.py — importing here would leave two of
+ *  three surfaces sharing source and one not, for no behavioural gain. */
+const TEAMMATE_ROLES = ROLES.filter((role) => role !== 'root')
+/** Teammate name convention: `<role>-<suffix>`, e.g. `doublechecker-1` — the
+ *  same contract `dsh/team.js`'s `NAME_PATTERN` parses membership by. */
+const NAME_PATTERN = new RegExp(`^(${TEAMMATE_ROLES.join('|')})-.+$`)
+
+/** Parse a teammate's role from its Team membership name, or `null` when it
+ *  doesn't parse (an unparseable name should already have been refused at
+ *  `spawn_teammate` by `dsh/team.js`'s Lead guard; this is defense in depth,
+ *  not the enforcement point). */
+function roleFromName(teammateName) {
+  const match = typeof teammateName === 'string' ? NAME_PATTERN.exec(teammateName) : null
+  return match !== null ? match[1] : null
 }
 
 const choiceSchema = z.object({
@@ -85,14 +101,6 @@ const SettingsSchema = z.object(Object.fromEntries(
 // (efforts off|low|high|max), the flash tier the 0.1.6 default catalog lists.
 const DEFAULT_PRIMARY = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' })
 const DEFAULT_FALLBACK = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'low' })
-
-// These fixed-tier defaults are also declared on the corresponding native
-// tool-subagent rows. Keeping the map here lets the fallback policy recognize
-// a failure of the native route without rewriting that route on every request.
-const NATIVE_PRIMARY = Object.freeze({
-  doublechecker: DEFAULT_PRIMARY,
-  adversary: DEFAULT_PRIMARY,
-})
 
 const Config = z.object({
   presetId: z.string().default('rigorquant'),
@@ -134,36 +142,6 @@ function routeFatal(failure) {
   return failure.code === '1308' && /usage limit reached/i.test(String(failure.message ?? ''))
 }
 
-function tagRole(text) {
-  const match = typeof text === 'string' ? TAG.exec(text) : null
-  return match !== null && ROLES.includes(match[1]) ? match[1] : null
-}
-
-/** Whether a session header describes a subagent child.
- *
- * `origin: 'subagent'` is the durable discriminator the harness itself uses
- * (`hasApiSessionSubagentOwner`), and the session-header validator rejects any
- * other value. `parentSession` is deliberately NOT consulted: it is fork
- * LINEAGE, so a forked top-level session carries it while staying
- * root-eligible. */
-function isChildHeader(header) {
-  return header?.origin === 'subagent'
-}
-
-/** The session's OWN event log: `ownEvents()` (0.1.5+) excludes the
- * fork-inherited prefix that `snapshotEvents()` includes, so an ancestor's
- * descriptor can never be adopted as this child's role.
- *
- * @deprecated Both accessors are deprecated as of 0.1.6 (synchronous session
- * event reads). Existing logic may remain unmigrated for now, but new calls
- * are prohibited — which is why every read in this module goes through this
- * one helper. The reads disappear with the classic mechanism: under Agent
- * Teams a role comes from the teammate's name, which the membership carries
- * durably and no log scan can miss. */
-function ownEventsOf(session) {
-  return typeof session.ownEvents === 'function' ? session.ownEvents() : session.snapshotEvents()
-}
-
 /** Apply a live override/fallback while clearing an inherited effort. */
 function applyChoice(resolved, choice) {
   const { reasoningEffort: _inheritedEffort, ...withoutInheritedEffort } = resolved
@@ -181,8 +159,6 @@ function apply(ctx, config) {
   // Registers fiber-scoped: stopping this plugin unregisters the namespace.
   ctx.settings.register(NS, SettingsSchema, { base: config.defaults, applies: 'live' })
 
-  /** sessionId → role | null (null = resolved, not routable). */
-  const roles = new Map()
   /** sessionId → { role, until, provider, model } while degraded. */
   const degraded = new Map()
   /** The exact resolved request route, for error-to-primary attribution. */
@@ -249,44 +225,15 @@ function apply(ctx, config) {
     const value = section()?.[`${role}${slot}`]
     return isChoice(value) ? value : null
   }
+  // Both slots read the same resolved (defaults-then-user) section: no
+  // native route exists to shadow, so a reset simply falls back to whatever
+  // `Config.defaults` states for that field (the shipped tier matrix for
+  // DoubleChecker/adversary, absent — inherit — for every other role).
+  const primaryFor = (role) => choiceFor(role, 'Primary')
+  const fallbackFor = (role) => choiceFor(role, 'Fallback')
 
-  // `settings.get()` is the resolved section, so it cannot distinguish a
-  // user override from the composition base. That distinction matters now:
-  // the DoubleChecker/adversary rows carry their shipped primary through native
-  // `agentOptions`; the router must not rewrite those native requests on every
-  // step. Keep a detached raw user section and refresh it on every document
-  // change, including a reset whose resolved value happens to stay equal to
-  // the base.
-  let userSection = {}
-  const refreshUserSection = () => {
-    try {
-      const descriptor = ctx.settings.describe().find((entry) => entry.ns === NS)
-      userSection = isRecord(descriptor?.user) ? descriptor.user : {}
-    } catch {
-      // A transient description failure should fail open to native/parent
-      // routing, never strand an agent on a stale custom choice.
-      userSection = {}
-    }
-  }
-  refreshUserSection()
-  ctx.on('settings/document-updated', (namespace) => {
-    if (namespace === NS) refreshUserSection()
-  })
-
-  const userChoiceFor = (role, slot) => {
-    const value = userSection[`${role}${slot}`]
-    return isChoice(value) ? value : null
-  }
-  const nativePrimaryFor = (role) => NATIVE_PRIMARY[role] ?? null
-  const fallbackFor = (role) => userChoiceFor(role, 'Fallback') ?? choiceFor(role, 'Fallback')
-
-  // Descriptor events arrive after our listener exists for continuable
-  // children; the events scan below covers cold-resumed ones.
   ctx.on('session/event', (session, event) => {
-    if (event.type === 'subagent/descriptor') {
-      const role = tagRole(event.data?.persona)
-      if (role !== null) roles.set(session.id, role)
-    } else if (event.type === 'assistant/message') {
+    if (event.type === 'assistant/message') {
       const d = degraded.get(session.id)
       const source = event.data?.message?.source
       if (d !== undefined && source !== undefined
@@ -297,76 +244,35 @@ function apply(ctx, config) {
     }
   })
   ctx.on('session/disposed', (session) => {
-    roles.delete(session.id)
     degraded.delete(session.id)
     requested.delete(session.id)
   })
   ctx.on('agent/disposed', ({ agent }) => {
-    roles.delete(agent.id)
     degraded.delete(agent.id)
     requested.delete(agent.id)
   })
-  // A session that switches preset must be re-resolved (either direction).
-  ctx.on('agent-preset/selected', (sessionId, agentPreset) => {
-    if (agentPreset === config.presetId) {
-      if (roles.get(sessionId) === null) roles.delete(sessionId)
-    } else {
-      roles.delete(sessionId)
-    }
-  })
 
-  /** One-shot children keep their persona only in the live prompt scope. */
-  async function probePersonaRole(agent) {
-    try {
-      const systemPrompt = agent.ctx.get('systemPrompt')
-      if (systemPrompt === undefined) return null
-      const assembly = await systemPrompt.assemble({ agent, scope: agent })
-      const persona = (assembly.sections ?? []).find((s) => s.name === PERSONA_SECTION)
-      return tagRole(persona?.text)
-    } catch {
-      return null
-    }
-  }
-
-  async function resolveRole(agent) {
-    const id = agent.id
-    if (roles.has(id)) return roles.get(id)
-    const header = agent.session.header
-    // The establishing provider appends exactly one descriptor; it is early,
-    // but a continuable child's lineage seed can push it past the head. The
-    // scan runs over the session's OWN log, so a fork-inherited ancestor
-    // descriptor cannot be adopted as this child's role.
-    const events = ownEventsOf(agent.session)
-    for (let i = 0; i < Math.min(events.length, 64); i += 1) {
-      const event = events[i]
-      if (event.type === 'subagent/descriptor') {
-        const role = tagRole(event.data?.persona)
-        if (role !== null) {
-          roles.set(id, role)
-          return role
-        }
-        break
-      }
-    }
-    // A child (descriptor without a tag, or none yet) is never the root role.
-    if (isChildHeader(header)) {
-      const role = await probePersonaRole(agent)
-      roles.set(id, role)
-      return role
-    }
-    // The live composition is authoritative. `header.agentPreset` records the
-    // preset the session STARTED with and keeps that value through a picker
-    // switch — dsh-agent-presets: "Reconstruction reads the `agentPreset`
-    // Session projection, never the header alone" — so it is only a fallback.
-    const preset = ctx.get('agentPresets')?.composedPreset(agent.ctx) ?? header.agentPreset
-    const role = preset === config.presetId ? 'root' : null
-    roles.set(id, role)
-    return role
+  /** The teammate's role, resolved purely from its Team membership — never
+   *  from history or prompt text. `agentTeams` is optional and reached
+   *  duck-typed, the same contract `dsh/team.js` mounts against; absent
+   *  (Agent Teams not enabled) or no membership (not a team member, e.g. a
+   *  classic fork/workflow child) both mean "not routable" here. The Lead is
+   *  the orchestrator (`root`); every other member's role comes from its
+   *  name. Only agents whose LIVE composition is this preset are touched —
+   *  a Lead or teammate of some other team is left alone. */
+  function resolveRole(agent) {
+    const teams = ctx.get('agentTeams')
+    if (teams === undefined) return null
+    const membership = teams.tryMembership(agent)
+    if (membership === undefined) return null
+    const inRigorQuant = ctx.get('agentPresets')?.composedPreset(agent.ctx) === config.presetId
+    if (!inRigorQuant) return null
+    return membership.role === 'lead' ? 'root' : roleFromName(membership.name)
   }
 
   ctx.on('agent/request', async (payload, next) => {
     const resolved = await next()
-    const role = await resolveRole(payload.agent)
+    const role = resolveRole(payload.agent)
     if (role === null || role === undefined) return resolved
     const agentId = payload.agent.id
     const remember = (route) => {
@@ -378,7 +284,7 @@ function apply(ctx, config) {
     if (active) {
       const fallback = fallbackFor(role)
       // A live settings edit can remove a fallback while a retry is pending.
-      // Do not keep forcing an absent route; let the native/parent route run.
+      // Do not keep forcing an absent route; let the inherited route run.
       if (fallback === null) {
         degraded.delete(agentId)
         return remember(await withSupportedEffort(resolved))
@@ -388,20 +294,22 @@ function apply(ctx, config) {
       return remember(await withSupportedEffort(applyChoice(resolved, fallback)))
     }
 
-    // A role's fixed shipped default is supplied by the native tool's
-    // `agentOptions`. Only an explicit user primary override belongs in this
-    // waterfall; otherwise the resolved native/parent route is authoritative.
-    const override = userChoiceFor(role, 'Primary')
+    // The resolved primary is the shipped tier matrix merged with any live
+    // Settings override (`ctx.settings.get()` already resolves defaults
+    // under the user layer); a role with neither (every role but
+    // DoubleChecker/adversary, absent an override) inherits the resolved
+    // route untouched.
+    const primary = primaryFor(role)
     return remember(await withSupportedEffort(
-      override === null ? resolved : applyChoice(resolved, override),
+      primary === null ? resolved : applyChoice(resolved, primary),
     ))
   })
 
   ctx.on('agent/request-error', async (payload, next) => {
     const action = await next()
-    const role = await resolveRole(payload.agent)
+    const role = resolveRole(payload.agent)
     if (role === null || role === undefined) return action
-    const primary = userChoiceFor(role, 'Primary') ?? nativePrimaryFor(role)
+    const primary = primaryFor(role)
     const fallback = fallbackFor(role)
     if (primary === null || fallback === null) return action
     const agentId = payload.agent.id
@@ -409,9 +317,9 @@ function apply(ctx, config) {
     if (d !== undefined && d.role === role && d.until > Date.now()) return action
     if (!routeFatal(payload.failure)) return action
     // Only degrade failures on OUR route: compare against the exact route
-    // resolved for this request, not merely the static native-default map.
-    // This keeps an unrelated picker route out of the fallback lane while
-    // correctly covering native agentOptions and user overrides alike.
+    // resolved for this request, not merely the static defaults. This keeps
+    // an unrelated picker route out of the fallback lane while correctly
+    // covering the shipped matrix and a user override alike.
     const route = requested.get(agentId)
     if (route === undefined || route.role !== role
       || route.model !== primary.model || route.provider !== payload.provider) return action

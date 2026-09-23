@@ -148,10 +148,10 @@ def test_preset_persona_row_uses_the_prefix_suffix_split():
     assert "name: '@deepseek-ai/dsh-persona'" in composition
     assert "    prefix: >-" in composition
     assert "text: >-" not in composition
-    # The router resolves a child's role from the LIVE persona section, so its
-    # constant has to follow the rename.
-    router = (REPO / "dsh/index.js").read_text()
-    assert "const PERSONA_SECTION = 'deployment:persona-prefix'" in router
+    # dsh/team.js (not dsh/index.js — the router stopped reading persona
+    # sections in issue #11) writes a teammate's persona to this same slot.
+    team = (REPO / "dsh/team.js").read_text()
+    assert "const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'" in team
 
 
 FLOOR = "0.1.6-alpha.2"
@@ -433,8 +433,12 @@ def test_deprecated_synchronous_history_reads_carry_the_deferral_note():
     """0.1.6 deprecated the synchronous session-event reads.
 
     Upstream's policy is "existing logic may remain unmigrated for now, but
-    new calls are prohibited", so 0.4.2 keeps its reads (role identity moves
-    to the teammate name in 0.5.0) and says so where they are.
+    new calls are prohibited". Issue #11 finished the migration on the
+    router's side (role identity moved to the teammate name): dsh/index.js
+    no longer names either deprecated accessor at all. dsh/activity.js is
+    the classic activity monitor and keeps its reads — retired only when
+    Phase 3 deletes the module outright — so it still carries the deferral
+    note.
 
     Two counts, because either one alone is a hole. The accessors must appear
     ONLY inside the module's one `ownEventsOf` helper — otherwise a direct
@@ -443,27 +447,53 @@ def test_deprecated_synchronous_history_reads_carry_the_deferral_note():
     as `ownEventsOf(agent.session)`, which leaves the accessor count at two
     and would otherwise sail through.
     """
-    helper_calls = {"index.js": 1, "activity.js": 2}
-    for path in (REPO / "dsh/index.js", REPO / "dsh/activity.js"):
-        source = path.read_text()
-        accessors = re.findall(r"session\??\.(?:ownEvents|snapshotEvents)\(", source)
-        assert len(accessors) == 2, (
-            "%s names the deprecated accessors %d times; they belong in the "
-            "one ownEventsOf helper (which names both) and nowhere else"
-            % (path.name, len(accessors)))
-        # `- 1` drops the declaration itself; what is left are the read sites.
-        reads = len(re.findall(r"\bownEventsOf\(", source)) - 1
-        assert reads == helper_calls[path.name], (
-            "%s reads session history at %d sites, not %d; the deprecated "
-            "accessors take no new callers" % (path.name, reads,
-                                               helper_calls[path.name]))
-        # A JSDoc block wraps and prefixes each line with `*`; the sentence is
-        # what is pinned, not where it breaks.
-        prose = " ".join(" ".join(
-            re.sub(r"^\s*\*", "", line) for line in source.splitlines()).split())
-        assert "new calls are prohibited" in prose, (
-            "%s reads a deprecated accessor without the deferral note"
-            % path.name)
+    router_source = (REPO / "dsh/index.js").read_text()
+    assert not re.search(r"session\??\.(?:ownEvents|snapshotEvents)\(", router_source), (
+        "dsh/index.js still reads session history directly; role identity "
+        "comes from the Team membership name now (issue #11)")
+    assert "ownEventsOf" not in router_source, (
+        "dsh/index.js still names the deprecated-accessor helper")
+
+    path = REPO / "dsh/activity.js"
+    source = path.read_text()
+    accessors = re.findall(r"session\??\.(?:ownEvents|snapshotEvents)\(", source)
+    assert len(accessors) == 2, (
+        "%s names the deprecated accessors %d times; they belong in the "
+        "one ownEventsOf helper (which names both) and nowhere else"
+        % (path.name, len(accessors)))
+    # `- 1` drops the declaration itself; what is left are the read sites.
+    reads = len(re.findall(r"\bownEventsOf\(", source)) - 1
+    assert reads == 2, (
+        "%s reads session history at %d sites, not 2; the deprecated "
+        "accessors take no new callers" % (path.name, reads))
+    # A JSDoc block wraps and prefixes each line with `*`; the sentence is
+    # what is pinned, not where it breaks.
+    prose = " ".join(" ".join(
+        re.sub(r"^\s*\*", "", line) for line in source.splitlines()).split())
+    assert "new calls are prohibited" in prose, (
+        "%s reads a deprecated accessor without the deferral note"
+        % path.name)
+
+
+def test_router_resolves_role_from_team_membership_only():
+    """Issue #11: the router's only source of role identity is the team
+    plugin's membership — never a persona tag, an assembled prompt, or a
+    session event.
+
+    A regression here would be a role silently resolving again from prompt
+    text or history, exactly the drift Decision 24's "identity by name"
+    retired.
+    """
+    router = (REPO / "dsh/index.js").read_text()
+    assert "tryMembership" in router, (
+        "dsh/index.js must resolve role through the team plugin's membership")
+    assert "agentTeams" in router, (
+        "dsh/index.js must reach the team service by its duck-typed name"
+    )
+    for gone in ("[[rq:role=", "TAG.exec", "systemPrompt.assemble", "PERSONA_SECTION"):
+        assert gone not in router, (
+            "dsh/index.js still names %r; role identity must come only from "
+            "the Team membership name" % gone)
 
 
 def _preset_blocks(preset):
@@ -473,10 +503,15 @@ def _preset_blocks(preset):
 
 
 def test_every_role_persona_carries_its_router_tag():
-    """The model router identifies roles by [[rq:role=X]] in the persona.
+    """The classic per-role delegation rows still identify roles by
+    [[rq:role=X]] in the persona — the model router itself stopped reading
+    this tag in issue #11 (role identity now comes from the Team membership
+    name), but the activity monitor (dsh/activity.js) still does, and these
+    classic rows persist until a later issue removes them.
 
-    A persona that loses its tag silently falls back to the session model —
-    the DoubleChecker running on flash is exactly the failure this pins out.
+    A persona that loses its tag silently falls back to the session model in
+    the activity monitor's own labeling — the DoubleChecker mislabeled as
+    unknown is exactly the failure this pins out.
     """
     roles = {
         "tool-subagent-explorer": "explorer",
@@ -646,7 +681,8 @@ def test_team_guard_enforces_the_same_hub_and_spoke_the_pillbox_map_draws():
 
 
 def test_router_native_defaults_overrides_and_fallback_round_trip():
-    """The host router leaves native defaults alone but keeps its policy overlay."""
+    """The host router resolves roles by Team membership and routes the
+    shipped tier matrix, a user override, and the fallback lane correctly."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required to execute the router probe")
@@ -670,31 +706,17 @@ def test_router_native_defaults_overrides_and_fallback_round_trip():
         "the passthrough route must be sanitized too")
 
 
-def test_router_roles_cover_the_tagged_roles_exactly():
-    """dsh/index.js ROLES must match the roles the preset can tag.
-
-    The router routes a tag it does not know nowhere, and a role it names but
-    no persona tags is a silent dead setting — both are drift this catches.
-    """
-    import pathlib
-
-    router = (pathlib.Path(__file__).resolve().parents[1] / "dsh" / "index.js").read_text()
-    match = re.search(r"export const ROLES = \[([^\]]*)\]", router)
-    assert match, "dsh/index.js no longer exports its ROLES list"
-    declared = set(re.findall(r"'([a-z-]+)'", match.group(1)))
-    preset = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
-    tagged = set(re.findall(r"\[\[rq:role=([a-z-]+)\]\]", preset))
-    assert declared == tagged | {"root"}, (
-        "router ROLES %s != tagged roles %s + root" % (sorted(declared), sorted(tagged)))
-
-
 def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
     """dsh/team.js's TEAMMATE_ROLES, dsh/personas/*.md, and dsh/index.js's
     ROLES (minus 'root') must name exactly the same seven roles.
 
     Drift in any one silently strands a teammate without composition (a
     role dsh/team.js doesn't know) or a persona file nobody reads (a role
-    dsh/team.js knows but no file backs).
+    dsh/team.js knows but no file backs). This is also the router's own
+    identity contract since issue #11: role resolution comes from the
+    teammate NAME now, not a preset tag, so this name↔persona identity check
+    is what pins the router's ROLES list correct (replacing the former
+    tag↔row identity test against the preset's `[[rq:role=…]]` tags).
     """
     router = (REPO / "dsh" / "index.js").read_text()
     router_match = re.search(r"export const ROLES = \[([^\]]*)\]", router)
@@ -717,18 +739,6 @@ def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
         text = (persona_dir / f"{role}.md").read_text()
         assert text.lstrip().startswith(f"# Role: {role}"), (
             f"{role}.md must state its own role name up front")
-
-
-def test_team_persona_section_name_matches_the_router_constant():
-    """dsh/team.js writes the persona to the same section dsh/index.js reads.
-
-    A silent rename on either side would write a teammate's persona to a
-    slot nothing reads, or read a slot rq-team never writes.
-    """
-    router = (REPO / "dsh" / "index.js").read_text()
-    team = (REPO / "dsh" / "team.js").read_text()
-    assert "const PERSONA_SECTION = 'deployment:persona-prefix'" in router
-    assert "const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'" in team
 
 
 def _shipped_route(slot):
