@@ -38,17 +38,17 @@ SERVICE_PROVIDERS = {
     "remote.session": "@deepseek-ai/dsh-api-session-controller",
     "remote.settings": "@deepseek-ai/dsh-api-remotes",
     "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
-    "sessions": "@deepseek-ai/dsh-api-session-controller",
 }
 # The card registers into the Plugins page's `plugins.bundle.config` ring,
-# keyed by this bundle's package name; the activity floater registers into the
-# root-scoped `shell.overlay` ring declared by ui-layout (both additive seats —
-# a replacement would shadow the shell). 0.1.6 retired `settings.plugin.item`:
-# a card registered there renders nowhere, silently.
-RINGS = ["plugins.bundle.config", "shell.overlay"]
-CARDS = [PLUGIN_ID, "rigorquant-activity"]
+# keyed by this bundle's package name; the move pill registers into the
+# per-session `conversation.session.header.utilities` ring declared by
+# ui-conversation (both additive list seats — a replacement would shadow the
+# shell). 0.1.6 retired `settings.plugin.item`: a card registered there
+# renders nowhere, silently.
+RINGS = ["plugins.bundle.config", "conversation.session.header.utilities"]
+CARDS = [PLUGIN_ID, "rigorquant-move"]
 RETIRED_RING = "settings.plugin.item"
-RING_OWNER = "@deepseek-ai/dsh-client-ui-plugin-manager"
+RING_OWNERS = ["@deepseek-ai/dsh-client-ui-plugin-manager", "@deepseek-ai/dsh-client-ui-conversation"]
 
 
 def manifest():
@@ -140,7 +140,8 @@ def test_apply_mounts_both_rings(verdict):
     """Registering is necessary, not sufficient: apply must survive mount.
 
     The plugin contributes the routing card (plugins.bundle.config) AND the
-    live activity floater (shell.overlay). Both are additive list/keyed seats.
+    move pill (conversation.session.header.utilities). Both are additive
+    list/keyed seats.
     """
     assert "mountError" not in verdict, verdict.get("mountError")
     assert verdict["mounted"]
@@ -172,48 +173,52 @@ def test_the_retired_settings_slot_is_gone(verdict):
     assert verdict["retiredSettingsSlotReferences"] == 0
 
 
-def test_activity_floater_renders_null_while_no_lab_runs(verdict):
-    """The floater is a second registration; it must mount and render hidden.
+def test_move_pill_renders_null_without_a_team_view(verdict):
+    """No `agentTeam` projection — no team running, or the bundle not mounted.
 
-    With an empty host snapshot (no RigorQuant session running), the panel
-    renders null — no phantom widget — and must not crash at render time.
+    Both read identically: the pill is an optional data read (`useSessions`
+    off a session projection), not a service injection, so there is nothing
+    to guard and no separate "absent" code path to get wrong.
     """
-    assert verdict["overlayRendered"] is True
-    assert "overlayRenderError" not in verdict, verdict.get("overlayRenderError")
-    assert verdict["overlayTree"] is None
+    assert verdict["pillRenderedAbsent"] is True
+    assert "pillRenderError" not in verdict, verdict.get("pillRenderError")
+    assert verdict["pillNullWithoutTeam"] is True
 
 
-def test_activity_floater_scopes_to_the_current_session(verdict):
-    """The floater follows the current session, never other sessions' labs.
+def test_move_pill_derives_the_shallowest_incomplete_move(verdict):
+    """The move is the first incomplete layer of the task DAG, not a heuristic.
 
-    With two labs in the store but a current session that is not one of them,
-    the panel renders null; when the current session is a lab, it renders.
+    The probe's board has a COMPLETED Fan-out task and a PENDING Ground-truth
+    task blocked on it (plus a dangling `blockedBy` edge to a task not in the
+    list, which must be ignored rather than crash): the move must read as
+    Ground-truth, the shallowest layer that still has work outstanding, never
+    the completed layer beneath it.
     """
-    assert verdict["scopeMismatchNull"] is True
-    assert verdict["scopeMatchRendered"] is True
+    assert "pillRenderError" not in verdict, verdict.get("pillRenderError")
+    assert verdict["pillRendered"] is True
+    assert verdict["pillMoveText"] == "move.ground-truth", verdict.get("pillMoveText")
 
 
-def test_activity_floater_resolves_the_main_view_session_from_retain_info(verdict):
-    """The main-view session comes from the retain-info scan, not a `current` field.
+def test_move_pill_shows_a_badge_only_for_running_teammates(verdict):
+    """A portrait per running role — never the Lead, never an idle teammate.
 
-    0.1.6 made client sessions references: the list is `{ids, byId, ...}` and
-    which session the main view holds is answered per id by
-    `sessions.retainInfo(id).retainedBy.mainView` — the check the harness's
-    own team UI makes. The probe's list has no `current`; after the poller's
-    first poll the store must name the session the stub retains for the main
-    view, the panel must render for that lab, and moving the main view to a
-    non-lab session must empty the panel (and back).
+    The probe's board has one RUNNING teammate (doublechecker-1), one INACTIVE
+    teammate (explorer-1), and the Lead itself (role 'lead', always excluded).
+    Exactly one badge must appear, titled with the role label and the
+    teammate's own name.
     """
-    assert "floaterSessionError" not in verdict, verdict.get("floaterSessionError")
-    result = verdict["floaterSession"]
-    assert result["fetches"] >= 1, "the poller never polled: the session scan was not exercised"
-    assert result["status"] == "ready", result
-    assert result["resolved"] == "lab-current", result
-    assert result.get("renderError") is None, result.get("renderError")
-    assert result["rendered"] is True, result
-    assert result["afterMove"] == "unrelated", result
-    assert result["afterMoveNull"] is True, result
-    assert result["afterReturn"] == "lab-current", result
+    assert verdict["pillBadgeTitles"] == ["DoubleChecker — doublechecker-1"], verdict.get("pillBadgeTitles")
+
+
+def test_move_pill_resolves_the_lead_session_from_a_teammate_header(verdict):
+    """Opening a teammate shows the same pill, not a blank one.
+
+    A teammate's own Session carries `subagent.address.parentSessionId`; the
+    pill must resolve THAT Session's `agentTeam` projection, exactly the way
+    the Team package's own header action does
+    (client-ui-agent-team/TeamAction.tsx).
+    """
+    assert verdict["pillFromTeammateRendered"] is True
 
 
 def test_nothing_reads_a_current_session_field(verdict):
@@ -229,18 +234,15 @@ def test_nothing_reads_a_current_session_field(verdict):
         "no such field on 0.1.6 and the read is silent")
 
 
-def test_dodge_stylesheet_lives_with_the_effects(verdict):
-    """The docked panel's dodge rule mounts with the plugin and leaves with it.
+def test_fiber_unload_runs_every_disposer_cleanly(verdict):
+    """A fiber unload must not throw, even with nothing left to clean up.
 
     `ctx.effect` runs its body at once and keeps what the body RETURNS as the
-    disposer. The dodge stylesheet's effect once removed the sheet in its body,
-    so the conversation column never yielded width to a docked-open panel. The
-    probe keeps the mount's disposers and runs them as a fiber unload would:
-    the sheet must be in <head> until then, and gone after.
+    disposer. The retired activity floater's docked-panel dodge stylesheet was
+    the only DOM side effect this bundle ever mounted; nothing replaces it, so
+    this just proves running every collected disposer in reverse cannot throw.
     """
     assert "disposeError" not in verdict, verdict.get("disposeError")
-    assert verdict["dodgeCssMounted"] == 1, verdict.get("dodgeCssMounted")
-    assert verdict["dodgeCssAfterDispose"] == 0, verdict.get("dodgeCssAfterDispose")
 
 
 def test_card_renders_with_framework_composed_props(verdict):
@@ -383,6 +385,7 @@ def test_graph_edges_cover_every_service_the_card_injects():
     assert not missing, "unfetched service providers: %s" % missing
 
 
-def test_graph_edges_cover_the_slot_ring_owner():
+def test_graph_edges_cover_the_slot_ring_owners():
     declared = set(manifest()["dsh"]["client"]["inject"])
-    assert RING_OWNER in declared
+    missing = sorted(set(RING_OWNERS) - declared)
+    assert not missing, "unfetched ring owners: %s" % missing

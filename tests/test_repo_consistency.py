@@ -380,50 +380,32 @@ def test_every_document_that_names_the_pool_states_the_same_bound():
         % offenders)
 
 
-def test_deprecated_synchronous_history_reads_carry_the_deferral_note():
-    """0.1.6 deprecated the synchronous session-event reads.
+def test_deprecated_synchronous_history_reads_are_fully_migrated():
+    """0.1.6 deprecated the synchronous session-event reads (`ownEvents()` /
+    `snapshotEvents()`), upstream policy "existing logic may remain
+    unmigrated for now, but new calls are prohibited".
 
-    Upstream's policy is "existing logic may remain unmigrated for now, but
-    new calls are prohibited". Issue #11 finished the migration on the
-    router's side (role identity moved to the teammate name): dsh/index.js
-    no longer names either deprecated accessor at all. dsh/activity.js is
-    the classic activity monitor and keeps its reads — retired only when
-    Phase 3 deletes the module outright — so it still carries the deferral
-    note.
-
-    Two counts, because either one alone is a hole. The accessors must appear
-    ONLY inside the module's one `ownEventsOf` helper — otherwise a direct
-    `session.ownEvents()` slips in beside it — and the number of places that
-    CALL that helper is pinned, because a new read is realistically written
-    as `ownEventsOf(agent.session)`, which leaves the accessor count at two
-    and would otherwise sail through.
+    Issue #11 finished the migration on the router's side (role identity
+    moved to the teammate name); dsh/activity.js — the classic activity
+    monitor and the last caller, carrying the deferral note — is deleted
+    outright under issue #13 (Phase 3). No tracked source file may read
+    either accessor any more: the deferral note itself is now moot repo-wide,
+    not just satisfied.
     """
-    router_source = (REPO / "dsh/index.js").read_text()
-    assert not re.search(r"session\??\.(?:ownEvents|snapshotEvents)\(", router_source), (
-        "dsh/index.js still reads session history directly; role identity "
-        "comes from the Team membership name now (issue #11)")
-    assert "ownEventsOf" not in router_source, (
-        "dsh/index.js still names the deprecated-accessor helper")
-
-    path = REPO / "dsh/activity.js"
-    source = path.read_text()
-    accessors = re.findall(r"session\??\.(?:ownEvents|snapshotEvents)\(", source)
-    assert len(accessors) == 2, (
-        "%s names the deprecated accessors %d times; they belong in the "
-        "one ownEventsOf helper (which names both) and nowhere else"
-        % (path.name, len(accessors)))
-    # `- 1` drops the declaration itself; what is left are the read sites.
-    reads = len(re.findall(r"\bownEventsOf\(", source)) - 1
-    assert reads == 2, (
-        "%s reads session history at %d sites, not 2; the deprecated "
-        "accessors take no new callers" % (path.name, reads))
-    # A JSDoc block wraps and prefixes each line with `*`; the sentence is
-    # what is pinned, not where it breaks.
-    prose = " ".join(" ".join(
-        re.sub(r"^\s*\*", "", line) for line in source.splitlines()).split())
-    assert "new calls are prohibited" in prose, (
-        "%s reads a deprecated accessor without the deferral note"
-        % path.name)
+    assert not (REPO / "dsh/activity.js").exists(), (
+        "dsh/activity.js was deleted under issue #13; a regression here "
+        "means it (or an equivalent) came back")
+    offenders = []
+    for name in tracked_files():
+        if not name.endswith((".js", ".cjs")):
+            continue
+        source = (REPO / name).read_text()
+        if re.search(r"session\??\.(?:ownEvents|snapshotEvents)\(", source) or "ownEventsOf" in source:
+            offenders.append(name)
+    assert not offenders, (
+        "these files still read the deprecated synchronous session-event "
+        "accessors, which have no caller left to justify the deferral: %s"
+        % offenders)
 
 
 def test_router_resolves_role_from_team_membership_only():
@@ -455,14 +437,12 @@ def _preset_blocks(preset):
 
 def test_every_role_persona_carries_its_router_tag():
     """The classic per-role delegation rows still identify roles by
-    [[rq:role=X]] in the persona — the model router itself stopped reading
-    this tag in issue #11 (role identity now comes from the Team membership
-    name), but the activity monitor (dsh/activity.js) still does, and these
-    classic rows persist until a later issue removes them.
-
-    A persona that loses its tag silently falls back to the session model in
-    the activity monitor's own labeling — the DoubleChecker mislabeled as
-    unknown is exactly the failure this pins out.
+    [[rq:role=X]] in the persona. Nothing reads this tag any more — the model
+    router stopped in issue #11 (role identity now comes from the Team
+    membership name) and the activity monitor, its last reader, is deleted
+    under issue #13 — but the classic rows themselves persist until a later
+    issue removes them, so a stray or wrong tag would still be silent drift
+    in a row this repo still ships.
     """
     roles = {
         "tool-subagent-explorer": "explorer",
@@ -509,28 +489,6 @@ def test_fixed_tier_roles_delegate_their_primary_to_native_agent_options():
             "%s must keep caller-selected model routes disabled" % row_id)
 
 
-def test_activity_floater_binds_the_sessions_service_lazily():
-    """An immediately-materialized bundle must not sample ctx.get() once.
-
-    dsh/client.js materializes immediately. Its required `sessions` injection
-    gates normal activation, while the lazy binding handles replacement and
-    must be initialized before the first poll. The previous ordering called
-    tick() inside the lexical TDZ, so its first fetch always rejected.
-    """
-    client = (REPO / "dsh" / "client.js").read_text()
-    assert "bindSessionList" in client, "the lazy sessions binding was removed"
-    assert "const sessions = ctx.get('sessions')" not in client, (
-        "a one-shot service sample at boot is the 0.1.2 boot-order regression")
-    tick = client[client.index("const tick = async () =>"):]
-    tick = tick[:tick.index("\n  }")]
-    assert "bindSessionList()" in tick, "tick() must re-check the sessions service"
-    assert client.index("const bindSessionList") < client.index("void tick()"), (
-        "the initial poll must not enter the sessions-binding TDZ")
-    assert "request.abort()" in client, "poll cleanup must abort its live request"
-    assert "activityState.openOwner === activityState.currentSessionId" in client, (
-        "a docked panel must not leave conversation padding after route changes")
-
-
 def test_agent_teams_geometry_attribution_keeps_the_upstream_mit_notice():
     notice = (REPO / "THIRD_PARTY_NOTICES").read_text()
     assert "dsh-agent-teams" in notice
@@ -572,34 +530,6 @@ def test_effort_select_uses_the_models_real_supported_levels():
         "the router must consult the model's real effort metadata")
     assert "falling back to the model default level" in host, (
         "the demotion must be diagnosable in the host log")
-
-
-def test_activity_hub_map_is_hub_and_spoke():
-    """The pillbox role map must be a hub-and-spoke, not a stage DAG.
-
-    The root orchestrator is the only hub: every child role is a spoke
-    connected to it, and there are no role-to-role edges (reports flow through
-    the root). The literature advisor is a spoke distinct from the literature
-    lane.
-    """
-    host = (REPO / "dsh" / "activity.js").read_text()
-    client = (REPO / "dsh" / "client.js").read_text()
-    # Roster (host) keeps the full name; the narrow hub-map node uses a compact
-    # one.
-    assert "'lit-adversary': { label: 'Literature adversary'" in host
-    assert "'lit-adversary': { label: 'Lit adversary'" in client
-    # Hub-and-spoke topology: one hub, seven spokes, one line per spoke, and
-    # no handoff edges between spokes.
-    assert "const RQ_HUB = 'root'" in client
-    spokes = re.search(r"const RQ_SPOKES = \[(.*?)\]", client, re.DOTALL)
-    assert spokes, "the hub map lost its spoke list"
-    spoke_roles = re.findall(r"'([a-z-]+)'", spokes.group(1))
-    assert len(spoke_roles) == 7 and "root" not in spoke_roles, spoke_roles
-    assert spoke_roles == sorted(set(spoke_roles), key=spoke_roles.index), \
-        "a spoke is listed twice"
-    assert "RQ_SPOKES.map((role)" in client, "spokes must render from the list"
-    assert "RQ_LEVELS" not in client and "RQ_PIPELINE_EDGES" not in client, (
-        "the stage DAG survived the hub-and-spoke rewrite")
 
 
 def test_team_guard_enforces_the_same_hub_and_spoke_the_pillbox_map_draws():
@@ -690,6 +620,28 @@ def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
         text = (persona_dir / f"{role}.md").read_text()
         assert text.lstrip().startswith(f"# Role: {role}"), (
             f"{role}.md must state its own role name up front")
+
+
+def test_move_pill_role_badges_pin_the_same_seven_roles():
+    """dsh/client.js's ROLE_BADGE is a fourth, browser-side copy of the same
+    role set (the client bundle is standalone and cannot `require` the
+    host-side dsh/team.js). A role dropped or added there without a matching
+    update here would silently mislabel or drop a running teammate's badge
+    on the move pill.
+    """
+    team = (REPO / "dsh" / "team.js").read_text()
+    team_match = re.search(r"export const TEAMMATE_ROLES = \[([^\]]*)\]", team)
+    assert team_match, "dsh/team.js no longer exports TEAMMATE_ROLES"
+    team_roles = set(re.findall(r"'([a-z-]+)'", team_match.group(1)))
+
+    client = (REPO / "dsh" / "client.js").read_text()
+    badge_match = re.search(r"const ROLE_BADGE = \{(.*?)\n\}", client, re.DOTALL)
+    assert badge_match, "dsh/client.js no longer declares ROLE_BADGE"
+    badge_roles = set(re.findall(r"^\s*'?([a-z-]+)'?:\s*\[", badge_match.group(1), re.MULTILINE))
+
+    assert badge_roles == team_roles, (
+        "role drift: dsh/client.js's ROLE_BADGE=%s vs dsh/team.js's TEAMMATE_ROLES=%s"
+        % (sorted(badge_roles), sorted(team_roles)))
 
 
 def _shipped_route(slot):

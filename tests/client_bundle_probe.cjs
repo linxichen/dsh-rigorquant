@@ -20,53 +20,10 @@ sandbox.globalThis = sandbox
 // emitting: diagnostics stay on the verdict, stdout stays pure JSON.
 const collectedLogs = []
 sandbox.console = { ...console, log: (...args) => { collectedLogs.push(args.map(String).join(' ')) } }
-// The <head> keeps its children, so what the bundle mounts there — and what
-// it removes when its effects are disposed — is observable.
-const headChildren = []
-sandbox.document = {
-  querySelectorAll: () => [],
-  createElement: (tag) => {
-    const el = {
-      tag, dataset: {}, attributes: {}, parentNode: null,
-      setAttribute(name, value) { el.attributes[name] = value },
-      remove() { if (el.parentNode !== null) el.parentNode.removeChild(el) },
-    }
-    return el
-  },
-  head: {
-    append() {},
-    appendChild(el) { el.parentNode = sandbox.document.head; headChildren.push(el); return el },
-    removeChild(el) {
-      const at = headChildren.indexOf(el)
-      if (at >= 0) headChildren.splice(at, 1)
-      el.parentNode = null
-      return el
-    },
-  },
-}
 // The card's lazy catalog retry uses window.setTimeout; the VM window is the
 // sandbox itself, so surface the host timers.
 sandbox.setTimeout = setTimeout
 sandbox.clearTimeout = clearTimeout
-// The floater's poller runs only where the web shell's fetch and interval
-// exist. Answer both so the poller starts and its session scan is exercised:
-// one fetch of the activity route serves two labs; the interval is inert (the
-// first poll is the one under test, and a live timer would keep this process
-// alive past the verdict).
-const LABS = ['lab-current', 'lab-other']
-const mkLab = (id) => ({
-  id, title: id, stage: 'fan out',
-  summary: { total: 1, working: 0, idle: 1 },
-  captain: { label: 'Orchestrator', status: 'idle' },
-  members: [], feed: [],
-})
-let activityFetches = 0
-sandbox.fetch = async () => {
-  activityFetches += 1
-  return { ok: true, json: async () => ({ labs: LABS.map(mkLab) }) }
-}
-sandbox.setInterval = () => 0
-sandbox.clearInterval = () => {}
 sandbox.window.__ModuleLoader__ = { load: (h) => { handoff = h } }
 vm.createContext(sandbox)
 
@@ -92,8 +49,8 @@ verdict.factoryIsFunction = typeof handoff.factory === 'function'
 // 0.1.6 made client sessions references and dropped the list's `current`
 // field (client-session-references, 2026-09-15). A read of it is silent —
 // `undefined`, never an error — so the source is scanned for the member
-// itself: `.current` followed by a non-word character (`.currentSessionId`,
-// the floater's own state, does not match).
+// itself: `.current` followed by a non-word character (a name merely ending
+// in "...current", like `currentSessionId`, does not match).
 verdict.currentFieldReads = (code.match(/\.current\b/g) ?? []).length
 verdict.retiredSettingsSlotReferences = (code.match(/settings\.plugin\.item/g) ?? []).length
 
@@ -118,37 +75,34 @@ let modelCatalogCalls = 0
 // Mutable persisted user layer: the ops the card emits land here, so a
 // follow-up edit sees the same layering the real seam would show it.
 const userLayer = {}
-// The client sessions service as 0.1.6 ships it: the list carries `ids`
-// and `byId` and NO `current` field; which session the main view holds is
-// answered per id by `retainInfo(id).retainedBy.mainView` — the check the
-// harness's own team UI makes. The holder is switchable and the list's
-// subscribers are recorded, so the probe can move the main view and see
-// whether the floater follows.
-let mainViewSession = 'lab-current'
-const sessionListeners = new Set()
-const sessionsService = {
-  list: {
-    getSnapshot: () => ({
-      ids: ['unrelated', 'lab-current'],
-      byId: {
-        unrelated: { id: 'unrelated', displayTitle: 'unrelated', running: false, retainedBy: {} },
-        'lab-current': { id: 'lab-current', displayTitle: 'lab-current', running: true, retainedBy: {} },
-      },
-      phase: 'ready', subagentsByParent: {}, jobsBySession: {},
-    }),
-    subscribe: (listener) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener) },
+// The move pill reads its team data through props the SESSION-SCOPED slot
+// itself supplies (StandardProps for `scope: 'session'`: `sessionId`,
+// `useSession`; GlobalStandardProps: `useSessions`) — never through
+// ctx.get('sessions') the way the retired activity floater did (which is why
+// that service is no longer stubbed here at all). Two fake sessions:
+// 'lab-lead' (a Team Lead, no parent) and 'lab-teammate' (a teammate whose
+// own header must resolve back to the same Lead's board via
+// `subagent.address.parentSessionId`). The Lead's `agentTeam` projection is
+// mutable so a scenario can flip it between absent (no team running, or the
+// Team bundle not mounted — the pill treats both identically) and a
+// populated TeamView.
+const sessionSnapshots = {
+  'lab-lead': { subagent: undefined },
+  'lab-teammate': { subagent: { address: { parentSessionId: 'lab-lead' } } },
+}
+let agentTeamProjection
+const sessionsGlobalState = {
+  get projectionsBySession() {
+    return { 'lab-lead': { values: { agentTeam: agentTeamProjection } } }
   },
-  retainInfo: (id) => ({
-    getSnapshot: () => (id === mainViewSession
-      ? { referenceCount: 1, retainedBy: { mainView: 1 } }
-      : { referenceCount: 0, retainedBy: {} }),
-    subscribe: () => () => {},
-  }),
 }
-const moveMainView = (id) => {
-  mainViewSession = id
-  for (const listener of sessionListeners) listener()
-}
+/** Session-scoped standard props for one session, layered onto whatever the
+ *  registration's own `inject()` face contributes (propsOf below). */
+const sessionPropsFor = (sessionId) => ({
+  sessionId,
+  useSession: (selector) => selector(sessionSnapshots[sessionId]),
+  useSessions: (selector) => selector(sessionsGlobalState),
+})
 // Minimal React: enough to run one render pass of a function component and
 // record the element tree. The card only needs createElement plus the hooks it
 // calls; the framework supplies its snapshot through the bound selector hook.
@@ -300,7 +254,7 @@ if (verdict.applyIsFunction) {
     // them the way a fiber unload does.
     effect: (fn) => { const dispose = fn(); if (typeof dispose === 'function') effectDisposers.push(dispose); return dispose },
     remote,
-    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : name === 'sessions' ? sessionsService : undefined),
+    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
     locale: { register: () => {}, bind: () => (key) => key },
     settingsScope: {
       bind: () => ({
@@ -336,7 +290,7 @@ if (verdict.applyIsFunction) {
     // The Plugins page finds a bundle's form by the slot name and the KEY:
     // `plugins.bundle.config` keyed by the bundle's package name, which is
     // also the id the bundle registered with the loader.
-    const card = registrations.find((reg) => reg.descriptor.name !== 'shell.overlay')
+    const card = registrations.find((reg) => reg.descriptor.name !== 'conversation.session.header.utilities')
     verdict.cardSlot = card?.descriptor.name ?? null
     verdict.cardKey = card?.descriptor.key ?? null
   } catch (error) {
@@ -383,71 +337,72 @@ if (verdict.applyIsFunction) {
     }
   }
 
-  // The activity floater is a second registration (root-scoped shell.overlay).
-  // Its panel must render null while no lab is running — and must not crash.
+  // The move pill is a second registration (conversation.session.header.utilities,
+  // scope 'session'). It must render null while no team view is present --
+  // covering "no team running" and "the Team bundle is not mounted" the same
+  // way -- and must not crash. `sessionPropsFor` stands in for what the real
+  // slot framework hands a `scope: 'session'` registration; the pill's own
+  // `inject()` face contributes nothing (propsOf(face) is empty here).
   if (registrations.length > 1) {
     const { descriptor, component } = registrations[1]
-    const face = descriptor.inject()
-    const props = propsOf(face)
+    const props = propsOf(descriptor.inject())
+    const render = (sessionId) => component({ ...props, ...sessionPropsFor(sessionId) })
+
+    agentTeamProjection = undefined
     try {
-      const overlayTree = component(props)
-      verdict.overlayRendered = true
-      verdict.overlayTree = overlayTree === null ? null : (overlayTree.type ?? 'element')
+      verdict.pillNullWithoutTeam = render('lab-lead') === null
+      verdict.pillRenderedAbsent = true
     } catch (error) {
-      verdict.overlayRendered = false
-      verdict.overlayRenderError = `${error.name}: ${error.message}`
+      verdict.pillRenderedAbsent = false
+      verdict.pillRenderError = `${error.name}: ${error.message}`
     }
 
-    // Current-session scoping: the floater appears only while the current
-    // session is a lab (its captain session or one of its subagents). Two labs
-    // in the store, but a non-lab current session must render null; a matching
-    // current session must render (the collapsed pill).
-    const scopeStore = face.hooks.rqActivity
-    const scopedRender = () => {
-      try { return component(props) } catch { return null }
+    // A completed Fan-out task and a still-pending Ground-truth task blocked
+    // on it: the move must read as the SHALLOWEST incomplete layer
+    // (Ground-truth), never the completed one. `blockedBy` also names an id
+    // absent from the list (a stale edge to a task another round already
+    // dropped), on purpose, to prove a dangling edge is ignored rather than
+    // crashing. One running teammate (doublechecker-1) must produce a badge;
+    // an inactive one (explorer-1) must not; the Lead itself never does.
+    agentTeamProjection = {
+      members: [
+        { id: 'lab-lead', name: 'root', role: 'lead', status: 'running', diagnostics: [] },
+        { id: 'lab-explorer-1', name: 'explorer-1', role: 'teammate', status: 'inactive', diagnostics: [] },
+        { id: 'lab-dc-1', name: 'doublechecker-1', role: 'teammate', status: 'running', diagnostics: [] },
+      ],
+      tasks: [
+        {
+          id: 't-explore', revision: 1, subject: 'explore', description: '', status: 'completed',
+          blockedBy: [], writeScopes: [], ready: true, writeScopeWarnings: [],
+        },
+        {
+          id: 't-groundtruth', revision: 1, subject: 'verify', description: '', status: 'pending',
+          blockedBy: ['t-explore', 't-stale-missing'], writeScopes: [], ready: true, writeScopeWarnings: [],
+        },
+      ],
     }
-    scopeStore.set({
-      status: 'ready', anchorRight: null, currentSessionId: 'unrelated',
-      labs: [mkLab('lab-current'), mkLab('lab-other')],
-    })
-    verdict.scopeMismatchNull = scopedRender() === null
-    scopeStore.set({
-      status: 'ready', anchorRight: null, currentSessionId: 'lab-current',
-      labs: [mkLab('lab-current'), mkLab('lab-other')],
-    })
-    verdict.scopeMatchRendered = scopedRender() !== null
-    // Leave nothing behind: the main-view scenario below must find its
-    // session through the poller's own publish, not through this store write.
-    scopeStore.set({ status: 'idle', anchorRight: null, currentSessionId: null, labs: [] })
+    try {
+      const tree = render('lab-lead')
+      verdict.pillRendered = tree !== null && typeof tree === 'object'
+      verdict.pillMoveText = tree?.children?.[0]?.children?.[0] ?? null
+      const titlesOf = (node, found = []) => {
+        if (node === null || typeof node !== 'object') return found
+        if (typeof node.props?.title === 'string') found.push(node.props.title)
+        for (const child of node.children ?? []) titlesOf(child, found)
+        return found
+      }
+      verdict.pillBadgeTitles = titlesOf(tree)
+      // A teammate's OWN header must resolve the same Lead's board through
+      // subagent.address.parentSessionId — opening a teammate shows the same
+      // pill, not a blank one.
+      const teammateTree = render('lab-teammate')
+      verdict.pillFromTeammateRendered = teammateTree !== null && typeof teammateTree === 'object'
+    } catch (error) {
+      verdict.pillRendered = false
+      verdict.pillRenderError = `${error.name}: ${error.message}`
+    }
+    agentTeamProjection = undefined
   }
-}
-
-
-// The floater learns the main-view session from the sessions service, not
-// from a `current` field. After the poller's first poll the store must name
-// the session whose retain info counts a `mainView` reference, the panel must
-// render for that lab, and moving the main view must move the panel with it.
-async function exerciseFloaterSession() {
-  const overlay = registrations.find((reg) => reg.descriptor.name === 'shell.overlay')
-  if (overlay === undefined) return
-  const face = overlay.descriptor.inject()
-  const store = face.hooks.rqActivity
-  await settle(() => store.getSnapshot().status === 'ready')
-  const props = propsOf(face)
-  const render = () => {
-    try { return overlay.component(props) } catch (error) { return `${error.name}: ${error.message}` }
-  }
-  const result = { fetches: activityFetches, status: store.getSnapshot().status }
-  result.resolved = store.getSnapshot().currentSessionId
-  const first = render()
-  result.rendered = first !== null && typeof first === 'object'
-  result.renderError = typeof first === 'string' ? first : undefined
-  moveMainView('unrelated')
-  result.afterMove = store.getSnapshot().currentSessionId
-  result.afterMoveNull = render() === null
-  moveMainView('lab-current')
-  result.afterReturn = store.getSnapshot().currentSessionId
-  verdict.floaterSession = result
 }
 
 // Drive the draft model through the same face the card uses. This is the
@@ -623,25 +578,20 @@ async function exerciseEffortDropdown() {
   face.discard()
 }
 
-// A fiber unload runs every effect disposer. The floater's dodge stylesheet
-// (the rule that makes the conversation column yield to a docked-open panel)
-// must be in <head> while the plugin runs and gone once its effects are
-// disposed: `ctx.effect` keeps what the body RETURNS as the disposer, and a
-// body that removed the sheet itself left the column never yielding. Runs
-// after the scenarios that need the first mount alive and before the
-// delayed-catalog scenario, whose second mount adds a sheet of its own.
+// A fiber unload runs every effect disposer collected during mount: `ctx.effect`
+// keeps what the body RETURNS as the disposer. Nothing this bundle registers
+// mounts a DOM side effect any more (the retired activity floater's
+// docked-panel dodge stylesheet was the only one), so this proves a fiber
+// unload runs cleanly rather than checking a specific artifact. Runs after
+// the scenarios that need the first mount alive and before the
+// delayed-catalog scenario, which mounts a second time on its own context.
 function exerciseDisposal() {
-  const dodge = () => headChildren.filter((el) => 'data-rq-panel-shift' in el.attributes).length
-  verdict.dodgeCssMounted = dodge()
   for (const dispose of effectDisposers.splice(0).reverse()) {
     try { dispose() } catch (error) { verdict.disposeError = `${error.name}: ${error.message}` }
   }
-  verdict.dodgeCssAfterDispose = dodge()
 }
 
-exerciseFloaterSession().catch((error) => {
-  verdict.floaterSessionError = `${error.name}: ${error.message}`
-}).then(() => exerciseEffortDropdown()).catch((error) => {
+Promise.resolve().then(() => exerciseEffortDropdown()).catch((error) => {
   verdict.effortDropdownError = `${error.name}: ${error.message}`
 }).then(() => exerciseDraft()).catch((error) => {
   verdict.draftError = `${error.name}: ${error.message}`

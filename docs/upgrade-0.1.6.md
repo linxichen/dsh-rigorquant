@@ -876,6 +876,119 @@ a no-op, never an error.
   composes as `# == …agent-team-profile, patched by dsh-rigorquant` when the
   Team bundle precedes `dsh-rigorquant` in `dsh.profile.bundles`.
 
+### 3.14 Browser goes native (2026-09-23, issue #13)
+
+`dsh/activity.js` (host), `tests/test_activity.py`, and `tests/activity_probe.cjs`
+are deleted outright, along with the floater/panel/geometry code in
+`dsh/client.js` (~1,000 lines: `ACTIVITY_NS` through `applyActivityOverlay`)
+and the `rq-activity` row in `cordis.patch.yml`. `package.json` drops the
+`./activity` export.
+
+**§4.6's `ctx.remote.agentTeams.view(leadSessionId)` was wrong — there is no
+Team RPC on the client.** Ground truth, read from the harness source
+(`packages/experimental/client-ui-agent-team/src/client/TeamAction.tsx:192-193`):
+the Team package's own header action reads a **session projection**, exactly
+the mechanism `dsh/team.js`/`dsh/index.js` already read host-side —
+```js
+const leadSessionId = useSession(snapshot => snapshot.subagent?.address.parentSessionId) ?? sessionId
+const team = useSessions(state => state.projectionsBySession[leadSessionId]?.values.agentTeam)
+```
+`useSession` (this Session) and `useSessions` (the global store) are
+`SessionStandardProps`/`GlobalStandardProps` the slot framework merges onto
+any `scope: 'session'` registration's props automatically
+(`packages/client/ui-session/src/client/index.ts:150-169`) — nothing to
+inject, nothing to guard, and "render nothing when absent" is `team ===
+undefined`, which covers "no team running" and "the Team bundle is not
+mounted" identically (an optional data read, not a service injection). The
+real `TeamView` shape (`packages/experimental/agent-team/.../types.ts`) is
+`{ members: TeamMemberView[], tasks: TeamTaskView[] }`, `TeamMemberView`
+already carries a runtime-enriched `status: 'running'|'idle'|'inactive'|
+'provisioning'|'failed'` and `role: 'lead'|'teammate'` — no separate
+`useSessionStatus` lookup needed for the pill.
+
+**The move is derived structurally from the task board, never from task
+text.** The spec's own framing ("the move is 'first task not completed' —
+no heuristic") is taken literally: a task's *layer* is one past its deepest
+`blockedBy` blocker (no blockers = layer 0 = Fan out; a dangling `blockedBy`
+id absent from the list is ignored, not evidence of a root), and the pill
+shows the shallowest layer that still has an incomplete task — Promise when
+there are no tasks yet or every task is done. This needs no assumption about
+how the orchestrator names or writes its tasks, which matters because
+issue #14 (the SKILL/protocol rewrite that actually creates
+`explore-per-sub-problem`/`ground-truth-per-claim`/etc. tasks) has not landed
+on this branch — a naming-based heuristic (the retired `stageOf()` in
+`dsh/activity.js` matched *tool names*, not task text, and had no analogue to
+port) would have been a forward guess against a convention that does not yet
+exist; the DAG shape does not need one.
+
+Portraits: the deleted host route (`/plugins/dsh-rigorquant/avatar/...`) was
+the only thing that ever served `docs/figs/avatar-*.png` to a running
+session — the READMEs' own "meet the roles" gallery embeds the same files
+directly as committed images, an unrelated and unaffected use. With no
+serving mechanism left for the live pill (and none re-added, in the spirit
+of "the activity host module... deleted"), a running teammate's portrait is
+a small CSS badge (role initials, a `title` tooltip with the full label and
+the teammate's own name) — no network dependency, no asset pipeline.
+
+- `dsh/client.js`: `roleFromName` (a client-side copy of `dsh/team.js`'s
+  `TEAMMATE_ROLES` pattern — the client bundle is standalone and cannot
+  `require` a host ES module), `taskDepth`/`deriveMove`, `MovePill`,
+  `applyMovePill`. The plugin's own `inject` drops `'sessions'`: nothing
+  calls `ctx.get('sessions')` any more (that was the floater's own
+  main-view session scan).
+- `package.json`: `dsh.client.inject` gains `@deepseek-ai/dsh-client-ui-conversation`
+  (the owner of `conversation.session.header.utilities`, the same pattern
+  `@deepseek-ai/dsh-client-ui-plugin-manager` already sets for
+  `plugins.bundle.config`).
+- `tests/client_bundle_probe.cjs`: the floater-era stubs (`fetch`/`setInterval`
+  for the poller, the `sessions` service + main-view retain-info scan, the
+  `document`/`<head>` dodge-stylesheet tracker) are removed; a new
+  `sessionPropsFor(sessionId)` stands in for what the real slot framework
+  hands a `scope: 'session'` registration (`sessionId`, `useSession`,
+  `useSessions`), backed by two fake sessions — a Lead and a teammate whose
+  `subagent.address.parentSessionId` resolves back to it — and a mutable
+  `agentTeamProjection`.
+- `tests/test_client_bundle.py`: `RINGS`/`CARDS` swap the retired
+  `shell.overlay`/`rigorquant-activity` for
+  `conversation.session.header.utilities`/`rigorquant-move`; `RING_OWNER`
+  becomes `RING_OWNERS` (both slot-owning packages); the three floater tests
+  and the dodge-stylesheet test are replaced by four move-pill tests (null
+  without a team view, the shallowest-incomplete-layer derivation over a
+  completed-then-pending pair with a dangling `blockedBy` edge, exactly one
+  badge for the one running teammate — never the Lead, never an idle one —
+  and the teammate-header lead-resolution path).
+- `tests/test_repo_consistency.py`: `test_activity_floater_binds_the_sessions_service_lazily`
+  and `test_activity_hub_map_is_hub_and_spoke` (both asserted on now-deleted
+  code) are removed; `test_deprecated_synchronous_history_reads_carry_the_deferral_note`
+  becomes `test_deprecated_synchronous_history_reads_are_fully_migrated` — the
+  deferral note itself is moot repo-wide now that `dsh/activity.js`, its last
+  caller, is gone, so the test asserts no tracked `.js`/`.cjs` file reads
+  either accessor, rather than pinning the note's presence in one file.
+- **Live "eye on a running team" verification attempted, not completed —
+  environment, not code.** `--dump-config` against the installed
+  `0.1.6-alpha.2` CLI (a scratch profile, both Team bundles pinned to the
+  exact matching version, `dsh-rigorquant` from `file:`) composes correctly
+  in ~2s: `rq-model-router` and `rq-team` both appear (`rq-activity` gone),
+  the `agent-team` row carries `maxMembers: 64`. The full `dsh --profile …
+  --port … [--no-open]` **web server boot itself hangs indefinitely** in this
+  sandbox — the process stays alive, idle in `uv__io_poll`/`kevent` (a
+  `sample` capture confirms no busy loop, no open socket, no network
+  connection in flight; `lsof`'s fd count never moves), regardless of
+  `--no-open`, explicit `stdin < /dev/null`, or `DSH_TELEMETRY_DISABLED=1`.
+  Unrelated to this issue's code: identical hang with `dsh/activity.js`
+  still present, before any edit here. Most likely `@deepseek-ai/dsh-host-directory-picker-auto`'s
+  boot-time "resolve bind host, SSH launch, and display" step waiting on a
+  native macOS interaction (e.g. the first-listen firewall prompt) that
+  never resolves from a backgrounded, non-interactive shell — consistent
+  with the CPU-idle, no-socket sample. Verification instead rests on: the
+  full suite green (327 passed, 1 unrelated skip) and the 95% coverage gate;
+  `client_bundle_probe.cjs` executing the actual shipped `dsh/client.js`
+  the way the shell does (classic-script contract, `apply(ctx)` mount,
+  props composed the way the slot framework composes them); and the real
+  `--dump-config` composition above. A future session with an interactive
+  (non-backgrounded) `dsh` process, or one where the firewall prompt has
+  already been granted for `node`, should retry the actual browser check.
+
 ---
 
 ## 4. The centrepiece — RigorQuant on Agent Teams

@@ -33,7 +33,6 @@
     ".": "./dsh/index.js",
     "./client": "./dsh/client.js",
     "./sync": "./dsh/sync.js",
-    "./activity": "./dsh/activity.js",
     "./team": "./dsh/team.js",
     "./package.json": "./package.json"
   },
@@ -48,7 +47,8 @@
         "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-plugin-manager"
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-conversation"
       ],
       "platform": "web",
       "immediately": true

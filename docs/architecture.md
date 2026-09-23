@@ -703,8 +703,9 @@ by its name — and carries the shipped tier matrix itself, since no native
 per-role model row exists once a teammate is created by `spawn_teammate`.
 The persona-tag regex, the persona-assembly probe, and the deprecated
 synchronous session-event reads are gone from the router; the classic
-per-role delegation rows and `dsh/activity.js` still use the persona tag
-until a later issue removes them.
+per-role delegation rows still use the persona tag until a later issue
+removes them (`dsh/activity.js`, the tag's other reader, is deleted under
+issue #13).
 **The installer enables Agent Teams under issue #12** (`docs/upgrade-0.1.6.md`
 §3.13): a full install adds whichever of the two optional bundles are
 missing from the profile's `dsh.profile.bundles` and appends the `maxMembers:
@@ -717,6 +718,24 @@ the path the whole step warns and is skipped, keeping CI's install smoke
 test green. The identical override row ships in this package's own bundle
 patch as a consistency pin, effective only when the Team layer precedes
 `dsh-rigorquant` in a profile's bundle order.
+**The browser goes native under issue #13** (`docs/upgrade-0.1.6.md` §3.14):
+the activity monitor host module (`dsh/activity.js`), its HTTP routes, its
+probe and its tests are deleted outright, along with the client bundle's
+floater/panel/geometry code — the deprecated synchronous session-event reads
+this repo carried a deferral note for have no caller left anywhere. In their
+place, a move pill registers on the conversation's per-session
+`conversation.session.header.utilities` slot: it reads the Lead's `agentTeam`
+session projection through the props that slot's `scope: 'session'` already
+supplies (`useSession`/`useSessions`, the same seam the Team package's own
+header action reads) — no host route, no Team RPC, nothing to inject for it.
+The move is derived structurally from the task board's `blockedBy` DAG (a
+task's layer is one past its deepest blocker; the shallowest layer with
+incomplete work is the move), never from task text, so it needs no
+naming convention the orchestrator side has not been given yet. Rendering
+nothing while the projection is absent covers "no team running" and "the
+Team bundle is not mounted" identically. The static hub-and-spoke topology
+figure in the docs is untouched; the README's own "The team, live" section
+and its activity-panel screenshot are a later issue's rewrite (#15).
 
 ## Repo map
 
