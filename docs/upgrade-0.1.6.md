@@ -1140,9 +1140,64 @@ block. Boot: `dsh --profile rq50 --port 38150 --no-open` under a PTY.
   **341 passed, 1 skipped** (the live Semantic Scholar boundary check,
   rate-limited with a 429), and `rq_check.py` coverage at **96.3%** against
   the 95% gate.
-- **Outstanding at the time of writing:** the full manual study run (more
-  than one round, a reused adversary brief, a cold resume, a certified study
-  record), the `v0.5.0` tag, and the npm publish.
+- **Full manual study run: PASS.** The study was
+  `rigorquant_studies/studies/20260923_min-variance-closed-form`: the N-asset
+  minimum-variance closed form w* = Σ⁻¹1/(1ᵀΣ⁻¹1). The reference case was 2
+  assets, the generalization was every N ≥ 2 with positive-definite Σ, and
+  the domain-scale instance was a non-diagonal 4-asset Σ. It ran on a fresh
+  scratch profile **`rq5s`**, installed by `install.sh` from the committed
+  release tree, started from the web app's preset picker, and took
+  21:37–23:17.
+  - *Routing.* Every role was routed to `deepseek-official/deepseek-flash`,
+    by the operator's choice, through the Plugins card. The saved
+    per-role overrides named zai and linxicloud models whose keys are not
+    in this environment, plus three ids the catalog does not list:
+    `deepseek-official/deepseek-v4-flash`,
+    `linxicloud/deepseek-v4-flash-dspark`, and
+    `deepseek-official/deepseek-v4-flash-vision-exp` (a linxicloud model
+    under the wrong provider). The previous `settings.yaml` was backed up
+    first. Every teammate's own session log shows `source: {provider:
+    deepseek-official, model: deepseek-flash}` on the wire.
+  - *Named teammates.* Twelve were spawned: `lit-line-1`, `explorer-1..3`,
+    `doublechecker-1..5`, `lit-adversary-1`, `adversary-1` and
+    `doc-adversary-1`. Each description was only the role label, and each
+    counter continued correctly across the resume.
+  - *Two rounds.* Each round was laid out as a task DAG (9 tasks, then 5
+    more). Round 1 covered SP1 and SP2: three Ground-truth derivations and
+    `audits/round-1-adversary.md`, VERDICT: PASS, 602/602 battery checks.
+    Round 2 covered SP3: two independent Ground-truth derivations and
+    `audits/round-2-adversary.md`, VERDICT: PASS after a second pass.
+  - *Reused adversary brief.* In round 2, `adversary-1` received a new
+    hash-bound brief by `send_message`, with frozen snapshot digests and
+    board task `task-13`. It later received a pass-2 brief on the corrected
+    snapshot. `lit-adversary-1` was likewise reused by a hash-bound brief to
+    correct a DOI.
+  - *Cold resume.* The server process died in round 1 at Ground-truth: it
+    was a child of the verifying shell, which exited. The server was
+    restarted and the session reopened. The interrupted `wait_agent` was
+    flagged ("no result was durably recorded"), and one human turn,
+    "continue", resumed the study: `list_agents`, the board, and the
+    derivations on disk were reconciled before it moved on to Attack.
+  - *Native team view.* The move pill read Ground-truth with a **DC**
+    badge while a DoubleChecker ran. That is the badge path §3.14 could
+    not exercise live. Later it read Certify.
+  - *Study record.* The audience consultation was answered through the
+    native question UI (spec accepted as drafted). The two-page paper
+    `artifacts/paper/main.tex` compiles, and `doc-adversary-1` returned
+    VERDICT: PASS after its second pass. An independent re-run of
+    `<skill-dir>/scripts/rq_check.py --study <root>` reports **PASS, state valid**, exit 0,
+    and `latexmk -pdf` builds the paper.
+  - *Observations, not blockers:*
+    1. The orchestrator sent "erratum briefs" (hash-bound) to
+       `doublechecker-5` and `explorer-3` to fix prose in their own
+       files. The protocol makes DoubleCheckers and Explorers fresh per
+       brief, so a correction brief should go to a new teammate. The
+       round-2 adversary's pass 2 withdrew those findings anyway.
+    2. After the cold resume, the goal widget stayed **Inactive**, and
+       `create_goal` was never called again. The study finished inside the
+       single long "continue" turn, not under a re-armed goal.
+- **Outstanding at the time of writing:** the `v0.5.0` tag and the npm
+  publish, pending the operator's go-ahead.
 
 ---
 

@@ -186,6 +186,15 @@ who cannot enable a Beta bundle stay on 0.4.2.
   with all four rows Running and the card back.
   `rq-model-router`, `rq-preset-sync` and `skill-filesystem-rigorquant`, each
   toggled off and on alone, went back to 4 running with no toast.
+- **A full study ran live, unattended, to PASS** (`docs/upgrade-0.1.6.md`
+  §3.15). It was a two-round minimum-variance closed-form study on a fresh
+  profile installed by `install.sh`, with twelve named teammates (every role
+  routed to `deepseek-flash` for the run). Each round was a task DAG.
+  `adversary-1` was reused in round 2 by a new hash-bound brief, and a cold
+  resume (server restarted mid-round, then one "continue") picked up from
+  the roster and the board. The move pill showed the running teammate's
+  badge. Both attack reports and the document adversary ended VERDICT: PASS,
+  and an independent `rq_check.py` run reports the study record PASS.
 - **Suite and gate.** `RQ_COVERAGE=1` full suite: 341 passed, 1 skipped (the
   live Semantic Scholar boundary check, rate-limited), with `rq_check.py`
   coverage at 96.3% against the 95% gate.
