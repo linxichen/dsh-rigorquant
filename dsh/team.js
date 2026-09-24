@@ -105,7 +105,7 @@ const GUARD_TEXT = 'RigorQuant team guard: armed'
 const PERSONA_DIR = fileURLToPath(new URL('./personas/', import.meta.url))
 
 /** Every teammate is denied these regardless of tier: the orchestrator-owned
- * task-level goal (Decision 10), todo, and the unattended-contract tools. */
+ * study goal (Decision 10), todo, and the unattended-contract tools. */
 const EVERY_TEAMMATE_DENY = ['create_goal', 'update_goal', 'get_goal', 'todo_write', 'ask_user_question', 'exit_plan_mode']
 const WEB_DENY = ['web_search', 'web_fetch']
 /** Blind roles: no other agent's results, so no web AND no skill (the

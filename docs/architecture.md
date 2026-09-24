@@ -66,7 +66,13 @@
    row are gone; teammates are created by `spawn_teammate` as `<role>-<n>`,
    awaited with `wait_agent`, and coordinated as a task DAG on the Team
    board. No delegation row remains enabled, so no row sets a `maxDepth` and
-   depth one holds by construction: no teammate can create teammates.)*
+   depth one holds by construction: no teammate can create teammates. The
+   goal-round driver was never this preset's to mount, either: `goal`,
+   `goal-round-driver` and the goal session driver are host-plane rows of the
+   shipped base bundle (`@deepseek-ai/dsh-base`), and the preset re-mounts only
+   the human `/goal` command and the model-facing goal tool, which the web
+   bundle disables at the host plane. The 0.1.5 study's "mount it" is
+   superseded by `docs/upgrade-0.1.6.md` §5 N1.)*
 9. **Model routing** — one model everywhere (user's choice); reasoning-effort
    knob available per role; independence comes from context separation.
    *(Superseded by Decision 16: routing is per-role through the
@@ -77,7 +83,7 @@
     scope + rollback, then proceed; BLOCKED → same exact gap 3 consecutive
     rounds → deliver strongest derivation + exact gap; UNKNOWN → recorded when
     neither proof nor counterexample lands; BUDGET → 5 orchestrator rounds →
-    checkpoint + report. One task-level goal (no per-sub-problem goals); budget
+    checkpoint + report. One study goal (no per-sub-problem goals); budget
     fields (`max_cost_usd`, `max_wall_minutes`) may be set. Resuming across a
     session needs one human turn. *(Amended by Decision 17: the BUDGET trip
     moved from 5 to **3** orchestrator rounds, and the auto-implement safety
@@ -89,12 +95,12 @@
     compliant with the awesome-list `dsh plugin add` convention. The npm bundle
     ships `env/` and `mcp/`; `install.sh` anchors the compute lane at
     `$DSH_HOME/share/rigorquant`.
-12. **Workspace** — a **study** is the self-contained work unit: one
-    rigorquant task in one directory with an identical internal structure
-    everywhere. Two modes, implied by location, no config flag: **Mode A —
-    one study per repo** (`study.json` at repo root) and **Mode B — multiple
-    studies per repo** (`studies/<slug>/study.json`, roster derived from
-    `studies/*/study.json`). Durable deliverables (study.json, STUDY.md,
+12. **Workspace** — a **study** is the self-contained work unit: the user's
+    assignment, one question worked in one directory with an identical internal
+    structure everywhere. Two modes, implied by location, no config flag:
+    **Mode A — one study per repo** (`study.json` at repo root) and **Mode B —
+    multiple studies per repo** (`studies/<slug>/study.json`, roster derived
+    from `studies/*/study.json`). Durable deliverables (study.json, STUDY.md,
     registry.json, journal, derivations/, audits/, artifacts/) are committed;
     ALL scratch lives in `interim/` (explorer-reports, gt-scripts, tmp),
     gitignored via a study-local `.gitignore`. Intake resolves the study root
@@ -609,7 +615,11 @@ exclusions named).
 
 Three renames landed together because they are one decision about what a role
 name must carry: the name is protocol. Every delegation tool is model-facing,
-and the model reads the tool name as part of the brief.
+and the model reads the tool name as part of the brief. *(Amended by Decision
+24: none of the names below is the identity any more. A teammate's role comes
+from its `<role>-<n>` roster name, and no delegation tool carries one — the
+tool, row, tag and settings keys this decision renamed are the record of how
+identity was carried before the Team layer.)*
 
 - **Oracle → DoubleChecker.** "Oracle" claims an authority the role does not
   have — an oracle vouches, and nothing in this framework vouches. The role's
@@ -648,21 +658,28 @@ and the model reads the tool name as part of the brief.
   govern until re-entered). The activity monitor's best-effort `labelRole`
   keeps mapping legacy `gt-`/`ground truth` one-shot labels to the
   DoubleChecker, so runs started before the rename still light up correctly.
-- **The activity pillbox is a hub-and-spoke map.** The previous five-stage
+  *(Amended by Decision 24: the monitor is deleted in 0.5.0, so the legacy
+  labels have no reader left; the settings keys above are unchanged, and
+  the role prefix — not a tool name — is the identity the router resolves.)*
+- **The activity pillbox is a hub-and-spoke map.** The previous five-layer
   DAG drew handoffs that do not exist — `explorer → oracle`,
   `lit-adversary → adversary` — implying role-to-role channels that would
   break producer≠checker if they were real. The topology actually enforced is
   a hub: the orchestrator is the only role that sees every brief and every
   report, and no two children ever exchange anything. The map now renders
   that (root at the center, seven spokes in call order), and a consistency
-  test pins the structure and forbids the stage-DAG constants from
-  returning.
+  test pins the structure and forbids the retired DAG constants from
+  returning. *(Amended by Decision 24: the map is a static figure now, and
+  the topology is enforced by `dsh/team.js`'s per-call guard rather than
+  drawn — the pin follows the guard.)*
 
-Tests: `test_repo_consistency.py` pins tag↔row identity, the fixed-tier
-`agentOptions` rows, and the hub-and-spoke topology; `conftest.py`'s
-`BLIND_TOOLS`/`DELEGATION` sets and `test_role_tool_budgets.py`'s budgets
-follow the new tool names; the router and client-bundle probes exercise the
-renamed settings keys end to end.
+Tests: `test_repo_consistency.py` pins the hub-and-spoke topology and the
+absence of caller-selectable models, and the tag↔row identity this decision
+pinned went with the `[[rq:role=…]]` tag — replaced by the
+role-name↔persona-file identity;
+`conftest.py`'s `BLIND_TOOLS`/`DELEGATION` sets and
+`test_role_tool_budgets.py`'s budgets follow the role tiers; the router and
+client-bundle probes exercise the renamed settings keys end to end.
 
 ## Decision 24 — RigorQuant runs on Agent Teams (0.5.0)
 
@@ -745,8 +762,7 @@ incomplete work is the move), never from task text, so it needs no
 naming convention the orchestrator side has not been given yet. Rendering
 nothing while the projection is absent covers "no team running" and "the
 Team bundle is not mounted" identically. The static hub-and-spoke topology
-figure in the docs is untouched; the README's own "The team, live" section
-and its activity-panel screenshot are a later issue's rewrite (#15).
+figure in the docs is untouched by that change.
 **Team-only preset and procedure under issue #14**: the seven per-role
 delegation rows, `tool-subagent-control`, `tool-subagent-list-agents` and the
 disabled fork row leave the preset (the
@@ -761,14 +777,32 @@ SKILL.md Step 3 runs the round as five moves on `spawn_teammate` /
 → attack → certify, one `blocked_by` layer per move, which is exactly what
 the move pill reads); protocol.md carries the brief contract, the roster
 policy, the rewritten L3, the pool rule and the lifetime-cap BUDGET rule.
+**The documents speak the glossary under issue #15**: both READMEs' Install
+sections state the floor, the alpha-plus-experimental dependency, the Beta
+toggle (the *Agent Teams* and *Agent Teams Web UI* cards under **Plugins →
+Official**) and the installer's enable/override/uninstall behaviour; "The
+team, live" is rewritten around the native roster, the task board, opening a
+teammate and the move pill, with the hub-and-spoke figure kept as the picture
+of what the guards enforce; a **Deployment notes** section covers the DeepSeek
+session log (`session-log-deepseek` with `enabled: false` in the profile's
+user patch, `$DSH_HOME/profiles/<profile>/cordis.patch.yml`), the host-mounted
+goal-round driver (this decision's Decision 8 amendment) and the
+`workspace-changes` turn card as the human-visible witness of an edit after
+certification (Decision 19). `test_repo_consistency.py` sweeps the tracked
+documents for the two collisions `CONTEXT.md` lists under *Avoid* — a move
+named as a stage, a study named as a task, in English and Chinese — and pins
+both READMEs' team, install and deployment sections by heading.
 
 ## Repo map
 
 ```
 agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
   skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
-dsh/                        host halves: rq-model-router + rq-preset-sync, card
-cordis.patch.yml            bundle patch: skill layer + router + boot-sync rows
+dsh/                        host halves: rq-model-router + rq-team (composition
+                            and per-call guard) + rq-preset-sync, dsh/personas/
+                            (one role persona per file), and the client bundle
+                            (routing card + move pill)
+cordis.patch.yml            bundle patch: skill layer + router + team + boot-sync
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        this record

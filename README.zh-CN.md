@@ -47,7 +47,7 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 ## 研究团队——以及它如何运作
 
-一个枢纽周围的八个角色，每个都是独立的工具，各有能力边界。编排者是唯一能看到所有汇报的角色；这种分离由组合本身强制，因此**生产者绝不自查自己的成果**——一个想法只会死于具体反例，绝不因风格或感觉而死。
+一个枢纽周围的八个角色，每个都是编排者按角色创建、带自己 persona 与工具预算的队友。编排者是唯一能看到所有汇报的角色——队友之间无法互发消息、无法列出花名册、也读不到整个看板——因此这种分离是被强制的，而不是靠约定，**生产者绝不自查自己的成果**：一个想法只会死于具体反例，绝不因风格或感觉而死。
 
 <img src="docs/figs/avatar-orchestrator.png" align="left" width="200" alt="Orchestrator">
 
@@ -104,35 +104,44 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 
 <br clear="left">
 
-### 团队实时视图——活动面板
+### 团队实时视图——原生团队视图
 
-本插件带有一个**实时活动面板**（宿主半 `rq-activity` + 浏览器半的
-`shell.overlay` 悬浮件）：RigorQuant 会话运行期间，主窗口右侧垂直居中处会
-出现一个小圆点气泡（跟随会话列，避开左侧工作区与右侧停靠的面板），点开后
-**只显示当前会话对应的实验室**（不会显示其他会话，且仅当当前会话是
-RigorQuant 会话时），展示**五步循环所处阶段**、枢纽-辐条式角色地图（编排者居中，可委派的每个
-角色为一根辐条）、各角色的执行/空闲花名册（含 `docs/figs/` 中的角色头像）、
-每个角色的最近动作，以及
-按时间倒序的动态流。它纯属观察——只读取核心已发布的事件，并在
-`/plugins/dsh-rigorquant/...` 上提供 JSON 快照与头像，不改变任何工具、
-路由或模型。颜色全部使用 `--dsw-alias` 令牌，因此自动跟随外壳自身的
-明暗主题。
+一项 study 跑在 Harness 自带的 Agent Teams 界面上，没有自定义面板要学：
+RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到**花名册**（名字、
+角色、状态）和本轮的**任务看板**及其阻塞边——要盯的就是这两样。花名册的模型列
+显示的是该成员自身的模型选项，而不是 `rq-model-router` 实际施加到其请求上的
+路由（决策 16），因此某个角色的路由要去 **插件 → dsh-rigorquant** 卡片上看，
+不要在花名册上读。花名册里每位队友占一行：**点开任意一位**，打开的就是它自己的
+会话，于是你可以在它运行的同时读它的推导或审计（直接对话就是普通会话，会打断
+该队友的空白上下文——这一点会被记录，但不被阻止）。
+
+RigorQuant 只在这套界面上加了一样小东西：会话头部紧挨团队动作的
+**move 胶囊（pill）**，标出当前轮所处的 move——Promise、Fan out、
+Ground-truth、Attack、Certify——由任务看板的阻塞边推出（还有活要干的最浅一
+层），并为每位运行中的队友点一枚小徽章（角色缩写，悬停显示名字）。它只做展示：
+没有任何可点之处，不改动工具、路由或模型；在未挂载 Team bundle 的 profile 上
+它什么都不渲染。
+
+拓扑是**枢纽-辐条（hub-and-spoke）**，而且由守卫**强制**成事实而非约定：
+队友的消息要么到编排者、要么发不出去；队友无法列出花名册或整个看板；只能读取或
+更新没有被其他队友占有的任务（也就是它简报指定的那一条，由它 claim）。下图就是
+这一拓扑——编排者居中，它创建的角色为辐条，本轮的任务在下方：
 
 <p align="center">
-  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant 团队活动视图——团队摘要、分段进度、成员花名册与任务依赖图">
+  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant 团队拓扑——枢纽-辐条式角色与其下方本轮的任务依赖图">
 </p>
 
-上图是同款设计的读者友好静态渲染（实时面板只在运行中的 web 会话里可见），
-改绘自
+上图是该视图的读者友好静态渲染，由
+[`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) 生成——
+实时花名册与看板只在运行中的 web 会话里可见。它改绘自
 [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
-的实时活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身八个角色在"扇出"时刻的状态。面板
-SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) 生成。
+的活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身八个角色在"扇出"时刻的状态。
 
-> **署名。** 活动面板设计改编自
-> [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)，作者
+> **署名。** 本图改编自
+> [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的活动面板设计，作者
 > [NanmiCoder](https://github.com/NanmiCoder)（程序员阿江 / Relakkes）——
 > Copyright (c) 2026，MIT 许可证。角色头像为本仓库 `docs/figs/` 自有资源；
-> 顶部横幅同样改自上游 hero 图。
+> hero 横幅（`docs/figs/agent-team-hero.svg`）同样改自上游 hero 图。
 
 **五步循环。** 每轮＝扇出 → 求真 → 对抗 → 综合。
 
@@ -153,22 +162,28 @@ SVG 由 [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) �
 （0.1.3-alpha.2 —— 某一行配置校验失败会导致整个 preset 无法挂载）、
 “最终助手消息即交付”的契约（`report` 已在 0.1.2-rc.1 移除）以及 `present`
 交付物工具（0.1.5）。下限之所以是 0.1.6-alpha.2：浏览器半边注册的插槽由该版本
-引入，回退路由指向的模型也只在该版本的目录中——在 0.1.5 上，模型路由卡片与活动
-悬浮条都会静默地什么都不渲染。
+引入，回退路由指向的模型也只在该版本的目录中——在 0.1.5 上，模型路由卡片会静默地
+什么都不渲染，回退通道也无模型可路由。
 
-下限本身是 alpha：0.1.6 尚未发布正式版，本版本跑在预发布宿主上——它依赖的
-接缝记录在 docs/architecture.md 决策 20 的 0.1.6 修正里。
+这个下限本身是 alpha，团队层还是**实验性**的：0.1.6 尚未发布正式版，而本版本
+只跑在宿主以 **Beta** 卡片形式提供的 **Agent Teams** bundle 上——即
+**插件 → 官方** 下那两张带 **Beta** 标记的卡片：*智能体团队（Agent Teams）*
+与 *智能体团队 Web UI*。你可以在那里自行开启它们，也可以交给完整安装去做
+（见下）。本版本依赖的接缝记录在 docs/architecture.md 决策 20 的 0.1.6 修正里。
 
 扇出受宿主限制：每个 root 同时最多 8 个存活子代理（`maxActiveSubagents`，
 **插件 → Subagent**）。文献密集的研究若要让 4 条文献线与探索者并行，可在那里调高。
 
-完整安装还会在目标 profile 上启用宿主可选的 **智能体团队（Agent Teams，
-Beta）** bundle（如果尚未启用）——RigorQuant 0.5.0 运行在其之上——并通过在
-profile 的用户补丁（`cordis.patch.yml`）中追加一段有明确标记的配置块，把团队
-服务的成员数量上限提高到 64，并打印它写入的每一行。装好之后重复运行不会再有
-变化；`--uninstall` 只会移除该标记块，并且只在该标记块记录了"是安装脚本启用
-的"时才关闭对应 bundle——你自己手动启用的 bundle 不受影响。若 PATH 上没有
-`dsh`，这一步会打印警告后跳过，其余安装步骤照常进行（参见
+完整安装还会打开那两张 **Beta** bundle——即插件页 **官方** 分组下的
+*智能体团队（Agent Teams）* 与 *智能体团队 Web UI* 卡片——条件是目标 profile
+尚未启用它们，且会钉到 core 自身的版本上（若 profile 记录的是别的版本，则改钉回
+core 的版本；你自己启用、没有记录版本号的 bundle 不会被碰）；并在 profile 的用户补丁
+（`$DSH_HOME/profiles/<profile>/cordis.patch.yml`）中追加一段带
+`dsh-rigorquant` 标记的配置块，把团队服务的成员数量上限提高到 64，并打印它写入的
+每一行。装好之后重复运行不会再有变化；`--uninstall` 只会移除该标记块，并且只在
+该标记块记录了"是安装脚本启用的"时才关闭对应 bundle——你自己手动启用的 bundle
+不受影响。若 PATH 上没有 `dsh`，这一步会打印警告后跳过，其余安装步骤照常进行
+——那两张 Beta 卡片就留给你在插件页自行开关（参见
 docs/adr/0001-rigorquant-on-agent-teams.md）。
 
 两种安装形态：
@@ -204,6 +219,37 @@ cd dsh-rigorquant
 启动一个新的 DSH 会话并选择 **RigorQuant** preset，然后说：
 
 > rigorquant：为 [问题] 推导并验证一个方法，先在简化情形上验证，再做数值实现。
+
+## 部署须知
+
+三件需要研究型部署自行决定的事。它们都不是 RigorQuant 自己的机器，安装
+RigorQuant 也不会改变其中任何一件：
+
+- **DeepSeek 会话日志默认开启。** base bundle 以 `enabled: true` 挂载
+  `session-log-deepseek`：每个会话的规范事件日志都会作为请求元数据上传到
+  DeepSeek 官方 API——不占模型输入 token，但整个运行会离开本机。要关掉它，
+  在 profile 的用户补丁
+  （`$DSH_HOME/profiles/<profile>/cordis.patch.yml`）中覆盖该行，然后重启
+  profile——改动在下次启动生效：
+
+  ```yaml
+  - id: session-log-deepseek
+    config:
+      enabled: false
+  ```
+
+- **目标轮驱动器（goal-round-driver）是宿主的，而且已经挂好。** goal 服务与
+  `goal-round-driver` 是随附 base bundle 的宿主平面行
+  （`@deepseek-ai/dsh-base`）；preset 只重新挂载人工的 `/goal` 命令与面向模型的
+  goal 工具——这两个在 host 平面上被 web bundle 关掉。本仓库不发布、不挂载、
+  也不武装这个轮驱动器："无人值守"是原生契约，跨会话边界仍会解除 goal，直到
+  一次人工回合重新武装它（决策 10）。
+
+- **workspace-changes 卡片是"编辑"这件事人类可见的见证。** web bundle 的
+  `workspace-changes` 行按 git 工作区快照记录每个顶层回合改动的文件，并在该回合
+  下方渲染变更卡片——于是判决之后才落地的编辑，就在它发生的地方、发生的时间被
+  看见，这正是决策 19 的冻结写入规则需要人类能看到的东西。认证本身只读研究记录，
+  从不读会话（docs/architecture.md 决策 19）。
 
 ## 计算通道（一次性）
 
@@ -245,10 +291,10 @@ DSH ≥ 0.1.6-alpha.2（其配置卡片注册在插件页的 bundle 配置插槽
 ```
 package.json                dsh.bundle manifest（支持 dsh plugin add）
 cordis.patch.yml            bundle patch：技能层 + rq-model-router +
-                            rq-activity + rq-preset-sync 行
-dsh/                        宿主半（rq-model-router 路由、rq-activity 监视器、
-                            rq-preset-sync 启动同步）与 web 客户端包
-                            （路由卡片 + 活动悬浮件）
+                            rq-team + rq-preset-sync 行
+dsh/                        宿主半（角色路由、团队组合与逐调用守卫、
+                            启动同步）+ 每角色一个 persona 文件，与 web 客户端包
+                            （路由卡片 + move 胶囊）
 agent-presets/rigorquant/   preset 组合 + persona + 内置技能
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   元校验器（唯一正式副本）
@@ -257,12 +303,12 @@ agent-presets/rigorquant/   preset 组合 + persona + 内置技能
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
-docs/figs/agent-team-activity.svg  读者友好的活动视图静态图
+docs/figs/agent-team-activity.svg  读者友好的枢纽-辐条拓扑静态图
 docs/figs/agent-team-activity.js   其生成脚本（测试锁定不漂移）
-docs/figs/agent-team-hero.svg       团队图横幅，改自 dsh-agent-teams
-                            的 hero 图（见下方署名）
+docs/figs/agent-team-hero.svg       hero 横幅，改自 dsh-agent-teams
+                            的 hero 图（见上方署名）
 tests/                      校验器测试套件（见下方"测试"）
-studies/                    每个任务一个研究文件夹（Mode B；各 checkout 自己的
+studies/                    每项研究一个文件夹（Mode B；各 checkout 自己的
                             活跃研究，不随 bundle 发布）
 ```
 
@@ -301,8 +347,8 @@ Git 的标准 `git commit --no-verify`。
 
 ## 研究（Study）
 
-一个 **study** 是一个自包含的 rigorquant 任务，各处内部结构完全一致：持久化
-成果位于 study 根目录（`study.json`、`STUDY.md`、`registry.json`、
+一项 **study** 即用户的委托：一个自包含的工作单元，各处内部结构完全一致。
+持久化成果位于 study 根目录（`study.json`、`STUDY.md`、`registry.json`、
 `journal.md`、`derivations/`、`audits/`、`artifacts/`），应当提交；所有草稿
 都在被 git 忽略的 `interim/` 中。两种模式，由位置决定：
 

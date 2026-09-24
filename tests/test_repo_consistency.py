@@ -103,10 +103,9 @@ def test_native_agent_options_floor_is_declared_and_enforced():
     The binding constraint is no longer `agentOptions.reasoningEffort`
     (0.1.2-alpha.1): 0.1.3-alpha.2 replaced the persona row's single `text` key
     with a required `prefix`, and a row whose config fails rejects the WHOLE
-    preset mount. 0.1.6-alpha.2 is where the routing card's slot, the
-    main-view session lookup the floater needs, and the `deepseek-flash`
-    fallback all hold — on 0.1.5 this release's card and floater render
-    nothing.
+    preset mount. 0.1.6-alpha.2 is where the routing card's slot and the
+    `deepseek-flash` fallback both hold — on 0.1.5 this release's card renders
+    nothing, and its fallback lane has no model to route to.
 
     One floor, stated in six places: a reader who finds an older number in
     any of them learns the wrong minimum. `dsh/sync.js` is in the list
@@ -591,6 +590,150 @@ def test_skill_text_uses_the_glossary_vocabulary():
         assert move in step3, "Step 3 does not name the %s move" % move
 
 
+def _section(text, heading, level=2):
+    """The body of `heading`, up to the next heading of the same or higher level.
+
+    A README claim is pinned by the section that carries it: a sentence that
+    drifts into another section, or a section that keeps the old wording
+    beside the new, is exactly the inconsistency this suite exists to catch.
+
+    Headings are read OUTSIDE fenced code blocks. Both Install sections carry
+    column-0 `# npx dsh-rigorquant ...` comment lines inside a shell fence, and
+    a naive scan ends the section at the first of them -- pinning a prefix of
+    the section and passing while the rest drifts unchecked.
+    """
+    lines = text.splitlines()
+    start = None
+    fenced = False
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if start is None:
+            if re.match(r"^%s %s\b" % ("#" * level, re.escape(heading)), line):
+                start = index + 1
+        elif re.match(r"^#{1,%d} " % level, line):
+            return "\n".join(lines[start:index])
+    assert start is not None, "no %s heading %r" % ("#" * level, heading)
+    return "\n".join(lines[start:])
+
+
+def _pin_section_words(name, heading, words, level=2):
+    """Every word must appear in `name`'s `heading` section, and return the body.
+
+    One concept is stated in two languages: the Chinese and English sections
+    are pinned by the same call shape so neither can be quietened alone.
+    """
+    body = _section((REPO / name).read_text(), heading, level=level)
+    for word in words:
+        assert word.lower() in body.lower(), (
+            "%s's %r section never says %r" % (name, heading, word))
+    return body
+
+
+def test_tracked_documents_speak_the_glossary_vocabulary():
+    """CONTEXT.md's two collisions, spelled out, may not come back (issue #15).
+
+    A move is a loop position and a stage is one of a claim's validity stages,
+    so "five-move stage" names one concept twice; a study is the assignment,
+    so "rigorquant task" hands the board's word to the study's. The glossary
+    is the one document allowed to spell both -- it lists them under
+    `_Avoid_` -- so those lines are exempt; every other tracked document,
+    English or Chinese, may not.
+
+    Dated records are exempt the same way `docs/upgrade-*.md` is exempt from
+    the retired-model pin: a released changelog entry, a point-in-time study
+    and the repository review quote the vocabulary of their era, and editing
+    them would falsify what was said then. The sweep therefore covers the
+    documents that describe the system as it is now.
+    """
+    banned = (
+        re.compile(r"five[- ]move\s+stage", re.IGNORECASE),
+        re.compile(r"rigorquant\s+(?:task|任务)", re.IGNORECASE),
+    )
+    dated = re.compile(r"^(CHANGELOG\.md|docs/upgrade-[\d.]+\.md|docs/repository-review\.md)$")
+    offenders = []
+    for rel in tracked_files():
+        if not rel.endswith((".md", ".html")) or dated.match(rel):
+            continue
+        try:
+            text = (REPO / rel).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            if line.strip().startswith("_Avoid_"):
+                continue
+            if any(pattern.search(line) for pattern in banned):
+                offenders.append("%s:%d: %s" % (rel, number, line.strip()[:100]))
+    assert not offenders, (
+        "one concept, two names (CONTEXT.md is the arbiter):\n" + "\n".join(offenders))
+
+
+def test_both_readmes_describe_the_team_through_the_native_surface():
+    """Issue #15: what a reader of either README will actually see running.
+
+    Issue #13 retired the custom activity panel for the harness's own team
+    view, so the section that used to describe the `rq-activity` host half and
+    its `shell.overlay` floater must describe the four native things a
+    researcher looks at -- the roster and the task board in the session
+    header, a teammate opened as an ordinary conversation, and the move pill
+    -- and must keep the hub-and-spoke figure as the picture of the topology
+    the per-call guards enforce. The retired implementation may not be named:
+    not the host half, not the overlay slot, not the floater/悬浮件. The
+    upstream *design* may still be credited -- the figure is adapted from it.
+    """
+    for name, heading, words in (
+        ("README.md", "The team, live",
+         ("roster", "task board", "move pill", "session header", "hub-and-spoke",
+          "enforce", "docs/figs/agent-team-activity.svg")),
+        ("README.zh-CN.md", "团队实时视图",
+         ("花名册", "任务看板", "胶囊", "会话头部", "枢纽", "强制",
+          "docs/figs/agent-team-activity.svg")),
+    ):
+        body = _pin_section_words(name, heading, words, level=3)
+        for retired in ("rq-activity", "shell.overlay", "floater", "悬浮件", "悬浮条"):
+            assert retired not in body, (
+                "%s's team section still describes the retired %r" % (name, retired))
+
+
+def test_both_readmes_install_sections_carry_the_beta_toggle_and_the_cap():
+    """Issue #15: the Install section answers "what will this do to my profile".
+
+    The floor is pinned elsewhere; what a reader cannot infer is that the
+    Agent Teams bundles are the two Beta cards on the Plugins page under
+    Official, that a full install turns them on and raises the lifetime member
+    cap through a marked block in the profile's user patch, and that the whole
+    release rests on an experimental bundle and an alpha harness.
+    """
+    for name, heading, words in (
+        ("README.md", "Install", ("Beta", "Official", "cordis.patch.yml",
+                                  "member cap to 64", "experimental",
+                                  "0.1.6-alpha.2")),
+        ("README.zh-CN.md", "安装", ("Beta", "官方", "cordis.patch.yml",
+                                    "提高到 64", "实验性", "0.1.6-alpha.2")),
+    ):
+        _pin_section_words(name, heading, words)
+
+
+def test_both_readmes_carry_the_deployment_notes():
+    """Issue #15: three deployment facts, none of them this repo's machinery.
+
+    The harness enables the DeepSeek session log by default, so a research
+    deployment needs the row overlay that turns it off; the goal-round driver
+    is host-mounted (the 0.1.5 study's "mount it" is superseded -- there is
+    nothing to add); and the workspace-changes turn card is the human-visible
+    witness of an edit after certification (Decision 19's frozen-write rule),
+    while the validator keeps reading the study record rather than the session.
+    """
+    for name, heading in (("README.md", "Deployment notes"),
+                          ("README.zh-CN.md", "部署须知")):
+        _pin_section_words(name, heading, ("session-log-deepseek", "enabled: false",
+                                           "goal-round-driver", "workspace-changes",
+                                           "cordis.patch.yml"))
+
+
 def test_agent_teams_geometry_attribution_keeps_the_upstream_mit_notice():
     notice = (REPO / "THIRD_PARTY_NOTICES").read_text()
     assert "dsh-agent-teams" in notice
@@ -825,11 +968,11 @@ def test_every_role_has_a_description_and_frequency_in_both_locales():
     client = (REPO / "dsh" / "client.js").read_text()
     # Both locale sections of every copy block live inside the factory
     # closure: first the settings card (the one that carries role copy), then
-    # the activity floater. Each must be bilingual — a monolingual block is a
+    # the move pill. Each must be bilingual — a monolingual block is a
     # language that silently falls back to the other's strings.
     sections = re.findall(r"^\s{2}(en|zh): \{", client, re.MULTILINE)
     assert sections[:2] == ["en", "zh"], "the card copy sections moved; update this test"
-    assert sections[2:] == ["en", "zh"], "the activity copy is not bilingual"
+    assert sections[2:] == ["en", "zh"], "the move-pill copy is not bilingual"
     vocabulary = {"en": {"Frequent", "Common", "Rare"}, "zh": {"频繁", "常见", "少见"}}
     for role in roles:
         for locale in ("en", "zh"):
@@ -961,7 +1104,9 @@ def test_no_reference_to_a_docs_file_dangles():
     Prose references (a docs path followed by a section number) outnumber
     markdown links here and are
     shipped inside skills and the composition, where a dangling path sends a
-    model looking for a file that is not installed.
+    model looking for a file that is not installed. Every `docs/` path with a
+    known extension counts, not only `.md`: the READMEs point a reader at the
+    figure generator, the ADR and the layout files the same way.
     """
     referenced = {}
     for rel in tracked_files():
@@ -971,7 +1116,7 @@ def test_no_reference_to_a_docs_file_dangles():
             text = (REPO / rel).read_text()
         except (OSError, UnicodeDecodeError):
             continue
-        for hit in re.findall(r"docs/[\w./-]*\.md", text):
+        for hit in re.findall(r"docs/[\w./-]*\.(?:md|html|js|svg|png|json|yml|yaml|tex|sh)", text):
             referenced.setdefault(hit, []).append(rel)
     missing = {t: sorted(set(src)) for t, src in referenced.items()
                if not (REPO / t).exists()}
@@ -987,14 +1132,20 @@ def _decision_numbers():
 
 
 def test_every_decision_reference_resolves():
-    """A cited `Decision N` that architecture.md never records is drift."""
+    """A cited `Decision N` that architecture.md never records is drift.
+
+    The Chinese README cites the same decisions in its own words -- `决策 N`
+    and `第 N 条` -- so both forms are resolved, not just the English one; a
+    translation that cites a clause nobody wrote is the same drift.
+    """
     known = _decision_numbers()
     assert known, "architecture.md records no decisions; update this test"
     offenders = []
     sources = docs() + [REPO / f for f in tracked_files() if f.startswith("tests/")]
     for src in sources:
         for n, line in enumerate(src.read_text().splitlines(), 1):
-            for num in re.findall(r"[Dd]ecision (\d+)", line):
+            for num in re.findall(r"(?:[Dd]ecision|决策) (\d+)|第 (\d+) 条", line):
+                num = num[0] or num[1]
                 if num not in known:
                     offenders.append("%s:%d: Decision %s" % (src.relative_to(REPO), n, num))
     assert not offenders, (

@@ -159,6 +159,21 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
     <code class="inl">~/gits/rigorquant_studies</code>; every number below can be opened in those folders.</span>
     <span class="zh">本页按<b>实际执行顺序</b>逐步讲全流程 —— 每一步都分三层：<i>基座层</i>（用到了 DeepSeek Harness 的哪项基础组件）、<i>框架层</i>（插件在其上增加了什么规则）、<i>证据层</i>（真实运行中实际发生了什么）。全部证据来自 <code class="inl">~/gits/rigorquant_studies</code> 中的六个真实研究，下列每个数字都能在对应目录里打开核对。</span>
   </p>
+  <p class="sub">
+    <span class="en"><b>Version note.</b> The mechanism notes, tables and figures below describe the classic ≤ 0.4.2
+    line — per-role delegation rows keyed by a <code class="inl">[[rq:role=…]]</code> tag, and a right-edge activity
+    overlay. From 0.5.0 the same loop runs on the harness's <b>Agent Teams</b> instead: named
+    <code class="inl">&lt;role&gt;-&lt;n&gt;</code> teammates created with <code class="inl">spawn_teammate</code>, a shared
+    task board, hub-and-spoke enforced by guard, and a header pill for the move (Decision 24,
+    <code class="inl">docs/architecture.md</code>). The loop, the check battery and every piece of evidence below are
+    unchanged.</span>
+    <span class="zh"><b>版本说明。</b>下文中各条机制说明、表格与图描述的是经典的 ≤ 0.4.2 线路——以
+    <code class="inl">[[rq:role=…]]</code> 标记为键的按角色委派行，以及右侧边缘的活动悬浮件。
+    自 0.5.0 起，同一套循环改跑在 Harness 的 <b>Agent Teams</b> 上：由
+    <code class="inl">spawn_teammate</code> 创建的具名 <code class="inl">&lt;role&gt;-&lt;n&gt;</code> 队友、
+    共享任务看板、由守卫强制的枢纽-辐条，以及会话头部标出 move 的胶囊（决策 24，
+    <code class="inl">docs/architecture.md</code>）。循环本身、检验组以及下文所有证据均未改变。</span>
+  </p>
   <div class="chips mono">
     <span class="chip"><b>6</b>&nbsp;<span class="en">real studies</span><span class="zh">个真实研究</span></span>
     <span class="chip"><b>22</b>&nbsp;<span class="en">subagents in one round</span><span class="zh">个子代理（单轮最多）</span></span>
@@ -252,12 +267,15 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
       <li><span class="en"><b>Skill registry + <code class="inl">skill</code> tool</b> — the preset anchors its own skill root at
         <code class="inl">baseUrl</code>, so the operating procedure travels with the preset.</span>
         <span class="zh"><b>技能注册表 + <code class="inl">skill</code> 工具</b>—— 预设把技能根目录锚定在自己的 <code class="inl">baseUrl</code> 上，操作规程随预设一起走。</span></li>
-      <li><span class="en"><b>Per-role delegation</b> — the same row (<code class="inl">@deepseek-ai/dsh-tool-subagent</code>) mounted
-        seven times with different personas, <code class="inl">toolFilter.deny</code> lists and <code class="inl">maxDepth</code>;
-        spawned children never see the parent conversation (context isolation is harness-enforced).</span>
-        <span class="zh"><b>按角色委派</b>—— 同一行（<code class="inl">@deepseek-ai/dsh-tool-subagent</code>）以七种不同人格、不同的 <code class="inl">toolFilter.deny</code> 与 <code class="inl">maxDepth</code> 挂载七次；派生的子代理永远看不到父会话（上下文隔离由 Harness 强制）。</span></li>
-      <li><span class="en"><b>Goal loop</b> — one task-level goal relaunches the orchestrator every round inside the live session.</span>
-        <span class="zh"><b>目标循环</b>—— 单个任务级目标在活会话内每轮重新拉起编排者。</span></li>
+      <li><span class="en"><b>Agent Teams</b> — the optional team layer: a durable named roster under the session's root
+        agent, <code class="inl">spawn_teammate</code> / <code class="inl">wait_agent</code> / <code class="inl">send_message</code>,
+        a shared task board, and the native team view. A teammate never sees the parent conversation (context
+        isolation is harness-enforced).</span>
+        <span class="zh"><b>Agent Teams</b>—— 可选的团队层：会话根代理之下具名持久的成员花名册、
+        <code class="inl">spawn_teammate</code> / <code class="inl">wait_agent</code> / <code class="inl">send_message</code>、
+        共享任务看板，以及原生团队视图。队友永远看不到父会话（上下文隔离由 Harness 强制）。</span></li>
+      <li><span class="en"><b>Goal loop</b> — one study goal relaunches the orchestrator every round inside the live session.</span>
+        <span class="zh"><b>目标循环</b>—— 单个研究目标在活会话内每轮重新拉起编排者。</span></li>
       <li><span class="en"><b>Compaction + tool-result pruner</b> — tuned to fire earlier (60% of context window) and retain less
         (4 KiB per result) because long runs re-send the prefix on every step.</span>
         <span class="zh"><b>压缩 + 工具结果修剪器</b>—— 调整为更早触发（上下文窗口的 60%）且保留更少（每条结果 4 KiB），因为长运行会在每一步重复发送前缀。</span></li>
@@ -314,7 +332,8 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
 <!-- ============================================================ 2 -->
 <section id="s-cast">
   <div class="snum en">Section 2</div><div class="snum zh">第 2 节</div>
-  <h2><span class="en">The cast: seven role tools and a root</span><span class="zh">角色表：七个角色工具加一个根</span></h2>
+  <h2><span class="en">The cast: seven role tools and a root</span><span class="zh">角色表：七个角色工具加一个根</span>
+    <span class="pill">classic ≤ 0.4.2</span></h2>
   <p>
     <span class="en">Isolation in this framework is mostly <b>procedural, enforced by tool choice</b>: a blind role is blind
     because its tool denies the eyes, not because a prompt asked it to pretend. Only context isolation is
@@ -369,12 +388,14 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
     </tbody>
   </table>
   <p class="small">
-    <span class="en">Mechanical facts worth noticing: every child is tagged <code class="inl">[[rq:role=…]]</code> so the host-side router can
+    <span class="en"><b>(classic ≤ 0.4.2.)</b> Mechanical facts worth noticing: every child is tagged <code class="inl">[[rq:role=…]]</code> so the host-side router can
     route per role without touching untagged agents; every child is <code class="inl">maxDepth: 1</code> — it cannot spawn grandchildren;
     and since harness 0.1.1-rc.2 adoption, every role delivers its result through the harness <code class="inl">report</code> channel,
     which wakes the orchestrator (Decision 20). A seventh row, <code class="inl">subagent_fork</code>, exists but procedure bans it for track work
-    — a fork shares the parent conversation, which would destroy independence.</span>
-    <span class="zh">值得注意的机械事实：每个子代理都带 <code class="inl">[[rq:role=…]]</code> 标记，宿主侧路由器据此按角色路由、绝不触碰未标记的代理；每个子代理都是 <code class="inl">maxDepth: 1</code> —— 不能再生孙辈；自采用 harness 0.1.1-rc.2 起，每个角色通过 Harness 的 <code class="inl">report</code> 通道交付结果并唤醒编排者（决策 20）。还有第七行 <code class="inl">subagent_fork</code> 存在但被规程禁止用于轨道工作 —— fork 会共享父会话，从而摧毁独立性。</span>
+    — a fork shares the parent conversation, which would destroy independence. Under Decision 24 none of these
+    tools exists: the roles are teammates named <code class="inl">&lt;role&gt;-&lt;n&gt;</code>, composed by <code class="inl">dsh/team.js</code>,
+    with hub-and-spoke enforced by that plugin's per-call guard.</span>
+    <span class="zh"><b>（经典 ≤ 0.4.2。）</b>值得注意的机械事实：每个子代理都带 <code class="inl">[[rq:role=…]]</code> 标记，宿主侧路由器据此按角色路由、绝不触碰未标记的代理；每个子代理都是 <code class="inl">maxDepth: 1</code> —— 不能再生孙辈；自采用 harness 0.1.1-rc.2 起，每个角色通过 Harness 的 <code class="inl">report</code> 通道交付结果并唤醒编排者（决策 20）。还有第七行 <code class="inl">subagent_fork</code> 存在但被规程禁止用于轨道工作 —— fork 会共享父会话，从而摧毁独立性。按决策 24，这些工具都已不存在：角色是由 <code class="inl">dsh/team.js</code> 组合、名为 <code class="inl">&lt;role&gt;-&lt;n&gt;</code> 的队友，枢纽-辐条由该插件的逐调用守卫强制。</span>
   </p>
 </section>
 
@@ -401,15 +422,15 @@ footer{border-top:1px solid var(--line);margin-top:70px;padding:30px 24px 60px;
     </div>
     <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
       <p>
-      <span class="en">On the first message of a rigorquant task, load <code class="inl">rigorquant</code> (the SOP) — plus
-      <code class="inl">literature</code> when the task is a review.</span>
-      <span class="zh">rigorquant 任务的首条消息先加载 <code class="inl">rigorquant</code>（操作规程）；综述类任务再加载 <code class="inl">literature</code>。</span></p>
+      <span class="en">On the first message of a rigorquant study, load <code class="inl">rigorquant</code> (the SOP) — plus
+      <code class="inl">literature</code> when the study is a review.</span>
+      <span class="zh">rigorquant 研究的首条消息先加载 <code class="inl">rigorquant</code>（操作规程）；综述类研究再加载 <code class="inl">literature</code>。</span></p>
     </div>
     <div class="band evid"><span class="blab en">Evidence</span><span class="blab zh">证据层</span>
       <p>
-      <span class="en">In the VaR run, the loaded gate classified the task as <b>loop</b>-class (multi-stage, state across turns),
+      <span class="en">In the VaR run, the loaded gate classified the study as <b>loop</b>-class (multi-move, state across turns),
       which is what opened a ledger refreshed at every seam. Not ceremony — classification decides how much machinery runs.</span>
-      <span class="zh">在 VaR 运行中，加载后的闸门把任务判定为 <b>loop</b> 级（多阶段、跨轮携带状态），这决定了要开一本账、并在每个接缝处刷新。这不是仪式 —— 分级决定启用多少机器。</span></p>
+      <span class="zh">在 VaR 运行中，加载后的闸门把研究判定为 <b>loop</b> 级（多个 move、跨轮携带状态），这决定了要开一本账、并在每个接缝处刷新。这不是仪式 —— 分级决定启用多少机器。</span></p>
     </div>
   </div>
 </section>
@@ -468,10 +489,10 @@ FAIL -- 7 problem(s):
     </div>
     <div class="band found"><span class="blab en">Foundation</span><span class="blab zh">基座层</span>
       <p>
-      <span class="en">The goal tool: the orchestrator creates <b>one task-level goal</b> and the harness's goal-round driver
+      <span class="en">The goal tool: the orchestrator creates <b>one study goal</b> and the harness's host-mounted goal-round driver
       relaunches it every round while the session stays alive. Crossing a session boundary disarms it; one human turn
       (“continue”) re-arms it. That is the precise meaning of “unattended” here.</span>
-      <span class="zh">目标工具：编排者创建<b>单个任务级目标</b>，Harness 的目标轮驱动器在会话存活期间每轮重新拉起它。跨会话边界会使之解除武装；人类一句「continue」即可重新上膛。这就是本项目「无人值守」的精确含义。</span></p>
+      <span class="zh">目标工具：编排者创建<b>单个研究目标</b>，Harness 宿主机挂载的目标轮驱动器在会话存活期间每轮重新拉起它。跨会话边界会使之解除武装；人类一句「continue」即可重新上膛。这就是本项目「无人值守」的精确含义。</span></p>
     </div>
     <div class="band frame"><span class="blab en">Framework</span><span class="blab zh">框架层</span>
       <p>

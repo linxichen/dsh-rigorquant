@@ -37,6 +37,27 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   instead of re-running the tool. Each teammate persona now claims and
   completes the task its brief names.
 
+### Documentation
+- **The docs speak the glossary, and the READMEs describe the team that now
+  runs** (Decision 24, `docs/adr/0001-rigorquant-on-agent-teams.md`). Both
+  READMEs' Install sections name the floor, the alpha-plus-experimental
+  dependency, the Beta toggle (the *Agent Teams* and *Agent Teams Web UI*
+  cards under **Plugins → Official**) and what the installer writes into the
+  profile's user patch. "The team, live" is rewritten around the native team
+  view — roster, task board, opening a teammate — plus the move pill, with
+  the hub-and-spoke figure kept as the picture of what the guards enforce; it
+  also says the roster's model column is the member's own model option, not
+  the route the router applies (Decision 16), so a route is read off the
+  **Plugins → dsh-rigorquant** card. A
+  new **Deployment notes** section covers the DeepSeek session log (on by
+  default; `enabled: false` in the profile's user patch), the host-mounted
+  goal-round driver, and the `workspace-changes` turn card as the
+  human-visible witness of an edit after certification. One word per concept
+  now holds across the tracked documents, and `test_repo_consistency.py` pins
+  it: no document may name a move as a stage or a study as a task — the two
+  entries `CONTEXT.md` lists under *Avoid*, in English and Chinese — and both
+  READMEs' team, install and deployment sections are pinned by name.
+
 ### Removed
 - **The classic delegation rows.** The preset drops the seven per-role
   delegation rows, `tool-subagent-control`, `tool-subagent-list-agents`, and

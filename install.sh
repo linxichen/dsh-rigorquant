@@ -135,10 +135,10 @@ require_dsh_version() {
 # WHOLE preset mount), the child-delivery contract is the final assistant
 # message (`report` was removed in 0.1.2-rc.1), the deliverables flow needs
 # the `present` tool (0.1.5), and the browser half registers into slots
-# 0.1.6-alpha.2 introduced — on 0.1.5 the routing card and the activity
-# floater render nothing at all, silently. Fail before copying anything when
-# the installed CLI is older; a missing CLI keeps the historical warning and
-# can be installed later.
+# 0.1.6-alpha.2 introduced — on 0.1.5 the routing card renders nothing at all,
+# silently, and the fallback lane has no model to route to. Fail before
+# copying anything when the installed CLI is older; a missing CLI keeps the
+# historical warning and can be installed later.
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
   DSH_CORE_VERSION="$(dsh --version 2>/dev/null || true)"
   require_dsh_version
