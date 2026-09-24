@@ -1,6 +1,6 @@
 [project]
 name = "rigorquant-lane"
-version = "0.4.2"
+version = "0.5.0"
 description = "Pinned uv compute lane for the dsh-rigorquant framework: symbolic exactness, convex optimization, sampling, and falsification."
 readme = "README.md"
 requires-python = ">=3.12"

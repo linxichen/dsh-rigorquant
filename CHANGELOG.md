@@ -8,6 +8,57 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-23
+
+RigorQuant on Agent Teams, team-only (Decision 24,
+`docs/adr/0001-rigorquant-on-agent-teams.md`). The orchestrator is the team's
+Lead; every other role is a teammate named `<role>-<n>`, composed by name and
+guarded per call by a new host plugin, and coordinated each round as a task
+DAG on the native board. The release amends Decisions 8 (the mechanism is
+`spawn_teammate`/`wait_agent` and the task board), 14 (the bash network verbs
+are denied at the call for web-denied roles), 16 (the router carries the tier
+matrix), 19 (L3 keeps freeze-and-hash; a reused teammate receives only new
+hash-bound briefs), 20 (floor `0.1.6-alpha.2`; the activity monitor retires
+for the native team view plus a move pill) and 23 (role identity moves from
+the tool name to the teammate name). It requires DSH ≥ 0.1.6-alpha.2 with the
+two experimental Agent Teams bundles, which the installer enables; operators
+who cannot enable a Beta bundle stay on 0.4.2.
+
+### Added
+- **`rq-team`, the host plugin that composes a teammate by its name**
+  (`dsh/team.js`, issue #9). On every `agent/created` of a RigorQuant
+  teammate whose name parses to a role, it registers that role's persona
+  (`dsh/personas/<role>.md`) at the harness's own `deployment:persona-prefix`
+  slot and restricts the teammate's tool catalog by tier: blind roles lose
+  web and skill, web-denied roles lose web, and every teammate loses the
+  orchestrator-owned goal, todo, ask-user and plan-mode tools. The
+  orchestrator (the harness's `lead` membership) gets a "RigorQuant team
+  guard: armed" runtime context and its own guard, and is composed as well
+  when RigorQuant is picked only after the session was created (the plugin
+  also recomposes on `agent-preset/selected`, `docs/upgrade-0.1.6.md` §3.11).
+  The `agentTeams` service is reached duck-typed and never imported; when it
+  is absent the plugin warns once and disarms.
+- **Topology by guard** (issue #10). A per-agent `tools.guard` enforces what
+  `tools.restrict` cannot mask on the scoped Team tools: a teammate may
+  message only the orchestrator, is roster- and board-blind, and reads or updates
+  only its own task; web-denied roles are denied bash network verbs at the
+  call; the orchestrator's `spawn_teammate` refuses a non-role name and
+  `context: fork`.
+- **Routing by membership** (issue #11). The router resolves a routed
+  agent's role through `agentTeams.tryMembership` (the Lead as `root`,
+  everyone else by name) and carries the shipped tier matrix itself, since
+  a teammate has no native per-role model row.
+- **The installer enables Agent Teams** (issue #12). A full install turns on
+  both optional Team bundles, pinned to the core's version, and appends the
+  `maxMembers: 64` lifetime-cap override to the profile's user patch under a
+  marker; re-running is a no-op, and `--uninstall` reverses only what the
+  marker records.
+- **The move pill** (issue #13). A small pill in the conversation header's
+  utilities slot shows which of the five moves the round is on, derived from
+  the task board's `blockedBy` layers, plus a badge per running teammate. It
+  reads the orchestrator's team view through the Team namespace, which is injected
+  optionally, so a profile without the Team bundle never registers it.
+
 ### Changed
 - **The study runs on Agent Teams only** (Decision 24,
   `docs/adr/0001-rigorquant-on-agent-teams.md`). SKILL.md Step 3 runs a round
@@ -66,8 +117,26 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   external-agent rows and the checker lane stay disabled, and `present` stays.
   The router's `ROLE_TOOLS` map goes with the rows. Repo-consistency pins
   forbid the rows, pin the new L3, and pin the skill's vocabulary.
+- **The activity monitor** (issue #13). `dsh/activity.js`, its HTTP routes,
+  its probe and tests, and the client's floater, panel and geometry code are
+  deleted, in favour of the native roster and task board. The deprecated
+  synchronous history reads go with their last caller.
+- **The `[[rq:role=…]]` persona tag** and the router's persona-assembly
+  probe (issue #11): a role now comes from the teammate's name.
 
 ### Fixed
+- **Toggling the `rq-team` row in the Plugins page left the orchestrator
+  armed, and the row could not be turned back on** (found verifying this release live,
+  `docs/upgrade-0.1.6.md` §3.15). Every persona, context, restriction and
+  guard the plugin installs goes through the agent's own scope, so it
+  outlived the plugin: with the row off, a live orchestrator kept the "armed" line
+  and its guard, and switching the row back on hit "prompt context
+  `rq-team:guard-armed` is already registered in this scope" during the
+  backfill, so the row stayed off (and, at bundle level, all four rows
+  stayed off). The plugin now disposes everything it installed when its
+  own fiber unloads; `tests/team_probe.cjs` models an agent scope that
+  refuses a duplicate name and pins disarm-on-unload and exactly-once
+  recompose-on-reload.
 - **The move pill rendered nothing on every real session** (issue #13's client
   half). It read the Lead's board off a client session projection
   (`useSessions(state => state.projectionsBySession[…].values.agentTeam)`) that
@@ -100,6 +169,26 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   still ships the deleted `dsh/activity.js` — and the pre-commit hook wiring was
   skipped there too; both now share one `is_git_checkout` helper. Verified live
   against the installed CLI; see `docs/upgrade-0.1.6.md` §3.13.
+
+### Verified
+- **Released against the installed 0.1.6-alpha.2 with both Team bundles on**
+  (`docs/upgrade-0.1.6.md` §3.15, scratch profile `rq50` installed from the
+  release tree by `install.sh`): the preset harness probe reports **28 rows,
+  0 hard failures**; the bundle page shows v0.5.0 with **4 total · 4
+  running** (`skill-filesystem-rigorquant`, `rq-model-router`,
+  `rq-preset-sync`, `rq-team`) and the routing card.
+- **Plugins-page toggling leaves nothing dangling.** On a live RigorQuant
+  session, each change was read off the session's own runtime-context
+  snapshots rather than the model's answer. The harness re-emits a snapshot
+  whenever the rendered context changes. `rq-team` row off: a new snapshot
+  without the armed line. Back on: the armed line returns, once, with no
+  error. The whole `rigorquant` bundle off and on: disarmed, then re-armed
+  with all four rows Running and the card back.
+  `rq-model-router`, `rq-preset-sync` and `skill-filesystem-rigorquant`, each
+  toggled off and on alone, went back to 4 running with no toast.
+- **Suite and gate.** `RQ_COVERAGE=1` full suite: 341 passed, 1 skipped (the
+  live Semantic Scholar boundary check, rate-limited), with `rq_check.py`
+  coverage at 96.3% against the 95% gate.
 
 ## [0.4.2] - 2026-09-22
 

@@ -1063,6 +1063,87 @@ the teammate's own name) — no network dependency, no asset pipeline.
   shell does, plus the real `--dump-config` composition, for everything the
   browser did not show directly.
 
+### 3.15 Phase 3 release verification (2026-09-23, 0.5.0, issue #16)
+
+The release checks the spec names, run against the release tree itself. The
+scratch profile is **`rq50`**: `dsh rq50 --from-default-profile web
+--dump-config`, then `./install.sh --profile rq50` from this worktree. The
+installer took the `file:` path (the #21 worktree fix), enabled both Team
+bundles pinned to `0.1.6-alpha.2`, and wrote the `maxMembers: 64` marker
+block. Boot: `dsh --profile rq50 --port 38150 --no-open` under a PTY.
+
+- **Harness probe green.** `node tests/preset_harness_probe.cjs` against
+  the installed `0.1.6-alpha.2`: **28 rows, 0 hard failures**, 5 without an
+  exported Config. There are ten fewer rows than §3.8's 38 because #14
+  removed the classic delegation rows.
+- **Composition.** `dsh rq50 --dump-config` lists the four RigorQuant rows,
+  `agent-team` patched to `maxMembers: 64` by the user patch, and
+  `tool-agent-team` / `ui-agent-team`. The bundle page shows **v0.5.0, 4
+  total · 4 running**, with the routing card. With `install.sh`'s bundle
+  order (`dsh-rigorquant` before the Team layers), the bundle patch's own
+  `agent-team` row logs cordis-plugin-include's "entry not found" warning,
+  which §3.13 documents as a no-op. The Plugins page re-appends a bundle it
+  re-enables at the end of the list, and after that the warning is gone.
+- **Plugin Manager toggling found a defect, now fixed.** 0.5.0 has no HTTP
+  routes, so "no dangling listener" was checked on what `rq-team` leaves on
+  a live agent. The probe was a RigorQuant session whose Lead answered each
+  turn with its runtime-context guard line. The evidence is the session's
+  own `session.v3.jsonl.zstd`, not the model's reply. The agent loop's
+  `RuntimeContextProjection.project` re-emits a runtime-context
+  `user/message` whenever the rendered context differs from the retained
+  one, so a disposed context always shows up as a new snapshot.
+  - *Before the fix:* with the `rq-team` row toggled off, the next turn
+    carried **no new snapshot**, so the armed context was still registered
+    on the Lead, and its guard with it. Toggling the row back on did not
+    take effect ("include:rq-team was saved, but a higher-priority
+    configuration overrides it"; the row stayed Off). At bundle level,
+    re-enabling `rigorquant` left **all four rows Off** until a restart.
+    The cause is in source. `systemPrompt.section/context` return "the
+    exact Cordis effect disposer" bound to the *calling* context, and
+    `rq-team` calls them through `agent.ctx`. Those registrations therefore
+    belong to the agent's scope and outlive the plugin's fiber. On reload
+    the backfill (`agents.list()` → `maybeInstall`) re-registers
+    `rq-team:guard-armed` in the same scope, and the harness's
+    `NamedEntries` refuses it ("prompt context … is already registered in
+    this scope").
+  - *The fix:* `dsh/team.js` registers a `ctx.effect` on its own fiber
+    that disposes every composition in its `installed` map. The regression
+    test is a new `tests/team_probe.cjs` scenario with agent scopes that
+    keep registrations live and refuse duplicate names; it failed with
+    exactly the live error before the fix.
+  - *After the fix* (same session, fixed tree rsynced into the profile,
+    server restarted): row off gave a new snapshot **without** the armed
+    line (the model answered `NONE`). Row on gave **4 running**, no toast,
+    and a new snapshot with the armed line, byte-for-byte the size of the
+    session's first. The whole `rigorquant` bundle off and on gave
+    disarmed, then re-armed, with 4 running and the card back.
+  - *One harness diagnostic remains:* disabling the whole `rigorquant`
+    bundle reports "Could not disable: … rq-model-router (dsh-rigorquant):
+    failed to import", although the disable persists and takes effect (the
+    Lead is disarmed). That text is `inactiveEntries`' wording for a loader
+    entry with no fiber. Toggling the `Agent Teams Web UI` bundle raised no
+    such warning, so the entry is RigorQuant's, but the router registers
+    only fiber-owned listeners and settings. The diagnostic is recorded and
+    not chased for this release; row toggles raise nothing.
+  - *The other three rows:* `rq-model-router`, `rq-preset-sync` and
+    `skill-filesystem-rigorquant`, each toggled off and on alone, read "3
+    running · 1 off" then "4 running" with no toast. They register only
+    through their own fiber (`ctx.on`, `ctx.settings.register`), so cordis
+    unloads them with it.
+  - *Observation, harmless:* the Plugins page appends its row override
+    (`- id: rq-team`, `disabled: …`) at the end of the user patch, which is
+    inside `install.sh`'s marker block. Re-running the installer leaves it
+    alone, because the marker is already there. `--uninstall` removes it
+    with the block, and it removes the rows it would have toggled at the
+    same time.
+- **Suite and gate.** `RQ_COVERAGE=1` full suite on the release tree:
+  **341 passed, 1 skipped** (the live Semantic Scholar boundary check,
+  rate-limited with a 429), and `rq_check.py` coverage at **96.3%** against
+  the 95% gate.
+- **Outstanding at the time of writing:** the full manual study run (more
+  than one round, a reused adversary brief, a cold resume, a certified study
+  record), the `v0.5.0` tag, and the npm publish.
+
 ---
 
 ## 4. The centrepiece — RigorQuant on Agent Teams
@@ -1344,7 +1425,8 @@ until #14.
 retire `activity.js` + probes + tests; thin move pill on
 `remote.agentTeams.view`; README "The team, live" rewritten around the native
 roster/task board; `docs/figs/agent-team-activity.*` kept as the static
-picture (or regenerated from a task-board snapshot).
+picture (or regenerated from a task-board snapshot). Built under issues
+#13–#15; release verification for 0.5.0 (issue #16) in §3.15.
 
 **Phase 4 — Optional native gates (0.5.x)**
 N4 hooks `Stop` gate; N5 headless recipe; N2 pptx deliverable path; upstream
