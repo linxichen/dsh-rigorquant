@@ -47,6 +47,9 @@ module (via tests/team_probe.cjs, not by re-implementing it in Python):
    preset in the picker, rather than created with it already selected)
    still gets the Lead's guard-armed context and `spawn_teammate` guard,
    via a second trigger on `agent-preset/selected`.
+9. unloading the plugin (the Plugins-page row toggle) disposes every
+   composition it installed on a live agent, and reloading it recomposes
+   those agents exactly once (found live, docs/upgrade-0.1.6.md §3.15).
 """
 
 import json
@@ -147,6 +150,31 @@ def test_reapplication_on_a_resume_sourced_creation(probe):
     assert len(resume["firstSections"]) == 1
     assert resume["disposedAfterResume"] == ["deployment:persona-prefix"]
     assert len(resume["secondSections"]) == 1
+
+
+LEAD_LIVE = {"sections": [], "contexts": ["rq-team:guard-armed"], "restricts": 0, "guards": 1}
+TEAMMATE_LIVE = {"sections": ["deployment:persona-prefix"], "contexts": [], "restricts": 1, "guards": 1}
+NOTHING_LIVE = {"sections": [], "contexts": [], "restricts": 0, "guards": 0}
+
+
+def test_unloading_the_plugin_disarms_every_live_agent(probe):
+    """Toggling rq-team off in the Plugins page must take the composition with it.
+
+    Everything the plugin registers goes through `agent.ctx`, so it lives in
+    the agent's scope, not the plugin's; the plugin's own unload has to
+    dispose it, or the Lead stays armed (and guarded) with rq-team off.
+    """
+    unload = probe["unload"]
+    assert unload["firstError"] is None
+    assert unload["afterMount"] == {"lead": LEAD_LIVE, "doublechecker": TEAMMATE_LIVE}
+    assert unload["afterUnload"] == {"lead": NOTHING_LIVE, "doublechecker": NOTHING_LIVE}
+
+
+def test_reloading_the_plugin_recomposes_live_agents_exactly_once(probe):
+    """Toggling rq-team back on re-applies to the live agents without a collision."""
+    unload = probe["unload"]
+    assert unload["remountError"] is None
+    assert unload["afterRemount"] == {"lead": LEAD_LIVE, "doublechecker": TEAMMATE_LIVE}
 
 
 def test_when_agent_teams_is_absent_a_warning_is_logged_and_no_armed_context_appears(probe):

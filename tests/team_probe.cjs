@@ -3,14 +3,16 @@
 // Mounts the plugin against a stub ctx (agentTeams membership, agents
 // backfill, agentPresets) and a per-agent stub scope (systemPrompt's
 // section()/context()/getSectionOrder(), tools' restrict()/guard()), then
-// drives four scenarios: agentTeams present (a lead + several teammates of
+// drives these scenarios: agentTeams present (a lead + several teammates of
 // varying tiers, an unparseable name, a non-RigorQuant teammate), agentTeams
 // absent (warning, no armed context), a resume-sourced re-creation (proves
 // composition is reapplied, not skipped as a no-op), and a guard drive that
 // fakes a call through every per-call rule (topology by guard: hub-and-spoke
 // messaging, roster/board blindness, own-task-only board access, the bash
 // network-verb denial for web-denied roles, and the orchestrator's
-// spawn_teammate name/fork refusal). Prints one JSON verdict.
+// spawn_teammate name/fork refusal), plus a late preset switch and an
+// unload/reload of the plugin over live agents (the Plugins-page toggle).
+// Prints one JSON verdict.
 const { pathToFileURL } = require('node:url')
 
 /** One fake teammate/lead: its own agent.ctx scope recording every
@@ -100,6 +102,7 @@ async function runPresentScenario(mod) {
   }
   const ctx = {
     logger: { warn: () => {} },
+    effect: () => {},
     on: (name, handler) => {
       if (!listeners.has(name)) listeners.set(name, [])
       listeners.get(name).push(handler)
@@ -191,6 +194,7 @@ async function runAbsentScenario(mod) {
   const warnings = []
   const ctx = {
     logger: { warn: (message) => warnings.push(message) },
+    effect: () => {},
     on: (name, handler) => {
       if (!listeners.has(name)) listeners.set(name, [])
       listeners.get(name).push(handler)
@@ -217,6 +221,7 @@ async function runResumeScenario(mod) {
   const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
   const ctx = {
     logger: { warn: () => {} },
+    effect: () => {},
     on: (name, handler) => {
       if (!listeners.has(name)) listeners.set(name, [])
       listeners.get(name).push(handler)
@@ -260,6 +265,7 @@ async function runLatePresetSelectionScenario(mod) {
   const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
   const ctx = {
     logger: { warn: () => {} },
+    effect: () => {},
     on: (name, handler) => {
       if (!listeners.has(name)) listeners.set(name, [])
       listeners.get(name).push(handler)
@@ -288,6 +294,91 @@ async function runLatePresetSelectionScenario(mod) {
   return { beforeSwitch, afterSwitch }
 }
 
+/** One agent scope that keeps its registrations LIVE and refuses a second
+ * registration of a live name — the harness's `NamedEntries` contract
+ * ("prompt context \"…\" is already registered in this scope"). Guards and
+ * restrictions are anonymous, so they are only counted. */
+function makeScopedAgent(id, preset) {
+  const live = { sections: new Set(), contexts: new Set(), restricts: 0, guards: 0 }
+  const named = (set, kind) => (spec) => {
+    if (set.has(spec.name)) throw new Error(`prompt ${kind} "${spec.name}" is already registered in this scope`)
+    set.add(spec.name)
+    return () => { set.delete(spec.name) }
+  }
+  const counted = (key) => () => {
+    live[key] += 1
+    return () => { live[key] -= 1 }
+  }
+  const services = {
+    systemPrompt: {
+      section: named(live.sections, 'section'),
+      context: named(live.contexts, 'context'),
+      getSectionOrder: () => 0,
+    },
+    tools: { restrict: counted('restricts'), guard: counted('guards') },
+  }
+  const agent = { id, ctx: { __preset: preset, get: (name) => services[name] } }
+  const snapshot = () => ({
+    sections: [...live.sections], contexts: [...live.contexts], restricts: live.restricts, guards: live.guards,
+  })
+  return { agent, snapshot }
+}
+
+/**
+ * The Plugins page toggles the rq-team row off and on while a RigorQuant
+ * session is live. Unloading the plugin disposes only what its OWN fiber
+ * owns (its listeners and effects); every persona, context, restriction and
+ * guard it registered went through `agent.ctx`, so they belong to the
+ * agent's scope and outlive the plugin unless the plugin disposes them
+ * itself. Found live (docs/upgrade-0.1.6.md §3.15): the Lead stayed armed
+ * with rq-team off, and turning it back on could not take effect because the
+ * backfill re-registered the still-live armed context by the same name.
+ */
+async function runUnloadScenario(mod) {
+  const lead = makeScopedAgent('lead-toggle', 'rigorquant')
+  const dc = makeScopedAgent('dc-toggle', 'rigorquant')
+  const membershipByAgent = new Map([
+    [lead.agent, { role: 'lead', name: 'lead' }],
+    [dc.agent, { role: 'teammate', name: 'doublechecker-1' }],
+  ])
+  const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
+
+  // One plugin fiber: its listeners, and the effects it registered, which
+  // cordis disposes in reverse order when the fiber unloads.
+  const mount = () => {
+    const disposers = []
+    const ctx = {
+      logger: { warn: () => {} },
+      on: () => {},
+      effect: (execute) => { disposers.push(execute()) },
+      get: (name) => {
+        if (name === 'agents') return { list: () => [lead.agent, dc.agent], get: () => undefined }
+        if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
+        if (name === 'agentTeams') return teamsService
+        return undefined
+      },
+    }
+    let error = null
+    try {
+      mod.apply(ctx)
+    } catch (e) {
+      error = String((e && e.message) || e)
+    }
+    const unload = () => { for (const dispose of disposers.reverse()) dispose() }
+    return { error, unload }
+  }
+  const both = () => ({ lead: lead.snapshot(), doublechecker: dc.snapshot() })
+
+  const first = mount()
+  const afterMount = both()
+  first.unload()
+  const afterUnload = both()
+  const second = mount()
+  const afterRemount = both()
+
+  return { firstError: first.error, afterMount, afterUnload, remountError: second.error, afterRemount }
+}
+
 async function main() {
   const [, , modulePath] = process.argv
   const mod = await import(pathToFileURL(modulePath).href)
@@ -296,8 +387,9 @@ async function main() {
   const absent = await runAbsentScenario(mod)
   const resume = await runResumeScenario(mod)
   const latePresetSelection = await runLatePresetSelectionScenario(mod)
+  const unload = await runUnloadScenario(mod)
 
-  process.stdout.write(JSON.stringify({ mountError, present, guardChecks, absent, resume, latePresetSelection }))
+  process.stdout.write(JSON.stringify({ mountError, present, guardChecks, absent, resume, latePresetSelection, unload }))
 }
 
 main().catch((error) => {

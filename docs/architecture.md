@@ -792,6 +792,16 @@ certification (Decision 19). `test_repo_consistency.py` sweeps the tracked
 documents for the two collisions `CONTEXT.md` lists under *Avoid* — a move
 named as a stage, a study named as a task, in English and Chinese — and pins
 both READMEs' team, install and deployment sections by heading.
+**Enforcement by scope has to follow the plugin out, found at release under
+issue #16** (`docs/upgrade-0.1.6.md` §3.15): every persona, context,
+restriction and guard `dsh/team.js` installs goes through the agent's own
+`agent.ctx`, so it belongs to the agent's scope, not the plugin's, and
+survives the plugin unloading. Toggling the `rq-team` row off in the Plugins
+page therefore left a live orchestrator armed and guarded, and toggling it back on
+could not take effect: the backfill re-registered the still-live armed
+context by name, which the harness refuses. The plugin now disposes every
+composition it installed from a `ctx.effect` of its own fiber, so a row
+toggle disarms live agents and a reload recomposes them exactly once.
 
 ## Repo map
 

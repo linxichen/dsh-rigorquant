@@ -312,6 +312,15 @@ function apply(ctx, config = {}) {
     })
   }
 
+  // Every registration above goes through `agent.ctx`, so it belongs to the
+  // agent's scope and would outlive this plugin: toggled off in the Plugins
+  // page, the Lead stayed armed and guarded, and toggled back on, the
+  // backfill below collided with the still-live armed context by name
+  // (docs/upgrade-0.1.6.md §3.15). Unloading the plugin disposes them all.
+  ctx.effect(() => () => {
+    for (const agent of [...installed.keys()]) disposeFor(agent)
+  }, 'rq-team: per-agent compositions')
+
   // Belt-and-suspenders: warn even if no agent is ever created this boot.
   if (ctx.get('agentTeams') === undefined) warnAbsentOnce()
 
