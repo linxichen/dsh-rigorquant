@@ -273,11 +273,16 @@ composition.
 - **Root follows the chatbox.** The root role has no primary by default: the
   picker stays the master switch for the root and for every role left on
   "inherit". Pinning root is a one-select action in the card.
-- **One fallback per role.** On a terminal primary failure (no adapter, or an
-  HTTP 4xx the route cannot recover from) the router degrades that
-  session+role to the role's own fallback and forces exactly one retry. A
-  successful assistant step on the fallback — or the TTL (10 min) — restores
-  the primary; a failing fallback is never retried again by the router.
+- **One fallback per role.** On a terminal primary failure (no adapter, a
+  model its provider does not declare or cannot resolve — `UNKNOWN_MODEL`
+  or `INVALID_CONFIG`, codes with no status — or an HTTP 4xx the route cannot recover from) the router degrades
+  that session+role to the role's own fallback and forces exactly one retry.
+  A successful assistant step on the fallback — or the TTL (10 min) —
+  restores the primary; a failing fallback is never retried again by the
+  router. Each degrade and each route-fatal give-up (the fallback failed
+  too, or the role has no fallback) logs one warning naming the role, the `provider/model`,
+  and the settings key it came from (issue #22): the teammate's own failure
+  surfaces only as an unaccepted initial prompt.
 - **Effort fallback to the model default.** A stored choice may carry a
   reasoning effort the exact route's model refuses — a model with no
   reasoning surface at all, or one that does not list the saved level. The

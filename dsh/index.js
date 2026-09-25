@@ -25,11 +25,16 @@
 // to find a role anymore.
 //
 // Degrade lane: when the primary route of a routed role fails terminally
-// (no adapter, or an HTTP 4xx the route cannot recover from), the listener
-// marks that session+role degraded and forces one retry, which re-enters
-// agent/request and routes to the role's fallback. A successful assistant
-// step on the fallback — or the TTL — restores the primary. A fallback that
-// also fails is never retried again by this plugin (no retry loop).
+// (no adapter, a model its provider does not declare or cannot resolve, or
+// an HTTP 4xx the route cannot recover from), the listener marks that
+// session+role degraded and forces one retry, which re-enters agent/request
+// and routes to the role's fallback. A successful assistant step on the
+// fallback — or the TTL — restores the primary. A fallback that also fails is
+// never retried again by this plugin (no retry loop). Every degrade and every
+// route-fatal give-up (the fallback failed too, or the role has no fallback)
+// is one warning naming the role, the route, and the settings key it came
+// from: the teammate's own failure surfaces only as an unaccepted initial
+// prompt.
 //
 // Effort fallback: a stored choice may carry a reasoning effort the exact
 // route's model does not support — a model with no reasoning surface at all,
@@ -115,7 +120,17 @@ function isChoice(value) {
     && typeof value.model === 'string' && value.model !== ''
 }
 
-/** A failure the route itself cannot recover from: no adapter or bad primary.
+/** Codes meaning the exact provider/model pair cannot be resolved at all,
+ *  each thrown before any provider I/O with a code and no status: no adapter
+ *  owns the provider (`NO_ADAPTER`, from the LLM service or the adapter), the
+ *  provider does not declare the model (`UNKNOWN_MODEL`), or its declaration
+ *  is broken (`INVALID_CONFIG` — llm-pi-ai's configured-model lookup throws it
+ *  for that model's config error or its provider's failed catalog, and
+ *  nowhere else). */
+const UNRESOLVABLE_ROUTE_CODES = new Set(['NO_ADAPTER', 'UNKNOWN_MODEL', 'INVALID_CONFIG'])
+
+/** A failure the route itself cannot recover from: an unresolvable route or
+ *  bad primary.
  *
  * Providers should surface numeric HTTP status, but the official usage-limit
  * response currently exposes its provider code (`1308`) and message while some
@@ -124,12 +139,17 @@ function isChoice(value) {
  */
 function routeFatal(failure) {
   if (failure === undefined || failure === null) return false
-  if (failure.code === 'NO_ADAPTER') return true
+  if (UNRESOLVABLE_ROUTE_CODES.has(failure.code)) return true
   const status = typeof failure.status === 'number'
     ? failure.status
     : typeof failure.status === 'string' ? Number(failure.status) : NaN
   if (Number.isFinite(status) && status >= 400 && status < 500) return true
   return failure.code === '1308' && /usage limit reached/i.test(String(failure.message ?? ''))
+}
+
+/** The failure's own identity for a log line: its code, else its status. */
+function failureLabel(failure) {
+  return String(failure?.code ?? failure?.status ?? 'unknown')
 }
 
 /** Apply a live override/fallback while clearing an inherited effort. */
@@ -149,7 +169,9 @@ function apply(ctx, config) {
   // Registers fiber-scoped: stopping this plugin unregisters the namespace.
   ctx.settings.register(NS, SettingsSchema, { base: config.defaults, applies: 'live' })
 
-  /** sessionId → { role, until, provider, model } while degraded. */
+  /** sessionId → { role, until, provider, model, choice, gaveUp } while
+   *  degraded: `choice` is the fallback degraded to, `gaveUp` whether its own
+   *  failure has already warned. */
   const degraded = new Map()
   /** The exact resolved request route, for error-to-primary attribution. */
   const requested = new Map()
@@ -159,6 +181,9 @@ function apply(ctx, config) {
   const effortSurfaces = new Map()
   /** Routes whose effort was dropped, so the fallback logs once per route. */
   const effortFallbacks = new Set()
+  /** agentId → the provider/model its no-fallback give-up already warned
+   *  about, so a teammate whose every turn dies on it warns once. */
+  const noFallbackWarned = new Map()
 
   /**
    * The reasoning-effort surface of one exact route, from the same `llm`
@@ -221,6 +246,17 @@ function apply(ctx, config) {
   // DoubleChecker/adversary, absent — inherit — for every other role).
   const primaryFor = (role) => choiceFor(role, 'Primary')
   const fallbackFor = (role) => choiceFor(role, 'Fallback')
+  /** One slot's route for a warning: the role, the route, and where it came
+   *  from — the settings key the operator edits, marked as the shipped
+   *  default when it still equals `Config.defaults` (no override is set). */
+  const describeRoute = (role, slot, choice) => {
+    const key = `${role}${slot}`
+    const base = config.defaults?.[key]
+    const shipped = isChoice(base) && base.provider === choice.provider && base.model === choice.model
+      && (base.reasoningEffort ?? '') === (choice.reasoningEffort ?? '')
+    return `${role} ${slot.toLowerCase()} ${choice.provider}/${choice.model} `
+      + `(settings key ${key}${shipped ? ', shipped default' : ''})`
+  }
 
   ctx.on('session/event', (session, event) => {
     if (event.type === 'assistant/message') {
@@ -236,10 +272,12 @@ function apply(ctx, config) {
   ctx.on('session/disposed', (session) => {
     degraded.delete(session.id)
     requested.delete(session.id)
+    noFallbackWarned.delete(session.id)
   })
   ctx.on('agent/disposed', ({ agent }) => {
     degraded.delete(agent.id)
     requested.delete(agent.id)
+    noFallbackWarned.delete(agent.id)
   })
 
   /** The teammate's role, resolved purely from its Team membership — never
@@ -281,6 +319,7 @@ function apply(ctx, config) {
       }
       d.provider = fallback.provider
       d.model = fallback.model
+      d.choice = fallback
       return remember(await withSupportedEffort(applyChoice(resolved, fallback)))
     }
 
@@ -299,30 +338,53 @@ function apply(ctx, config) {
     const action = await next()
     const role = resolveRole(payload.agent)
     if (role === null || role === undefined) return action
-    const primary = primaryFor(role)
-    const fallback = fallbackFor(role)
-    if (primary === null || fallback === null) return action
-    const agentId = payload.agent.id
-    const d = degraded.get(agentId)
-    if (d !== undefined && d.role === role && d.until > Date.now()) return action
     if (!routeFatal(payload.failure)) return action
-    // Only degrade failures on OUR route: compare against the exact route
+    // Only act on failures on OUR route: compare against the exact route
     // resolved for this request, not merely the static defaults. This keeps
     // an unrelated picker route out of the fallback lane while correctly
     // covering the shipped matrix and a user override alike.
+    const agentId = payload.agent.id
     const route = requested.get(agentId)
-    if (route === undefined || route.role !== role
-      || route.model !== primary.model || route.provider !== payload.provider) return action
+    if (route === undefined || route.role !== role || route.provider !== payload.provider) return action
+    const cause = failureLabel(payload.failure)
+    const d = degraded.get(agentId)
+    if (d !== undefined && d.role === role && d.until > Date.now()) {
+      // The degraded retry itself failed: never retried again (no loop).
+      if (!d.gaveUp && route.model === d.model) {
+        d.gaveUp = true
+        ctx.logger.warn(
+          `rq-model-router: ${describeRoute(role, 'Fallback', d.choice)} also failed (${cause}); `
+          + 'not retried, the turn fails',
+        )
+      }
+      return action
+    }
+    const primary = primaryFor(role)
+    if (primary === null || route.model !== primary.model) return action
+    const fallback = fallbackFor(role)
+    if (fallback === null) {
+      const routeKey = `${primary.provider}/${primary.model}`
+      if (noFallbackWarned.get(agentId) !== routeKey) {
+        noFallbackWarned.set(agentId, routeKey)
+        ctx.logger.warn(
+          `rq-model-router: ${describeRoute(role, 'Primary', primary)} failed (${cause}) `
+          + `and ${role}Fallback is unset: no fallback to degrade to, the turn fails`,
+        )
+      }
+      return action
+    }
     degraded.set(agentId, {
       role,
       until: Date.now() + config.degradeTtlMs,
       provider: fallback.provider,
       model: fallback.model,
+      choice: fallback,
+      gaveUp: false,
     })
-    ctx.logger.info(
-      `rq-model-router: ${role} primary ${primary.provider}/${primary.model} failed `
-      + `(${String(payload.failure?.code ?? payload.failure?.status ?? 'unknown')}); `
-      + `degraded to ${fallback.provider}/${fallback.model} for ${Math.round(config.degradeTtlMs / 60000)} min`,
+    ctx.logger.warn(
+      `rq-model-router: ${describeRoute(role, 'Primary', primary)} failed (${cause}); `
+      + `degraded to ${fallback.provider}/${fallback.model} `
+      + `for ${Math.round(config.degradeTtlMs / 60000)} min`,
     )
     return { kind: 'retry' }
   })

@@ -620,6 +620,26 @@ async function exerciseEffortDropdown() {
   const stale = effortSelects(component(pageProps)).filter((select) => select.value === 'high')
   verdict.staleEffortOptions = stale.length === 1 ? stale[0].options : null
   face.discard()
+  // Issue #22: a stored choice naming a model its provider does not list
+  // (the catalog lists `deepseek` with `v4-pro` only) is flagged in the model
+  // select — visible, disabled, not re-selectable — instead of the select
+  // silently showing "Inherit" for a value it has no option for. A provider
+  // the catalog does not list at all is not flagged: its listing may simply
+  // have failed, and the card cannot tell that from an unknown model.
+  const modelSelects = (tree) => collectSelects(renderNode(tree))
+    .filter((select) => !select.options.some((option) => option.label === 'effortInherit'))
+  const optionFor = (tree, value) => {
+    const select = modelSelects(tree).find((candidate) => candidate.value === value)
+    return select === undefined ? null : select.options.find((option) => option.value === value) ?? null
+  }
+  face.stage('explorerPrimary', { provider: 'deepseek', model: 'v4-flash-dspark' })
+  face.stage('adversaryFallback', { provider: 'unlisted-provider', model: 'some-model' })
+  const undeclaredTree = component(pageProps)
+  verdict.undeclaredModelOption = optionFor(undeclaredTree, 'deepseek::v4-flash-dspark')
+  verdict.unlistedProviderOption = optionFor(undeclaredTree, 'unlisted-provider::some-model')
+  verdict.flaggedModelOptions = modelSelects(undeclaredTree)
+    .flatMap((select) => select.options.filter((option) => option.disabled).map((option) => option.value))
+  face.discard()
 }
 
 // The move pill in full. It reads the Lead's roster and board through the

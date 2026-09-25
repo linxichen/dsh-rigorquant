@@ -99,7 +99,10 @@ async function main() {
   // currently holds — `ctx.settings.get()` always resolves live, so the
   // router needs no separate document-updated listener to see a change.
   let user = {}
+  // Every log line, in order; `warnings` holds the warn-level subset, so a
+  // scenario can pin that a degrade or give-up is a warning, not chatter.
   const logs = []
+  const warnings = []
 
   // The Team service stub: membership is looked up by agent OBJECT identity,
   // exactly like the real duck-typed `agentTeams.tryMembership(agent)`.
@@ -132,7 +135,13 @@ async function main() {
       register: () => {},
       get: () => ({ ...base, ...user }),
     },
-    logger: { info: (message) => logs.push(message) },
+    logger: {
+      info: (message) => logs.push(message),
+      warn: (message) => {
+        logs.push(message)
+        warnings.push(message)
+      },
+    },
     on: (eventName, handler) => {
       if (!listeners.has(eventName)) listeners.set(eventName, [])
       listeners.get(eventName).push(handler)
@@ -339,7 +348,164 @@ async function main() {
     'passthrough route drops an unlisted effort',
   )
 
-  process.stdout.write(JSON.stringify({ ok: true, logs }))
+  // ---- An unresolvable route (issue #22): a saved override naming a model
+  // its provider does not declare. The pi-ai adapter throws UNKNOWN_MODEL
+  // before any provider I/O; the LLM service turns the throw into a terminal
+  // error finish carrying a code and NO status. It must take the same
+  // one-shot fallback as NO_ADAPTER, with one warning naming the role,
+  // the route, and the settings key it came from.
+  const unknownModel = (provider, model) => ({
+    code: 'UNKNOWN_MODEL',
+    message: `pi-ai provider "${provider}" has no configured model "${model}"`,
+  })
+  const phantom = { provider: 'linxicloud', model: 'deepseek-v4-flash-dspark' }
+  const doublechecker2 = makeAgent('doublechecker-2', { role: 'teammate', name: 'doublechecker-2' })
+  user = { doublecheckerPrimary: clone(phantom) }
+  equal(
+    await waterfall('agent/request', { agent: doublechecker2 }, placeholderRoute),
+    phantom,
+    'the unresolvable override is what gets requested',
+  )
+  let warned = warnings.length
+  equal(
+    await waterfall('agent/request-error', {
+      agent: doublechecker2, provider: phantom.provider, failure: unknownModel(phantom.provider, phantom.model),
+    }, undefined),
+    { kind: 'retry' },
+    'UNKNOWN_MODEL with no status degrades to the fallback',
+  )
+  assert(warnings.length === warned + 1, 'one warning per degrade')
+  const degradeWarning = warnings[warnings.length - 1]
+  for (const part of ['doublechecker', 'linxicloud/deepseek-v4-flash-dspark', 'doublecheckerPrimary', 'UNKNOWN_MODEL', degradedTo]) {
+    assert(degradeWarning.includes(part), `degrade warning names ${part}: ${degradeWarning}`)
+  }
+  assert(!degradeWarning.includes('shipped default'), 'a stored override is not called the shipped default')
+  equal(
+    await waterfall('agent/request', { agent: doublechecker2 }, placeholderRoute),
+    DEFAULT_FALLBACK,
+    'the retry routes to the shipped fallback',
+  )
+  // The fallback fails too: never retried, and the give-up is a warning
+  // naming the fallback route and its key — once, however often it recurs.
+  warned = warnings.length
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    equal(
+      await waterfall('agent/request-error', {
+        agent: doublechecker2, provider: DEFAULT_FALLBACK.provider,
+        failure: unknownModel(DEFAULT_FALLBACK.provider, DEFAULT_FALLBACK.model),
+      }, undefined),
+      undefined,
+      'a failing fallback is not retried',
+    )
+  }
+  assert(warnings.length === warned + 1, 'the give-up warns once per degrade')
+  const giveUpWarning = warnings[warnings.length - 1]
+  for (const part of ['doublechecker', 'deepseek-official/deepseek-flash', 'doublecheckerFallback, shipped default', 'UNKNOWN_MODEL']) {
+    assert(giveUpWarning.includes(part), `give-up warning names ${part}: ${giveUpWarning}`)
+  }
+
+  // The live case: an explorer override with no fallback at all (every role
+  // but DoubleChecker/adversary inherits, so nothing ships one). There is no
+  // fallback to degrade into, so the action passes through untouched — but the
+  // router still gives up out loud, once per teammate, instead of leaving
+  // the cause inside the teammate's compressed session log.
+  const explorer2 = makeAgent('explorer-2', { role: 'teammate', name: 'explorer-2' })
+  user = { explorerPrimary: clone(phantom) }
+  equal(
+    await waterfall('agent/request', { agent: explorer2 }, placeholderRoute),
+    phantom,
+    'the explorer override is requested',
+  )
+  warned = warnings.length
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    equal(
+      await waterfall('agent/request-error', {
+        agent: explorer2, provider: phantom.provider, failure: unknownModel(phantom.provider, phantom.model),
+      }, undefined),
+      undefined,
+      'no fallback: the failure passes through',
+    )
+  }
+  assert(warnings.length === warned + 1, 'the no-fallback give-up warns once per teammate')
+  const noFallbackWarning = warnings[warnings.length - 1]
+  for (const part of ['explorer', 'linxicloud/deepseek-v4-flash-dspark', 'explorerPrimary', 'no fallback']) {
+    assert(noFallbackWarning.includes(part), `no-fallback warning names ${part}: ${noFallbackWarning}`)
+  }
+
+  // A transient failure on the same route is not route-fatal: no degrade,
+  // no warning (the host's own retry policy owns it).
+  const explorer3 = makeAgent('explorer-3', { role: 'teammate', name: 'explorer-3' })
+  user = { explorerPrimary: clone(phantom), explorerFallback: clone(DEFAULT_FALLBACK) }
+  await waterfall('agent/request', { agent: explorer3 }, placeholderRoute)
+  warned = warnings.length
+  equal(
+    await waterfall('agent/request-error', {
+      agent: explorer3, provider: phantom.provider, failure: { code: 'RATE_LIMIT', status: 503, message: 'busy' },
+    }, undefined),
+    undefined,
+    'a transient failure is not route-fatal',
+  )
+  assert(warnings.length === warned, 'a transient failure warns nothing')
+
+  // An HTTP 4xx on the primary still degrades (a string status included).
+  const adversary4xx = makeAgent('adversary-2', { role: 'teammate', name: 'adversary-2' })
+  user = {}
+  await waterfall('agent/request', { agent: adversary4xx }, placeholderRoute)
+  equal(
+    await waterfall('agent/request-error', {
+      agent: adversary4xx, provider: DEFAULT_PRIMARY.provider, failure: { status: '404', message: 'not found' },
+    }, undefined),
+    { kind: 'retry' },
+    'an HTTP 4xx on the primary degrades',
+  )
+  assert(warnings[warnings.length - 1].includes('adversary primary') && warnings[warnings.length - 1].includes('(404)'),
+    'the 4xx degrade warns with its status')
+  assert(warnings[warnings.length - 1].includes('adversaryPrimary, shipped default'),
+    'a route with no override is named as the shipped default')
+
+  // INVALID_CONFIG is llm-pi-ai's other unresolvable-model code (a broken
+  // model declaration, or the provider's failed catalog): the same one-shot
+  // fallback.
+  const doublechecker3 = makeAgent('doublechecker-3', { role: 'teammate', name: 'doublechecker-3' })
+  await waterfall('agent/request', { agent: doublechecker3 }, placeholderRoute)
+  equal(
+    await waterfall('agent/request-error', {
+      agent: doublechecker3, provider: DEFAULT_PRIMARY.provider,
+      failure: { code: 'INVALID_CONFIG', message: 'model "deepseek-v4-pro" has an invalid declaration' },
+    }, undefined),
+    { kind: 'retry' },
+    'INVALID_CONFIG degrades to the fallback',
+  )
+  assert(warnings[warnings.length - 1].includes('(INVALID_CONFIG); degraded to'), 'the INVALID_CONFIG degrade warns')
+
+  // A role with no primary follows the picker: a route-fatal failure there
+  // is the picker's own, so it is left alone and warns nothing.
+  const offgrid2 = makeAgent('offgrid-2', { role: 'teammate', name: 'offgrid-2' })
+  await waterfall('agent/request', { agent: offgrid2 }, { provider: 'picker-provider', model: 'picker-model' })
+  warned = warnings.length
+  equal(
+    await waterfall('agent/request-error', {
+      agent: offgrid2, provider: 'picker-provider', failure: unknownModel('picker-provider', 'picker-model'),
+    }, undefined),
+    undefined,
+    'an UNKNOWN_MODEL on a picker-following role is left alone',
+  )
+  assert(warnings.length === warned, 'a picker-following role warns nothing')
+
+  // The unrelated-picker guard holds for UNKNOWN_MODEL too: a failure on a
+  // provider the router did not route to is left alone, even for a role
+  // whose primary and fallback are both set.
+  user = { explorerPrimary: clone(phantom), explorerFallback: clone(DEFAULT_FALLBACK) }
+  equal(
+    await waterfall('agent/request-error', {
+      agent: explorer3, provider: 'picker-provider', failure: unknownModel('picker-provider', 'picker-model'),
+    }, undefined),
+    undefined,
+    'an UNKNOWN_MODEL on an unrelated route is left alone',
+  )
+  assert(warnings.length === warned, 'an unrelated route warns nothing')
+
+  process.stdout.write(JSON.stringify({ ok: true, logs, warnings }))
 }
 
 main().catch((error) => {

@@ -8,6 +8,26 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+### Fixed
+- **The router degrades on a model its provider does not declare** (issue
+  #22). A saved `rigorquant-models` override naming such a model (the live
+  case: `explorerPrimary: linxicloud/deepseek-v4-flash-dspark`) failed every
+  turn with `UNKNOWN_MODEL`, a code with no HTTP status, so the degrade path
+  never fired and each spawn of the role died with only "initial prompt was
+  not durably accepted" to show for it. `UNKNOWN_MODEL` is now route-fatal
+  alongside `NO_ADAPTER`, and so is `INVALID_CONFIG`, llm-pi-ai's other code
+  for a model declaration it cannot resolve. The role degrades to its
+  fallback once, under the existing no-loop rules. Every degrade is now one
+  warning naming the role, the `provider/model` and the settings key it came
+  from, marked "shipped default" when no override is set. A route-fatal
+  give-up gets the same warning. There are two: the fallback failed too, or
+  the role has no fallback, which is every role but DoubleChecker and
+  Adversary. The routing card also marks a stored model that its listed
+  provider does not declare as a disabled `provider · model · not in
+  provider catalog` option. Before, the select had no option for that value
+  and the row read as "Inherit". A provider the catalog does not list is not
+  judged, since its listing may simply have failed.
+
 ## [0.5.0] - 2026-09-24
 
 RigorQuant on Agent Teams, team-only (Decision 24,

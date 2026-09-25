@@ -858,6 +858,16 @@ def test_router_native_defaults_overrides_and_fallback_round_trip():
         "the probe no longer covers the refused-effort demotion")
     assert any("stub-provider/stub-model" in line for line in demotions), (
         "the passthrough route must be sanitized too")
+    # Issue #22: a saved override naming a model its provider does not declare
+    # (UNKNOWN_MODEL, no status) degrades to the role's fallback, and the
+    # degrade and every give-up are warnings naming the route and its key.
+    warnings = verdict["warnings"]
+    assert any("(UNKNOWN_MODEL); degraded to" in line and "doublecheckerPrimary" in line
+               for line in warnings), "the probe no longer covers the UNKNOWN_MODEL degrade"
+    assert any("doublecheckerFallback" in line and "also failed (UNKNOWN_MODEL)" in line
+               for line in warnings), "the probe no longer covers the failing-fallback give-up"
+    assert any("explorerPrimary" in line and "no fallback" in line for line in warnings), (
+        "the probe no longer covers the no-fallback give-up")
 
 
 def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():

@@ -374,6 +374,26 @@ def test_effort_dropdown_offers_only_the_models_real_surfaces(verdict):
     }
 
 
+def test_model_select_flags_an_override_its_provider_does_not_list(verdict):
+    """A stored model its provider does not declare is marked, not hidden.
+
+    Issue #22: `explorerPrimary: linxicloud/deepseek-v4-flash-dspark` named a
+    model missing from its provider's catalog, and every teammate on it died
+    with UNKNOWN_MODEL. The select had no option for the stored value, so the
+    row read as "Inherit". The card now renders that value as a disabled
+    `provider name · model · modelUndeclared` option. A provider the catalog does
+    not list at all is left unflagged: its listing may have failed.
+    """
+    assert "effortDropdownError" not in verdict, verdict.get("effortDropdownError")
+    assert verdict["undeclaredModelOption"] == {
+        "value": "deepseek::v4-flash-dspark",
+        "label": "DeepSeek · v4-flash-dspark · modelUndeclared",
+        "disabled": True,
+    }
+    assert verdict["unlistedProviderOption"] is None
+    assert verdict["flaggedModelOptions"] == ["deepseek::v4-flash-dspark"]
+
+
 def test_settings_namespace_is_writable_by_the_host():
     """dsh brands namespaces with /^[a-z][a-z0-9-]*$/ — kebab-case, no dots.
 

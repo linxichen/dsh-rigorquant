@@ -117,6 +117,7 @@ const copy = {
     none: 'None',
     effortInherit: 'Default',
     effortUnsupported: 'unsupported',
+    modelUndeclared: 'not in provider catalog',
     save: 'Save',
     unavailable: 'Model routing is not served by this profile: the rq-model-router row is off.',
     primary: 'Primary',
@@ -158,6 +159,7 @@ const copy = {
     none: '无',
     effortInherit: '默认',
     effortUnsupported: '不支持',
+    modelUndeclared: '不在提供方模型目录中',
     save: '保存',
     unavailable: '当前配置未提供模型路由：rq-model-router 行已关闭。',
     primary: '主选择',
@@ -587,6 +589,11 @@ function RoleRow(props) {
   // select lists what that exact route accepts (a model that doesn't support
   // "high" must not offer it).
   const modelByKey = new Map(models.map((model) => [model.value, model]))
+  // Providers the ready catalog actually listed. A stored model one of them
+  // does not list is a route the adapter refuses (UNKNOWN_MODEL, issue #22);
+  // a provider absent from the catalog is not judged — its listing may have
+  // failed, which the card cannot tell apart from an unknown model.
+  const listedProviders = new Map(catalog.providers.map((provider) => [provider.id, provider.name]))
   const renderSlot = (slot) => {
     const field = `${role}${slot}`
     const state = fields[field]
@@ -601,9 +608,16 @@ function RoleRow(props) {
     const inheritLabel = state.inherited === null
       ? placeholder
       : `${placeholder} · ${state.inherited.model}`
+    // Without its own option the select shows "Inherit" for a stored value
+    // it cannot match, hiding a broken override behind the placeholder.
+    const undeclared = choice !== null && chosenModel === undefined
+      && catalog.status === 'ready' && listedProviders.has(choice.provider)
     const options = [
       { value: '', label: inheritLabel },
       ...models,
+      ...undeclared
+        ? [{ value: choiceKey(choice), label: `${listedProviders.get(choice.provider)} · ${choice.model} · ${t('modelUndeclared')}`, disabled: true }]
+        : [],
     ]
     const onModel = (key) => {
       if (key === '') {
