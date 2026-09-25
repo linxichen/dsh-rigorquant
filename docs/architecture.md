@@ -808,6 +808,44 @@ context by name, which the harness refuses. The plugin now disposes every
 composition it installed from a `ctx.effect` of its own fiber, so a row
 toggle disarms live agents and a reload recomposes them exactly once.
 
+## Decision 25 — declared preset on DSH 0.1.7; the escalation lane mounts at runtime (0.6.0)
+
+Recorded as an ADR: `docs/adr/0002-declared-preset-on-dsh-0.1.7.md`.
+
+**Harness.** From 0.6.0 the harness range is `>=0.1.7-rc.2 <0.1.8`, enforced
+by `peerDependencies` and the installer's floor. There is no compatibility
+with 0.1.6, and 0.5.0 is the last release for alpha.2. The release is one
+cutover, installed together with the harness upgrade.
+
+**Preset.** `rigorquant` is a declared `@deepseek-ai/dsh-agent-preset` row in
+the bundle's own patch file. The directory copy is gone, and so is the
+preset's child `skill-filesystem` row: the host skill row serves the skill
+to every agent.
+
+**Escalation lane.** It is no longer a preset row. `rq_escalate` can be
+called only by the orchestrator, and mounts the jacobian MCP client into
+the orchestrator or into a teammate it names. It fails loudly and lives
+until the session ends. The orchestrator switches the lane on without
+asking, but installing jacobian and setting up Lean still ask the user.
+
+**Routing.** The router's settings move into its profile config. With no
+routable `deepseek-official`, the defaults fall back to the same model ids
+on `deepseek-account`. The installer ports saved overrides.
+
+**Browser.** The move pill is deleted. The routing card is kept only if
+the harness's generated form cannot pick every route from the catalog.
+
+**Leaner by rule.** Whatever the migration makes dead is deleted in the
+same release, and so are the tests that pin it.
+
+Amends:
+- **5:** jacobian stays opt-in and pinned, but is mounted at runtime.
+- **14:** a mounted lane reaches only the agents it is mounted into.
+- **20:** the harness range.
+- **22:** the bundle no longer copies a preset; the sync keeps the compute
+  lane only.
+- **24:** one Team bundle; the move pill retires; the floor is raised.
+
 ## Repo map
 
 ```
