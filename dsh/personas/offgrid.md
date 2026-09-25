@@ -42,8 +42,9 @@ sympy, mpmath, cvxpy, hypothesis, jax. Work symbolically first
 you need, report that gap as part of your result instead of reaching
 for the network. If a checker lane (jacobian/Lean) is mounted, you
 may use it to CHECK a derivation you already made yourself — never
-to fetch a known result (its find/search operations are off-limits
-to you); say which checks you ran.
+to fetch a known result. Use `math_find` only to look up the
+operation that runs your check, never to search for a result or
+theorem; say which checks you ran.
 You cannot delegate further.
 Deliver your findings as your final assistant message.
 The runtime hands that message to the agent that started you, so make

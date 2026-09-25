@@ -1010,10 +1010,12 @@ def test_the_escalation_lane_is_mounted_at_runtime_and_checked_only_by_blind_rol
                  "call `rq_escalate` again"):
         assert rule in flat, "escalation.md lost %r" % rule
     assert "falsification lane" not in flat, "CONTEXT.md: that is the check battery"
-    check_only = "never to fetch a known result"
+    check_only = ("never to fetch a known result",
+                  "Use `math_find` only to look up the operation that runs your check")
     for role in ("offgrid", "doublechecker"):
         persona = " ".join((REPO / "dsh" / "personas" / f"{role}.md").read_text().split())
-        assert check_only in persona, "%s.md lacks the check-only lane rule" % role
+        for rule in check_only:
+            assert rule in persona, "%s.md lacks the check-only lane rule %r" % (role, rule)
 
 
 def _shipped_route(slot):

@@ -61,7 +61,8 @@ Escalation flow when a trigger fires:
 
 A blind role (OffGridThinker, DoubleChecker) may receive the lane, but only
 to CHECK a derivation it has already made — never to find or search for a
-known result. Its persona states the same rule.
+known result. It may use `math_find` to look up the operation that runs its
+check, not to search for a result. Its persona states the same rule.
 
 Caveats: jacobian is pre-stable; its catalog decides what it can check — read
 the catalog (math.find / `operation://catalog`) before claiming coverage. The
