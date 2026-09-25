@@ -10,10 +10,14 @@ Key facts (summary only):
 
 - Membrane: only 'impossible' entries, provenance-stripped, cross to the
   off-grid lane; 'open' and 'settled' never cross. The receiving role is
-  `subagent_offgrid` (the OffGridThinker), whose web/`skill`/delegation deny
-  list is in the composition — never an open role asked to pretend.
-- Roles: subagent_lit_line (walled traversal) and subagent_lit_adversary
-  (independent validity + freshness) — both delegation-denied leaves.
+  `offgrid-<n>` (the OffGridThinker), whose web and `skill` are denied by the
+  team plugin from its name — never an open role asked to pretend.
+- Roles: `lit-line-<n>` (walled traversal; `n` = the line number) and
+  `lit-adversary-<n>` (independent validity + freshness) — teammates that
+  cannot create teammates. Both are reused across rounds by message: a
+  re-entered line gets a new hash-bound brief sent to the same
+  `lit-line-<n>`, only while the roster shows it idle or inactive
+  (protocol.md, L3).
 - Artifacts: literature/known-results.json (verified, committed),
   literature/negative-exports.json, literature/completeness.json,
   literature/refs-seed.bib; dossiers in interim/lit/ are advisory.

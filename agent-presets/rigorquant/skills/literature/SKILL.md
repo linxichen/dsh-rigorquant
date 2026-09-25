@@ -34,8 +34,11 @@ told it is favored.
 
 ## Step 1 — walled line agents (parallel)
 
-Launch subagent_lit_line per line, blank context, each in its own
-interim/lit/<line-slug>/ dir. Per line: resolve the seed (arxiv +
+Create one `lit-line-<n>` teammate per line (`n` = the line number; blank
+context at creation), each in its own interim/lit/<line-slug>/ dir. A line is
+reused across rounds: when the lane re-enters, send the same `lit-line-<n>` a
+new brief by message, only while the roster shows it idle or inactive — never
+a second teammate for the same line. Per line: resolve the seed (arxiv +
 academic-paper-search), read abstract → intro/related work → load-bearing
 theorem/method → references, then follow backward (references) and forward
 (citations via Semantic Scholar). Deduplicate by arXiv id / DOI / title; a
@@ -48,7 +51,8 @@ schema accepts one query per call.
 
 ## Step 2 — literature adversary (independent)
 
-For each line, send the lit-adversary (subagent_lit_adversary) the CLAIMS LIST
+For each line, send the literature adversary (`lit-adversary-<n>`, created
+once and reused by message) the CLAIMS LIST
 only — never the dossier prose. It re-retrieves each load-bearing source itself
 and returns one verdict per claim: verified-current | verified-stale |
 unverifiable | false-claim, with source id, version, access date, retrieval
@@ -75,9 +79,9 @@ under literature/ and all four validator-enforced:
   sweep is mandatory at intake: the only way past it is `phase: "skipped"` with
   the user's verbatim assertion in `skip_reason`.
 
-Transmission to the off-grid lane is by tool, not by tone: call
-`subagent_offgrid` (the OffGridThinker; web, `skill`, and delegation denied in
-the composition) and pass the constraint text only. If a sub-problem's ANSWER
+Transmission to the off-grid lane is by role, not by tone: create a fresh
+`offgrid-<n>` (the OffGridThinker; web and `skill` denied by the team plugin
+from its name) and pass the constraint text only. If a sub-problem's ANSWER
 is the impossibility, mark it `status: "impossible"` in study.json and record
 the math lane's acceptance in
 the entry's `escalation` path — the literature lane certifies that the

@@ -146,7 +146,7 @@ URL as the `href`); bare URLs with no anchor text fail the check.
 
 ## Assembly workflow
 
-1. Writer (subagent or orchestrator) reads ONLY: `study.json`, `registry.json`,
+1. Writer (the orchestrator) reads ONLY: `study.json`, `registry.json`,
    `artifacts/*.md` results, `derivations/`, `audits/` — never `interim/`
    scratch reports as sources of new claims.
 2. Writer emits the .tex files; no numerical value enters the paper unless it
@@ -171,7 +171,7 @@ state with deliverable gates suppressed.
 
 At `research-complete`, before any deliverable is crafted:
 
-1. A **consulting subagent** reads `study.json`, `registry.json`, the
+1. A **consulting pass** (the orchestrator — no teammate role holds it) reads `study.json`, `registry.json`, the
    `artifacts/*.md` results, and the existing artifacts, and drafts — per
    declared deliverable (paper / slides / web) — an **audience spec**:
    `role`, `level`, `sentence` (the one-sentence audience statement the
@@ -211,7 +211,7 @@ load-bearing claim (claim-driven invalidation via the existing
   compiles/renders. `consultation_pending: true` or a missing audience spec
   refuses the PASS.
 - *Soft (document adversary):* an **independent role agent**
-  (`subagent_document_adversary`, role `doc-adversary`) reads the artifact and
+  (a `doc-adversary-<n>` teammate, reused by message) reads the artifact and
   its spec and audits it for **self-completeness** — every jargon term, symbol,
   and abbreviation the document uses must be defined in the artifact itself or
   the audience spec's symbol registry — then returns PASS or needs-edits with

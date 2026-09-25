@@ -14,16 +14,18 @@ Primary sources:
    explicit `unknown` if neither lands. (For `known` sub-problems the method
    track stays open — building on existing analytical results is an explicit
    goal.) Isolation is **routed, not requested**: the blind roles are
-   `subagent_offgrid` (the OffGridThinker — raw model intelligence plus
-   compute tools, no one else's results) and `subagent_double_checker` (the
-   DoubleChecker), and both deny `web_search`, `web_fetch`, `skill` and every
-   delegation tool in the composition itself. Never ask an open role to
-   *pretend* it has no web — call the walled role instead. What that buys is
-   partial and must be stated so: context isolation and the web/delegation deny
-   lists are enforced, while filesystem scope and `bash`-level network calls
-   stay procedural and audited (the residual holes named under Decision 14 in
-   docs/architecture.md) — never describe
-   them as a "wall". Because `skill` is denied, a blind role cannot load this
+   `offgrid-<n>` (the OffGridThinker — raw model intelligence plus compute
+   tools, no one else's results) and `doublechecker-<n>` (the DoubleChecker).
+   The team plugin reads the role from the teammate's name and denies both
+   `web_search`, `web_fetch` and `skill`; no teammate can create teammates.
+   Never ask an open role to *pretend* it has no web — create the blind role
+   instead. What that buys is partial and must be stated so: context
+   isolation is the only wall; the web/skill budget is enforced by scope, and
+   the guard refuses a web-denied role's network verbs in `bash` (`curl`,
+   `wget`, `pip install`, `uv sync|add|pip`) at the call, while filesystem
+   scope stays procedural and audited (the residual holes named under
+   Decisions 14 and 24 in docs/architecture.md) — never describe the rest as a
+   network "wall". Because `skill` is denied, a blind role cannot load this
    file: its persona carries the derivation protocol itself.
 2. **Diverse portfolio, no premature convergence.** Begin with genuinely
    different formulations. Do not tell most agents the favored approach.
@@ -57,12 +59,19 @@ Primary sources:
 
 ## The round cycle in full
 
-1. Explorers fan out (blank-context `subagent_explorer` calls).
-2. Ground-truth track re-derives the check targets twice, independently (two
-   separate `subagent_double_checker` calls, different means).
-3. Adversary audits both tracks, runs the battery, hunts counterexamples.
-4. Root synthesizes: registry update → block/redirect decisions → PASS or
-   relaunch (with new redirections; never an identical relaunch).
+1. Promise: the orchestrator lays the round out as a task DAG on the board
+   (explore per sub-problem → ground-truth per claim → attack per
+   sub-problem → certify per round).
+2. Fan out: fresh blank-context `explorer-<n>` teammates, one or two per
+   `explore` task.
+3. Ground-truth: the check targets re-derived twice, independently, for a
+   load-bearing claim (two fresh `doublechecker-<n>` teammates, different
+   means).
+4. Attack: the reused `adversary-<n>` audits both tracks, runs the battery,
+   hunts counterexamples.
+5. Certify: the orchestrator synthesizes from the study record: registry
+   update → block/redirect decisions → PASS or next round (with new
+   redirections; never an identical relaunch).
 
 Proof and refutation tracks run in parallel: while one agent proves a claim,
 another hunts a counterexample. The correct outcome may be impossibility,
@@ -71,39 +80,81 @@ rather than forcing PASS, and tag every claim with its evidence level
 (falsification-surviving / independently re-derived / certificate-checked /
 formally verified; see lifecycle.md).
 
-## Delegation discipline (hard-lessons L2, L3, L5)
+## Delegation discipline (hard-lessons L2, L3, L5, the roster, the pool and the cap)
 
 These rules exist because the 20260820 var-expected-return-term run's budget
 was consumed by process, not content: six agents produced complete verdict
 JSON without ever writing the reports, queued messages produced stale
 re-audits of dead documents, and orchestrator-produced numbers went
-unaudited.
+unaudited. Decision 24 (docs/architecture.md) carries them onto Agent Teams.
 
+- **Brief contract.** Every brief — a `spawn_teammate` prompt or a later
+  `send_message` — names the board **task id** it serves, the **snapshot
+  hash** (SHA-256) of every artifact the teammate is to judge, and the
+  deliverable. The `spawn_teammate` `description` is the role label only
+  (`Explorer`, `DoubleChecker`, `Adversary`, …), never the brief: it is shown
+  on the roster, and a brief there leaks the assignment to every reader. The
+  teammate claims its task by compare-and-swap (`team_task_update` `claim`
+  with the revision from `team_task_get`), works under the task's advisory
+  write scope in its role's scratch directory, completes the task, and ends
+  its turn with its result as the final message.
 - **Verdict-first delegation (L2).** The adversarial verdict is structured
   data; the prose report is archival. Every audit/certification brief states
   the deliverable as *"the report, ending with `VERDICT: PASS` or
-  `VERDICT: NEEDS-EDITS`"*, and a child delivers that verdict as the **final
-  assistant message of its turn**: the runtime hands that message to the agent
-  that started it, so it wakes the orchestrator. (The `report` tool this
-  procedure used through DSH 0.1.1 is gone; a child may additionally use
-  `send_message` for an interim finding or a blocking question when the brief
-  gave it the orchestrator's own agent id.) The orchestrator treats a settled
-  run without a verdict line — in that final message or written — as a failed
-  run: read the results JSON once, record the verdict it establishes, and do
-  not re-dispatch for prose. The orchestrator may transcribe an independent
-  agent's structured verdict into the report file; transcription is not
+  `VERDICT: NEEDS-EDITS`"*, and a teammate delivers that verdict as the
+  **final message of its turn**, which wakes the orchestrator. (A teammate may
+  also `send_message` the orchestrator — its only legal target — for an
+  interim finding or a blocking question.) The orchestrator treats a turn that
+  ends without a verdict line — in that final message or written — as a failed
+  run: read its results once, record the verdict it establishes, and do not
+  re-brief for prose. The orchestrator may transcribe an independent
+  teammate's structured verdict into the report file; transcription is not
   certification — the producer≠checker constraint is about who *judges*, not
   who *files*.
-- **Freeze on audit; never message an in-flight agent (L3).** An artifact
-  under adversarial review is read-only until the verdict lands, and the
-  verdict records the audited snapshot's SHA-256. Do not send follow-up
-  messages to a settled or running agent; queued messages delivered after
-  settlement describe a prior state and are discarded without action. A
-  hash-bound verdict is the only way a later reader can tell which document a
-  verdict judged.
-- **Orchestrator-produced numbers are audited like agent-produced numbers
+- **Freeze on audit; brief, never follow up (L3).** An artifact under
+  adversarial review is read-only until the verdict lands, and the verdict
+  records the audited snapshot's SHA-256. A hash-bound verdict is the only way
+  a later reader can tell which document a verdict judged. A reused teammate
+  only ever receives a new hash-bound brief, never a follow-up about an
+  artifact under audit, and only while the roster shows it idle or inactive —
+  if it is running, wait on it first. A `send_message` whose result says
+  `queued` is durable: a queued message is already stored; never resend it.
+- **Roster policy.** Fresh per brief: `explorer-<n>`, `offgrid-<n>`,
+  `doublechecker-<n>` — blank context is the point, and the two independent
+  derivations of a load-bearing claim are two fresh DoubleCheckers with
+  different means. A correction to a fresh-per-brief teammate's artifact is
+  itself a new brief, so it goes to a new teammate of that role with the
+  defect and the frozen snapshot, never back to the author; the team guard
+  refuses a `send_message` to a settled Explorer, OffGridThinker or
+  DoubleChecker, and a running one may still be answered. Reused across rounds by message: `adversary-<n>`,
+  `lit-adversary-<n>`, `doc-adversary-<n>`, and each `lit-line-<n>` (`n` = the
+  line number; lines are numbered in creation order, so it is also the
+  counter) — their accumulated knowledge is the job — only while idle or
+  inactive, under L3. `n` is a per-role counter that only increases within a
+  study; on resume `list_agents` shows the highest `n` per role.
+- **Fan out is bounded by the live-teammate pool.** The host runs at most
+  **eight** live teammates at a time (`maxActiveSubagents`, Plugins →
+  Subagent, default 8). Teammates are depth-1 and settle when their turn
+  ends, so the pool bounds concurrency, not the study's headcount — but a
+  round that creates four literature lines, two explorers and a second
+  DoubleChecker at once is seven of the eight slots. Batch Fan out to at most
+  eight live teammates: the literature lines, the method work and the
+  ground-truth work go in waves rather than in one message. A spawn over the
+  bound fails with `ACTIVATION_LIMIT_REACHED`, which reads like a transient
+  error and is not one: **wait for a teammate to settle, never retry in a
+  loop.** Nothing releases a slot but a teammate finishing, so a retry loop
+  spends the budget on the error path. (A literature-heavy study may raise
+  the setting instead — that is the operator's change, in Plugins, not the
+  orchestrator's.)
+- **The teammate cap is a BUDGET outcome.** The team's `maxMembers` is a
+  lifetime cap that counts every teammate ever created, failed ones included
+  (`install.sh` raises it to 64). A `spawn_teammate` that fails on the cap is
+  BUDGET-class: checkpoint the study record, report the cap, end the turn; one
+  human turn re-arms (and may raise the override). Never reuse a fresh-per-
+  brief role to fit under the cap.
+- **Orchestrator-produced numbers are audited like teammate-produced numbers
   (L5).** Anything the orchestrator produces that becomes evidence — a
   generator, a table, a verification script, a status claim — goes through the
-  same adversarial check as agent output. The cheapest form: a second
+  same adversarial check as teammate output. The cheapest form: a second
   instrument recomputes the cells; a generator that emits its own tables
   cannot disagree with its formula.

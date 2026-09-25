@@ -26,49 +26,17 @@ REPO = Path(__file__).resolve().parents[1]
 SKILL_DIR = REPO / "agent-presets/rigorquant/skills/rigorquant"
 RQ_CHECK = Path(os.environ.get("RQ_CHECK_BIN", SKILL_DIR / "scripts/rq_check.py"))
 
-# ── composition parsing (shared by the deny-list and tool-budget tests) ─────
+# ── composition parsing (shared by the tool-budget and consistency tests) ────
 #
 # The test venv carries no yaml module and the composition embeds `!!js`
 # runtime expressions, so rows are extracted structurally-by-convention rather
-# than parsed: a row is one 4-space `    - id: ` block, `toolName:` its
-# delegation tool, and `deny:` the row's first deny flow sequence. One copy
-# lives here so the deny-list tests and the tool-budget tests cannot drift
-# into two different parsers of the same file.
+# than parsed: a row is one 4-space `    - id: ` block (a group member). One
+# copy lives here so the tests cannot drift into two different parsers of the
+# same file. Role budgets no longer live in the composition (Decision 24:
+# dsh/team.js applies them by teammate name), so there is no delegation deny
+# list left to parse.
 
 CORDIS = REPO / "agent-presets/rigorquant/agent.cordis.yml"
-
-# Every delegation tool name a MOUNTED delegation row provides, plus web/skill
-# for the blind lane. A new delegation row whose toolName is absent here
-# silently re-opens Decision 14's C2 for every previously blind child.
-# (`subagent_fork`, `workflow`, and `ralph` are NOT here: their rows are
-# disabled outright — untagged, unscopeable children — so they are neither
-# mounted nor deniable; tools.restrict throws on unmounted names.)
-BLIND_TOOLS = {
-    "web_search", "web_fetch", "skill",
-    "subagent_explorer", "subagent_double_checker", "subagent_adversary",
-    "subagent_offgrid", "subagent_lit_line", "subagent_lit_adversary",
-    "subagent_document_adversary",
-}
-DELEGATION = BLIND_TOOLS - {"web_search", "web_fetch", "skill"}
-
-# Tools only the root orchestrator may touch. Children get them mounted by the
-# shared composition, so each role's deny list must name them explicitly.
-# (Workflow/ralph are absent: their rows are disabled outright — see
-# BLIND_TOOLS above.)
-#
-# `send_message` is deliberately NOT here. The harness made it bidirectional
-# (0.1.2-rc.1 replaced the one-way `report` tool): a resident continuable child
-# may message its DIRECT PARENT, which is the child's only push channel now
-# that `report` no longer exists. A depth-1 child still cannot reach siblings
-# or grandchildren, so keeping it costs no authority; `interrupt_agent` and
-# `list_agents` (which address CHILDREN) stay orchestrator-only.
-ORCHESTRATOR_TOOLS = {
-    "interrupt_agent", "list_agents",                   # child-control: children have no children
-    "create_goal", "update_goal", "get_goal",           # Decision 10: one task-level goal
-    "todo_write",                                       # Decision 10
-    "ask_user_question",                                # unattended contract
-    "exit_plan_mode",                                   # children are never in plan mode
-}
 
 
 def composition_rows(text):
@@ -78,16 +46,16 @@ def composition_rows(text):
         yield row_id, part
 
 
-def tool_name_of(body):
-    m = re.search(r"toolName:\s*(\S+)", body)
-    return m.group(1) if m else None
+def top_level_rows(text):
+    """{row_id: body} for every column-0 composition row (not a group member)."""
+    return {m.group(1): m.group(2) for m in re.finditer(
+        r"^- id: (\S+)\n(.*?)(?=^- id: |\Z)", text, re.MULTILINE | re.DOTALL)}
 
 
-def deny_of(body):
-    m = re.search(r"deny:\s*\[([^\]]*)\]", body)
-    if not m:
-        return set()
-    return {t.strip() for t in m.group(1).split(",") if t.strip()}
+def is_disabled(body):
+    """A row body that carries `disabled: true`."""
+    return re.search(r"^\s+disabled: true\s*$", body, re.MULTILINE) is not None
+
 
 PAPER_TEX = r"""\documentclass{article}
 \usepackage{amsmath}

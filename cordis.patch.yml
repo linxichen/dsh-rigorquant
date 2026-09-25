@@ -32,26 +32,16 @@
           - !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl + 'package.json').resolve('dsh-rigorquant/package.json')), 'agent-presets', 'rigorquant', 'skills')"
 
     # Role-routed models (see docs/architecture.md, Decision 16). The plugin
-    # serves the `rigorquant-models` settings namespace (Plugins settings tab
-    # renders its card) and overlays explicit per-role choices plus a fallback
-    # on terminal route failure. The fixed oracle/adversary primary defaults
-    # live in the native `agentOptions` on their tool rows; every other role
-    # inherits the session model (root follows the chatbox picker). Untagged
-    # sessions — other presets, workflow workers, fork children — are never
-    # touched.
+    # serves the `rigorquant-models` settings namespace (the browser half
+    # renders its form on this bundle's page under Plugins) and overlays
+    # explicit per-role choices plus a fallback on terminal route failure. The
+    # router carries the shipped tier matrix itself (DoubleChecker and
+    # adversary on pro; every other role inherits the session model, root
+    # following the chatbox picker) and resolves the role from the Team
+    # membership name (Decision 24). Agents with no membership, or outside
+    # this preset, are never touched.
     - id: rq-model-router
       name: 'dsh-rigorquant'
-
-    # Live team-activity monitor + browser floater (README "The team, live").
-    # Pure observation: it tracks role agents from events the core already
-    # publishes, then serves a JSON snapshot plus the role portraits to
-    # the browser `shell.overlay` panel over /plugins/dsh-rigorquant/... — the
-    # same surface dsh-agent-teams uses for its activity panel. Webless
-    # profiles never mount webServer, so the routes register lazily via
-    # internal/service; the monitor itself is inert there. Design adapted from
-    # dsh-agent-teams © NanmiCoder (程序员阿江 / Relakkes), MIT License.
-    - id: rq-activity
-      name: 'dsh-rigorquant/activity'
 
     # Self-installing distribution (docs/architecture.md, Decision 22). The
     # bundle-patch plane cannot express an agent preset — the harness pins the
@@ -63,3 +53,32 @@
     # local edits; removal stays explicit via ./install.sh --uninstall.
     - id: rq-preset-sync
       name: 'dsh-rigorquant/sync'
+
+    # Team composition: role personas, tool-tier budgets, and the "RigorQuant
+    # team guard: armed" runtime context line (docs/architecture.md,
+    # Decision 24; docs/adr/0001-rigorquant-on-agent-teams.md). Declares the
+    # `agentTeams` service OPTIONAL and reaches it duck-typed by service name,
+    # never importing the experimental Agent Teams packages. It also
+    # registers the per-call guards (send_message target, roster-blindness,
+    # own-task-only board access, bash network denial, spawn_teammate
+    # refusal). The preset carries no classic delegation row, so this row is
+    # the only source of a teammate's composition.
+    - id: rq-team
+      name: 'dsh-rigorquant/team'
+
+# Decision 24 cap consistency pin (docs/adr/0001-rigorquant-on-agent-teams.md):
+# the same `maxMembers` override ./install.sh writes into the profile's user
+# patch, restated here so a profile that enables Agent Teams through this
+# package's own bundle patch (rather than through ./install.sh) still gets
+# the raised lifetime cap. A non-insert, id-targeted patch replaces the row's
+# `config` wholesale (`@deepseek-ai/cordis-plugin-include`'s `applyEntryPatches`),
+# so this is a no-op — not an error — everywhere the Team layer is absent,
+# and effective only when it precedes this bundle in the profile's `bundles`
+# order; the loader's own "entry not found" warning fires otherwise.
+- id: agent-team
+  config:
+    maxMembers: 64
+    maxTasks: 256
+    maxPendingMessagesPerMember: 64
+    maxMessageBytes: 65536
+    disposalTimeoutMs: 5000

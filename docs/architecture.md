@@ -61,7 +61,18 @@
    tag, and workflow `agent()` calls express neither a per-child persona nor a
    per-child toolFilter, so the preset declares them out of scope rather than
    minting unscoped, root-persona'd agents. Fan-out remains the goal-round
-   driver plus the per-role delegation tools.)*
+   driver plus the per-role delegation tools.)* *(Amended by Decision 24:
+   the per-role delegation rows, the subagent control/list rows and the fork
+   row are gone; teammates are created by `spawn_teammate` as `<role>-<n>`,
+   awaited with `wait_agent`, and coordinated as a task DAG on the Team
+   board. No delegation row remains enabled, so no row sets a `maxDepth` and
+   depth one holds by construction: no teammate can create teammates. The
+   goal-round driver was never this preset's to mount, either: `goal`,
+   `goal-round-driver` and the goal session driver are host-plane rows of the
+   shipped base bundle (`@deepseek-ai/dsh-base`), and the preset re-mounts only
+   the human `/goal` command and the model-facing goal tool, which the web
+   bundle disables at the host plane. The 0.1.5 study's "mount it" is
+   superseded by `docs/upgrade-0.1.6.md` §5 N1.)*
 9. **Model routing** — one model everywhere (user's choice); reasoning-effort
    knob available per role; independence comes from context separation.
    *(Superseded by Decision 16: routing is per-role through the
@@ -72,7 +83,7 @@
     scope + rollback, then proceed; BLOCKED → same exact gap 3 consecutive
     rounds → deliver strongest derivation + exact gap; UNKNOWN → recorded when
     neither proof nor counterexample lands; BUDGET → 5 orchestrator rounds →
-    checkpoint + report. One task-level goal (no per-sub-problem goals); budget
+    checkpoint + report. One study goal (no per-sub-problem goals); budget
     fields (`max_cost_usd`, `max_wall_minutes`) may be set. Resuming across a
     session needs one human turn. *(Amended by Decision 17: the BUDGET trip
     moved from 5 to **3** orchestrator rounds, and the auto-implement safety
@@ -84,12 +95,12 @@
     compliant with the awesome-list `dsh plugin add` convention. The npm bundle
     ships `env/` and `mcp/`; `install.sh` anchors the compute lane at
     `$DSH_HOME/share/rigorquant`.
-12. **Workspace** — a **study** is the self-contained work unit: one
-    rigorquant task in one directory with an identical internal structure
-    everywhere. Two modes, implied by location, no config flag: **Mode A —
-    one study per repo** (`study.json` at repo root) and **Mode B — multiple
-    studies per repo** (`studies/<slug>/study.json`, roster derived from
-    `studies/*/study.json`). Durable deliverables (study.json, STUDY.md,
+12. **Workspace** — a **study** is the self-contained work unit: the user's
+    assignment, one question worked in one directory with an identical internal
+    structure everywhere. Two modes, implied by location, no config flag:
+    **Mode A — one study per repo** (`study.json` at repo root) and **Mode B —
+    multiple studies per repo** (`studies/<slug>/study.json`, roster derived
+    from `studies/*/study.json`). Durable deliverables (study.json, STUDY.md,
     registry.json, journal, derivations/, audits/, artifacts/) are committed;
     ALL scratch lives in `interim/` (explorer-reports, gt-scripts, tmp),
     gitignored via a study-local `.gitignore`. Intake resolves the study root
@@ -262,11 +273,16 @@ composition.
 - **Root follows the chatbox.** The root role has no primary by default: the
   picker stays the master switch for the root and for every role left on
   "inherit". Pinning root is a one-select action in the card.
-- **One fallback per role.** On a terminal primary failure (no adapter, or an
-  HTTP 4xx the route cannot recover from) the router degrades that
-  session+role to the role's own fallback and forces exactly one retry. A
-  successful assistant step on the fallback — or the TTL (10 min) — restores
-  the primary; a failing fallback is never retried again by the router.
+- **One fallback per role.** On a terminal primary failure (no adapter, a
+  model its provider does not declare or cannot resolve — `UNKNOWN_MODEL`
+  or `INVALID_CONFIG`, codes with no status — or an HTTP 4xx the route cannot recover from) the router degrades
+  that session+role to the role's own fallback and forces exactly one retry.
+  A successful assistant step on the fallback — or the TTL (10 min) —
+  restores the primary; a failing fallback is never retried again by the
+  router. Each degrade and each route-fatal give-up (the fallback failed
+  too, or the role has no fallback) logs one warning naming the role, the `provider/model`,
+  and the settings key it came from (issue #22): the teammate's own failure
+  surfaces only as an unaccepted initial prompt.
 - **Effort fallback to the model default.** A stored choice may carry a
   reasoning effort the exact route's model refuses — a model with no
   reasoning surface at all, or one that does not list the saved level. The
@@ -280,11 +296,15 @@ composition.
   disabled), so this lane mostly guards stale saved choices.
 - **Persistence and UI.** Choices live in the `rigorquant-models` settings
   namespace (user layer of `settings.yaml`); the browser half renders the
-  card in the Plugins settings tab, keyed by that namespace, with model and
-  effort dropdowns from the live provider catalog.
+  form on the bundle's own page under Plugins (`plugins.bundle.config`, keyed
+  by the package name — Decision 20's 0.1.6 amendment), with model and effort
+  dropdowns from the live provider catalog. Only a save writes.
 - **Shipped defaults.** DoubleChecker and adversary: `deepseek-v4-pro`@high with a
-  `deepseek-v4-flash`@low fallback (a fallback is a degrade lane, not a second
-  full-price route). Every other role: inherit. Defaults
+  `deepseek-flash`@low fallback (a fallback is a degrade lane, not a second
+  full-price route; `deepseek-flash` is DeepSeek-V41-Flash, the flash tier the
+  0.1.6 default catalog lists — the V4 flash id it replaced is unlisted there,
+  and an unlisted id passes through to the wire and fails only when the lane
+  is entered). Every other role: inherit. Defaults
   assume the `deepseek-official` catalog; a deployment without it overrides
   the row config or the card, and a default that cannot route degrades
   through the same fallback lane (or fails loudly if the fallback cannot
@@ -297,7 +317,7 @@ composition.
   provider's own output ceiling is safer than imposing an arbitrary cap on
   proof-heavy reports. The new `modelSelectionSettings` allow-list is not
   enabled for these role tools because caller-selected routes would undermine
-  the forced tier matrix; the Settings card remains the explicit override
+  the forced tier matrix; the routing card remains the explicit override
   surface.
 
 Guarded by tests: every role persona must keep its tag, the router's ROLES list
@@ -382,7 +402,7 @@ own generator emitted a wrong table cell that went unaudited. Decision:
 
 Guarded by `tests/test_procedural_gates.py`.
 
-## Decision 20 — follow the harness surface across 0.1.1 → 0.1.5
+## Decision 20 — follow the harness surface across 0.1.1 → 0.1.6
 
 Originally studied against deepseek-harness 0.1.1-rc.2 (then the newest release;
 the running harness was 0.1.0-rc.7), where the host half and preset were
@@ -392,8 +412,8 @@ into the `settingsSchema` service (`rehydrate`/`validate`; path helpers
 unchanged).
 
 **Re-surveyed for 0.1.5** (`docs/upgrade-0.1.5.md`): the dual-version client is
-gone and the **required floor is now `DSH ≥ 0.1.5-alpha.2`**, enforced by
-`install.sh` and documented in both READMEs and the preset header. 0.1.3-alpha.2
+gone and the floor moved to `0.1.5-alpha.2` (0.1.6 raised it again — see the
+amendment below). 0.1.3-alpha.2
 split the persona row's single `text` key into a required `prefix` plus a
 `suffix`, and a row whose config fails validation rejects the WHOLE preset
 mount; 0.1.2-rc.1 removed the child-scoped `report` tool; 0.1.5-alpha.2 is where
@@ -442,6 +462,66 @@ the deliverables tool (`present`) and the right Sidebar land. Decision:
 - **Watch (not wired):** the experimental `agent-team` domain (shared task
   DAG, `spawn_teammate`/`wait_agent`) is the closest native match to the
   round-loop fan-out; adopt only when it stabilizes.
+
+**Amended for 0.1.6 (0.4.2, the last classic release; `docs/upgrade-0.1.6.md`
+§3):** two browser seams broke silently and are followed, not worked around,
+and the **required floor is now `DSH ≥ 0.1.6-alpha.2`** — enforced by
+`install.sh`, documented in both READMEs and the preset header, and pinned by
+`test_repo_consistency.py`. The floor is above every row's own requirement
+because the two seams below are browser-side: on 0.1.5 the preset still mounts
+while the card and the floater render nothing at all.
+
+- **The routing card is the bundle's configuration entry on the Plugins
+  page.** 0.1.6 retired `settings.plugin.item` (plugin configuration moved
+  out of Settings); a registration into a slot nothing renders fails
+  silently. The card registers on `plugins.bundle.config`, keyed by the
+  package name, and renders the two views the page asks for — `summary`, one
+  line; `page`, the form with its own Save. It follows the page's form
+  contract: only a save writes, so Discard and the unsaved marker are gone
+  and leaving the page drops staged edits. The draft model, the
+  `settings.describe` seam and the model-catalog seam are unchanged.
+- **The floater finds the main-view session by retain info.** Client sessions
+  are references and the list has no `current` field. The floater scans the
+  client session list for the id whose
+  `sessions.retainInfo(id).retainedBy.mainView` is positive — the check the
+  harness's own team UI makes — and re-scans on every list publish. Nothing
+  reads a `current` field, and the client-bundle probe pins that on the
+  source as well as on behaviour.
+- **Disabled rows still have to be honest.** The workflow engine row follows
+  0.1.6's rename to `workflow-ptc` (`@deepseek-ai/dsh-workflow-worker-thread`
+  no longer exists) and the disabled external-agent rows move from
+  `enableRunInBackground: false` to `backgroundMode: one-shot`, matching the
+  shipped `standard` preset. All three stay **disabled** for the reasons that
+  disabled them (untagged, unscopeable children). Nothing mounts either way —
+  a disabled row is never imported — but the harness probe reported the stale
+  package UNRESOLVED, and a row that cannot resolve reads as a typo rather
+  than a decision. `modelSelectionSettings`, which `standard` turned on for
+  `tool-subagent`, stays **off**: a caller-chosen model overrides the role's
+  routed tier (Decision 16).
+- **Fan-out is bounded by the host's pool.** `maxActiveSubagents` (default 8)
+  caps live children per root; over it a spawn raises
+  `ACTIVATION_LIMIT_REACHED`, which nothing but a child settling clears. The
+  skill and the protocol say to batch the round and wait, never to retry in a
+  loop; raising the setting is the operator's change in Plugins, not the
+  orchestrator's.
+- **The installer detects Agent Teams; it does not enable it.** A full install
+  reads `dsh.profile.bundles` in the target profile's `package.json` and
+  reports whether both optional Team bundles are on, printing where to toggle
+  them when they are not. 0.4.2 is the classic release and needs neither;
+  enabling a bundle appends a layer to the profile's stack, which changes what
+  every session in that profile composes, so it stays the operator's decision
+  (Decision 24 is where 0.5.0 enables them, under a marker it can find again).
+  An unreadable manifest is reported as unknown, never as "off". The floor
+  itself is enforced only on this path: the bundle install of Decision 22
+  runs after the profile has composed, so `dsh/sync.js` states the floor and
+  cannot check it.
+- **The deprecated synchronous history reads stay, with the deferral note.**
+  0.1.6 deprecated `ownEvents()`/`snapshotEvents()` under the policy "existing
+  logic may remain unmigrated for now, but new calls are prohibited". The
+  router and the activity half each keep one helper carrying that note; the
+  consistency suite pins the call count, so the deferral cannot quietly grow a
+  third caller. Both disappear under Decision 24, where a role comes from the
+  teammate's name.
 
 Storage note: rc.8 changed the SQLite backend format (no migration), but it is
 opt-in; rigorquant sessions persist as JSONL, which is byte-compatible across
@@ -540,7 +620,11 @@ exclusions named).
 
 Three renames landed together because they are one decision about what a role
 name must carry: the name is protocol. Every delegation tool is model-facing,
-and the model reads the tool name as part of the brief.
+and the model reads the tool name as part of the brief. *(Amended by Decision
+24: none of the names below is the identity any more. A teammate's role comes
+from its `<role>-<n>` roster name, and no delegation tool carries one — the
+tool, row, tag and settings keys this decision renamed are the record of how
+identity was carried before the Team layer.)*
 
 - **Oracle → DoubleChecker.** "Oracle" claims an authority the role does not
   have — an oracle vouches, and nothing in this framework vouches. The role's
@@ -579,29 +663,161 @@ and the model reads the tool name as part of the brief.
   govern until re-entered). The activity monitor's best-effort `labelRole`
   keeps mapping legacy `gt-`/`ground truth` one-shot labels to the
   DoubleChecker, so runs started before the rename still light up correctly.
-- **The activity pillbox is a hub-and-spoke map.** The previous five-stage
+  *(Amended by Decision 24: the monitor is deleted in 0.5.0, so the legacy
+  labels have no reader left; the settings keys above are unchanged, and
+  the role prefix — not a tool name — is the identity the router resolves.)*
+- **The activity pillbox is a hub-and-spoke map.** The previous five-layer
   DAG drew handoffs that do not exist — `explorer → oracle`,
   `lit-adversary → adversary` — implying role-to-role channels that would
   break producer≠checker if they were real. The topology actually enforced is
   a hub: the orchestrator is the only role that sees every brief and every
   report, and no two children ever exchange anything. The map now renders
   that (root at the center, seven spokes in call order), and a consistency
-  test pins the structure and forbids the stage-DAG constants from
-  returning.
+  test pins the structure and forbids the retired DAG constants from
+  returning. *(Amended by Decision 24: the map is a static figure now, and
+  the topology is enforced by `dsh/team.js`'s per-call guard rather than
+  drawn — the pin follows the guard.)*
 
-Tests: `test_repo_consistency.py` pins tag↔row identity, the fixed-tier
-`agentOptions` rows, and the hub-and-spoke topology; `conftest.py`'s
-`BLIND_TOOLS`/`DELEGATION` sets and `test_role_tool_budgets.py`'s budgets
-follow the new tool names; the router and client-bundle probes exercise the
-renamed settings keys end to end.
+Tests: `test_repo_consistency.py` pins the hub-and-spoke topology and the
+absence of caller-selectable models, and the tag↔row identity this decision
+pinned went with the `[[rq:role=…]]` tag — replaced by the
+role-name↔persona-file identity;
+`conftest.py`'s `BLIND_TOOLS`/`DELEGATION` sets and
+`test_role_tool_budgets.py`'s budgets follow the role tiers; the router and
+client-bundle probes exercise the renamed settings keys end to end.
+
+## Decision 24 — RigorQuant runs on Agent Teams (0.5.0)
+
+Recorded as an ADR: `docs/adr/0001-rigorquant-on-agent-teams.md`. From 0.5.0
+the multi-agent mechanism is DSH's experimental Agent Teams, consumed as the
+shipped optional bundle and never imported: **identity by name**
+(`<role>-<n>` teammate names replace the `[[rq:role=…]]` persona tag),
+**enforcement by scope** (a host plugin applies each role's persona, tool
+budget and bash network denial on the teammate's `agent/created`),
+**topology by guard** (a teammate may message only the orchestrator; every
+teammate is roster-blind). Amends 8 (mechanism: `spawn_teammate`/`wait_agent`
+and the task board replace the per-role delegation tools), 14 (the bash-curl
+hole is denied at the call for web-denied roles), 16 (the router carries the
+tier matrix; no native `agentOptions` rows remain), 19 (L3 keeps
+freeze-and-hash; a reused teammate receives only new hash-bound briefs),
+20 (floor `0.1.6-alpha.2`; the activity monitor retires for the native team
+view plus a move pill) and 23 (role identity moves from the tool name to the
+teammate name; the hub-and-spoke map is now what the guards enforce).
+
+**Enforcement-by-scope's composition half shipped under issue #9**
+(`docs/upgrade-0.1.6.md` §3.9): `dsh/team.js` applies each teammate's
+persona and global tool-tier budget by name, and registers the
+orchestrator's "RigorQuant team guard: armed" line as a runtime context
+(not a section — the harness's own `CONTEXT_ORDERS` family, distinct from
+a persona slot).
+**Topology-by-guard shipped under issue #10** (`docs/upgrade-0.1.6.md`
+§3.10): a `tools.guard` per composed member enforces what `tools.restrict`
+cannot mask on the scoped Team tools — hub-and-spoke messaging, roster/board
+blindness, own-task-only board access, the bash network-verb denial for
+web-denied roles, and the orchestrator's `spawn_teammate` name/fork refusal.
+**A Lead-only composition gap, found live and fixed** (`docs/upgrade-0.1.6.md`
+§3.11): a session composed as `rigorquant` only *after* its own
+`agent/created` already ran (the ordinary "New Session, then pick a preset"
+UI flow) left the Lead's guard-armed context and `spawn_teammate` guard
+uninstalled for the session's entire life — teammates are unaffected, since
+a teammate's preset is already settled at spawn time. `dsh/team.js` now
+also re-triggers composition on the harness's `agent-preset/selected` event.
+**Router role-resolution by membership shipped under issue #11**
+(`docs/upgrade-0.1.6.md` §3.12): `dsh/index.js` resolves a routed agent's
+role the same way `dsh/team.js` resolves composition — through
+`agentTeams.tryMembership(agent)`, the Lead as `root`, every other member
+by its name — and carries the shipped tier matrix itself, since no native
+per-role model row exists once a teammate is created by `spawn_teammate`.
+The persona-tag regex, the persona-assembly probe, and the deprecated
+synchronous session-event reads are gone from the router; the classic
+per-role delegation rows still use the persona tag until a later issue
+removes them (`dsh/activity.js`, the tag's other reader, is deleted under
+issue #13).
+**The installer enables Agent Teams under issue #12** (`docs/upgrade-0.1.6.md`
+§3.13): a full install adds whichever of the two optional bundles are
+missing from the profile's `dsh.profile.bundles` and appends the `maxMembers:
+64` cap override into that profile's `cordis.patch.yml` under a
+`dsh-rigorquant` marker that also records which bundles it enabled, printing
+every line written; idempotent on re-run. `--uninstall` removes the marker
+and disables only the bundles the marker records the installer having
+enabled — a bundle the operator already had on stays on. With no `dsh` on
+the path the whole step warns and is skipped, keeping CI's install smoke
+test green. The identical override row ships in this package's own bundle
+patch as a consistency pin, effective only when the Team layer precedes
+`dsh-rigorquant` in a profile's bundle order.
+**The browser goes native under issue #13** (`docs/upgrade-0.1.6.md` §3.14):
+the activity monitor host module (`dsh/activity.js`), its HTTP routes, its
+probe and its tests are deleted outright, along with the client bundle's
+floater/panel/geometry code — the deprecated synchronous session-event reads
+this repo carried a deferral note for have no caller left anywhere. In their
+place, a move pill registers on the conversation's per-session
+`conversation.session.header.utilities` slot (the sibling seat of the Team
+package's own roster action, which sits in
+`conversation.session.header.actions`): it reads the Lead's live roster and
+board through the Team namespace's `remote.agentTeams.view(leadSessionId)`
+request — the only team read the installed `0.1.6-alpha.2` browser half serves.
+That namespace is injected optionally, so a profile with no Team bundle never
+registers the pill at all and renders nothing. The read is addressed to the
+Lead (a teammate's own header resolves back through
+`subagent.address.parentSessionId`), and re-read on a short interval, because
+that namespace answers requests rather than subscriptions.
+The move is derived structurally from the task board's `blockedBy` DAG (a
+task's layer is one past its deepest blocker; the shallowest layer with
+incomplete work is the move), never from task text, so it needs no
+naming convention the orchestrator side has not been given yet. Rendering
+nothing while the projection is absent covers "no team running" and "the
+Team bundle is not mounted" identically. The static hub-and-spoke topology
+figure in the docs is untouched by that change.
+**Team-only preset and procedure under issue #14**: the seven per-role
+delegation rows, `tool-subagent-control`, `tool-subagent-list-agents` and the
+disabled fork row leave the preset (the
+external-agent rows and the checker lane stay disabled, `present` stays), so
+the Team tools are the only delegation mechanism and the `[[rq:role=…]]` tag
+has no carrier left. The orchestrator persona's ISOLATION paragraph now says
+role by name, tool budget by scope, topology by guard — still not a network
+wall — and states that a RigorQuant study is the explicit request the Team
+policy asks for, spawning only while the "guard armed" line is present.
+SKILL.md Step 3 runs the round as five moves on `spawn_teammate` /
+`wait_agent` / `send_message` over a layered task DAG (explore → ground-truth
+→ attack → certify, one `blocked_by` layer per move, which is exactly what
+the move pill reads); protocol.md carries the brief contract, the roster
+policy, the rewritten L3, the pool rule and the lifetime-cap BUDGET rule.
+**The documents speak the glossary under issue #15**: both READMEs' Install
+sections state the floor, the alpha-plus-experimental dependency, the Beta
+toggle (the *Agent Teams* and *Agent Teams Web UI* cards under **Plugins →
+Official**) and the installer's enable/override/uninstall behaviour; "The
+team, live" is rewritten around the native roster, the task board, opening a
+teammate and the move pill, with the hub-and-spoke figure kept as the picture
+of what the guards enforce; a **Deployment notes** section covers the DeepSeek
+session log (`session-log-deepseek` with `enabled: false` in the profile's
+user patch, `$DSH_HOME/profiles/<profile>/cordis.patch.yml`), the host-mounted
+goal-round driver (this decision's Decision 8 amendment) and the
+`workspace-changes` turn card as the human-visible witness of an edit after
+certification (Decision 19). `test_repo_consistency.py` sweeps the tracked
+documents for the two collisions `CONTEXT.md` lists under *Avoid* — a move
+named as a stage, a study named as a task, in English and Chinese — and pins
+both READMEs' team, install and deployment sections by heading.
+**Enforcement by scope has to follow the plugin out, found at release under
+issue #16** (`docs/upgrade-0.1.6.md` §3.15): every persona, context,
+restriction and guard `dsh/team.js` installs goes through the agent's own
+`agent.ctx`, so it belongs to the agent's scope, not the plugin's, and
+survives the plugin unloading. Toggling the `rq-team` row off in the Plugins
+page therefore left a live orchestrator armed and guarded, and toggling it back on
+could not take effect: the backfill re-registered the still-live armed
+context by name, which the harness refuses. The plugin now disposes every
+composition it installed from a `ctx.effect` of its own fiber, so a row
+toggle disarms live agents and a reload recomposes them exactly once.
 
 ## Repo map
 
 ```
 agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
   skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
-dsh/                        host halves: rq-model-router + rq-preset-sync, card
-cordis.patch.yml            bundle patch: skill layer + router + boot-sync rows
+dsh/                        host halves: rq-model-router + rq-team (composition
+                            and per-call guard) + rq-preset-sync, dsh/personas/
+                            (one role persona per file), and the client bundle
+                            (routing card + move pill)
+cordis.patch.yml            bundle patch: skill layer + router + team + boot-sync
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        this record

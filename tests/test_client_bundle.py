@@ -38,15 +38,17 @@ SERVICE_PROVIDERS = {
     "remote.session": "@deepseek-ai/dsh-api-session-controller",
     "remote.settings": "@deepseek-ai/dsh-api-remotes",
     "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
-    "sessions": "@deepseek-ai/dsh-api-session-controller",
 }
-# The card registers into the `settings.plugin.item` ring, which this package
-# declares; the activity floater registers into the root-scoped `shell.overlay`
-# ring declared by ui-layout (both additive seats — a replacement would shadow
-# the shell).
-RINGS = ["settings.plugin.item", "shell.overlay"]
-CARDS = ["rigorquant-models", "rigorquant-activity"]
-RING_OWNER = "@deepseek-ai/dsh-client-ui-settings-plugins"
+# The card registers into the Plugins page's `plugins.bundle.config` ring,
+# keyed by this bundle's package name; the move pill registers into the
+# per-session `conversation.session.header.utilities` ring declared by
+# ui-conversation (both additive list seats — a replacement would shadow the
+# shell). 0.1.6 retired `settings.plugin.item`: a card registered there
+# renders nowhere, silently.
+RINGS = ["plugins.bundle.config", "conversation.session.header.utilities"]
+CARDS = [PLUGIN_ID, "rigorquant-move"]
+RETIRED_RING = "settings.plugin.item"
+RING_OWNERS = ["@deepseek-ai/dsh-client-ui-plugin-manager", "@deepseek-ai/dsh-client-ui-conversation"]
 
 
 def manifest():
@@ -137,8 +139,9 @@ def test_card_waits_for_session_remote_before_failing(verdict):
 def test_apply_mounts_both_rings(verdict):
     """Registering is necessary, not sufficient: apply must survive mount.
 
-    The plugin contributes the settings card (settings.plugin.item) AND the
-    live activity floater (shell.overlay). Both are additive list/keyed seats.
+    The plugin contributes the routing card (plugins.bundle.config) AND the
+    move pill (conversation.session.header.utilities). Both are additive
+    list/keyed seats.
     """
     assert "mountError" not in verdict, verdict.get("mountError")
     assert verdict["mounted"]
@@ -146,25 +149,126 @@ def test_apply_mounts_both_rings(verdict):
     assert verdict["cards"] == CARDS
 
 
-def test_activity_floater_renders_null_while_no_lab_runs(verdict):
-    """The floater is a second registration; it must mount and render hidden.
+def test_card_registers_on_the_bundle_config_slot_keyed_by_the_package(verdict):
+    """The Plugins page finds a bundle's form by slot name and key.
 
-    With an empty host snapshot (no RigorQuant session running), the panel
-    renders null — no phantom widget — and must not crash at render time.
+    `plugins.bundle.config` is keyed by the bundle's package name and rendered
+    on the bundle's page between its description and its rows
+    (ui-plugin-manager slot-contract). The key must be the same name the
+    bundle registered with the loader: any other key is an entry the page
+    never asks for.
     """
-    assert verdict["overlayRendered"] is True
-    assert "overlayRenderError" not in verdict, verdict.get("overlayRenderError")
-    assert verdict["overlayTree"] is None
+    assert verdict["cardSlot"] == "plugins.bundle.config"
+    assert verdict["cardKey"] == verdict["id"] == PLUGIN_ID
 
 
-def test_activity_floater_scopes_to_the_current_session(verdict):
-    """The floater follows the current session, never other sessions' labs.
+def test_the_retired_settings_slot_is_gone(verdict):
+    """0.1.6 retired `settings.plugin.item`; a registration there is silent.
 
-    With two labs in the store but a current session that is not one of them,
-    the panel renders null; when the current session is a lab, it renders.
+    Nothing renders the ring any more, so the failure is a card that simply
+    never appears. The ring must be absent from what apply mounts AND from the
+    source, so it cannot come back behind a feature check.
     """
-    assert verdict["scopeMismatchNull"] is True
-    assert verdict["scopeMatchRendered"] is True
+    assert RETIRED_RING not in verdict["mountedRings"]
+    assert verdict["retiredSettingsSlotReferences"] == 0
+
+
+def test_move_pill_renders_null_without_a_team_view(verdict):
+    """No team view — nothing renders, and nothing throws.
+
+    The pill reads the Lead's roster and board through the Team namespace's
+    `view` request; a Lead with no team running answers a failed RemoteResult,
+    which is the pill's render-nothing state.
+    """
+    assert verdict["pillRenderedAbsent"] is True
+    assert "pillRenderError" not in verdict, verdict.get("pillRenderError")
+    assert verdict["pillNullWithoutTeam"] is True
+
+
+def test_move_pill_reads_the_team_view_through_the_team_namespace(verdict):
+    """The only team read the installed 0.1.6-alpha.2 browser half serves.
+
+    The client Session store has no `projectionsBySession` at that tag, so a
+    projection-shaped read is silently `undefined` and the pill renders nothing
+    on every real session — while its tests still pass. The read must be the
+    namespace's `view(agentId)` request, addressed to the LEAD's session id.
+    """
+    assert verdict["fictionalProjectionReads"] == 0, (
+        "dsh/client.js reads a client projection store that does not exist on "
+        "0.1.6-alpha.2; the read is silent and the pill never renders")
+    assert verdict["teamNamespaceReads"] >= 1
+    assert verdict["pillViewLeadIds"] == ["lab-lead"], verdict.get("pillViewLeadIds")
+
+
+def test_move_pill_registers_only_while_the_team_namespace_is_present(verdict):
+    """No Team bundle, no namespace, no registration — not a null branch.
+
+    `ctx.inject(['remote.agentTeams'], …)` is the optionality seam: in a profile
+    without the Team bundle the callback never runs, so the utilities ring is
+    never claimed. The card still mounts on its own services.
+    """
+    assert "pillGateError" not in verdict, verdict.get("pillGateError")
+    assert verdict["pillGateDeps"] == [["remote.agentTeams"]], verdict.get("pillGateDeps")
+    assert verdict["pillGateRings"] == ["plugins.bundle.config"], verdict.get("pillGateRings")
+
+
+def test_move_pill_derives_the_shallowest_incomplete_move(verdict):
+    """The move is the first incomplete layer of the task DAG, not a heuristic.
+
+    The probe's board has a COMPLETED Fan-out task and a PENDING Ground-truth
+    task blocked on it (plus a dangling `blockedBy` edge to a task not in the
+    list, which must be ignored rather than crash): the move must read as
+    Ground-truth, the shallowest layer that still has work outstanding, never
+    the completed layer beneath it.
+    """
+    assert "pillRenderError" not in verdict, verdict.get("pillRenderError")
+    assert verdict["pillRendered"] is True
+    assert verdict["pillMoveText"] == "move.ground-truth", verdict.get("pillMoveText")
+
+
+def test_move_pill_shows_a_badge_only_for_running_teammates(verdict):
+    """A portrait per running role — never the Lead, never an idle teammate.
+
+    The probe's roster has one RUNNING teammate (doublechecker-1), one IDLE
+    teammate (explorer-1), and the Lead itself (role 'lead', always excluded).
+    Exactly one badge must appear, titled with the role label and the
+    teammate's own name.
+    """
+    assert verdict["pillBadgeTitles"] == ["DoubleChecker — doublechecker-1"], verdict.get("pillBadgeTitles")
+
+
+def test_move_pill_resolves_the_lead_session_from_a_teammate_header(verdict):
+    """Opening a teammate shows the same pill, not a blank one.
+
+    A teammate's own Session carries `subagent.address.parentSessionId`; the
+    pill must address the Team view request to THAT Lead, exactly the hop the
+    Team package's own header action makes before it loads the view.
+    """
+    assert verdict["pillFromTeammateRendered"] is True
+
+
+def test_nothing_reads_a_current_session_field(verdict):
+    """`SessionListState.current` is gone; a read of it is silently undefined.
+
+    The pin is on the member name in the source (the behavioural check above
+    is what proves the replacement works). It is deliberately blunt: a future
+    `ref.current` in the bundle would trip it too, and would be the moment to
+    narrow it to the session-list read.
+    """
+    assert verdict["currentFieldReads"] == 0, (
+        "dsh/client.js still reads a `.current` member; the sessions list has "
+        "no such field on 0.1.6 and the read is silent")
+
+
+def test_fiber_unload_runs_every_disposer_cleanly(verdict):
+    """A fiber unload must not throw, even with nothing left to clean up.
+
+    `ctx.effect` runs its body at once and keeps what the body RETURNS as the
+    disposer. The retired activity floater's docked-panel dodge stylesheet was
+    the only DOM side effect this bundle ever mounted; nothing replaces it, so
+    this just proves running every collected disposer in reverse cannot throw.
+    """
+    assert "disposeError" not in verdict, verdict.get("disposeError")
 
 
 def test_card_renders_with_framework_composed_props(verdict):
@@ -185,14 +289,21 @@ def test_component_receives_the_bound_selector_hook(verdict):
     assert "hooks" not in verdict["renderProps"]
 
 
-def test_card_root_is_a_list_item(verdict):
-    """`settings.plugin.item` renders its entries into a <ul>.
+def test_card_renders_the_two_views_the_plugins_page_asks_for(verdict):
+    """`summary` is one line of text; `page` is the form with its own Save.
 
-    A card whose root is a bare <div> escapes the card frame and renders flush
-    at the section's root level instead of inside its own titled, collapsible
-    box like the Shell and Agent Loop cards.
+    The page draws the title, icon and crumb itself and asks the entry for
+    `view: 'summary'` (the one-liner under the title) and `view: 'page'` (the
+    form). The page view is a plain block — the bundle's page wraps it in its
+    own section, so the old `<li>` card frame would nest a list item in a
+    section — and only a save writes: no Discard control, no unsaved marker.
     """
-    assert verdict["rootType"] == "li", verdict.get("rootType")
+    assert "renderError" not in verdict, verdict.get("renderError")
+    assert isinstance(verdict["summaryView"], str) and verdict["summaryView"], verdict.get("summaryView")
+    assert verdict["rootType"] == "div", verdict.get("rootType")
+    assert verdict["pageButtons"] == ["save"], verdict["pageButtons"]
+    assert "discard" not in verdict["pageText"]
+    assert "pending" not in verdict["pageText"]
 
 
 def test_card_uses_the_settings_draft_model(verdict):
@@ -247,7 +358,7 @@ def test_effort_dropdown_offers_only_the_models_real_surfaces(verdict):
     """Every effort select renders exactly what the chosen model supports.
 
     The probe's one catalog model carries no reasoning metadata, so every
-    effort select (8 roles x 2 slots) must offer only "Default" — never a
+    effort select (8 roles x 2 slots, on the page view) must offer only "Default" — never a
     generic [off, high, max] vocabulary, which is how a route with no
     reasoning surface once got saved with an effort every turn on it refused.
     A stored effort the model does not list stays visible but disabled.
@@ -261,6 +372,26 @@ def test_effort_dropdown_offers_only_the_models_real_surfaces(verdict):
     assert stale[1] == {
         "value": "high", "label": "high · effortUnsupported", "disabled": True,
     }
+
+
+def test_model_select_flags_an_override_its_provider_does_not_list(verdict):
+    """A stored model its provider does not declare is marked, not hidden.
+
+    Issue #22: `explorerPrimary: linxicloud/deepseek-v4-flash-dspark` named a
+    model missing from its provider's catalog, and every teammate on it died
+    with UNKNOWN_MODEL. The select had no option for the stored value, so the
+    row read as "Inherit". The card now renders that value as a disabled
+    `provider name · model · modelUndeclared` option. A provider the catalog does
+    not list at all is left unflagged: its listing may have failed.
+    """
+    assert "effortDropdownError" not in verdict, verdict.get("effortDropdownError")
+    assert verdict["undeclaredModelOption"] == {
+        "value": "deepseek::v4-flash-dspark",
+        "label": "DeepSeek · v4-flash-dspark · modelUndeclared",
+        "disabled": True,
+    }
+    assert verdict["unlistedProviderOption"] is None
+    assert verdict["flaggedModelOptions"] == ["deepseek::v4-flash-dspark"]
 
 
 def test_settings_namespace_is_writable_by_the_host():
@@ -300,6 +431,7 @@ def test_graph_edges_cover_every_service_the_card_injects():
     assert not missing, "unfetched service providers: %s" % missing
 
 
-def test_graph_edges_cover_the_slot_ring_owner():
+def test_graph_edges_cover_the_slot_ring_owners():
     declared = set(manifest()["dsh"]["client"]["inject"])
-    assert RING_OWNER in declared
+    missing = sorted(set(RING_OWNERS) - declared)
+    assert not missing, "unfetched ring owners: %s" % missing

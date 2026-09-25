@@ -19,14 +19,14 @@ computational econ/finance.
 RigorQuant is an agent preset + bundled skills that turns one DSH session into a
 context-isolated multi-agent research lab:
 
-- **Parallel explorers** propose candidate methods (`subagent_explorer`, blank
+- **Parallel explorers** propose candidate methods (`explorer-<n>`, blank
   context).
-- An **OffGridThinker** (`subagent_offgrid`) works off the grid when a route
+- An **OffGridThinker** (`offgrid-<n>`) works off the grid when a route
   must be isolated: raw model intelligence plus compute tools (sympy, numpy,
   mpmath, Lean checkers) — no web, no literature, no other agents' results.
 - A **ground-truth track** re-derives the analytic closed forms, invariants, and
   bounds for simplified cases — twice, by different means (two independent
-  `subagent_double_checker` calls).
+  fresh `doublechecker-<n>` teammates).
 - An **adversary** eliminates routes by counterexample only.
 - A **four-part check battery** (closed-form equality, exact invariants,
   analytic bounds, statistical hardening) runs BEFORE numerical implementation.
@@ -53,10 +53,12 @@ session. Crossing a session boundary disarms the goal; one human turn
 
 ## The research team — and how it works
 
-Eight roles around one hub, each a separate tool with its own powers and limits.
-The Orchestrator is the only role that sees every report; the separation is
-enforced by the composition, so **the producer never checks its own work** — an
-idea dies only on a concrete counterexample, never on style or vibes.
+Eight roles around one hub, each a teammate the orchestrator creates with its
+own persona and tool budget. The orchestrator is the only role that sees every
+report — a teammate cannot message another teammate, list the roster, or read
+the whole board — so the separation is enforced rather than agreed, and **the
+producer never checks its own work**: an idea dies only on a concrete
+counterexample, never on style or vibes.
 
 <img src="docs/figs/avatar-orchestrator.png" align="left" width="200" alt="Orchestrator">
 
@@ -67,35 +69,35 @@ idea dies only on a concrete counterexample, never on style or vibes.
 
 <img src="docs/figs/avatar-explorer.png" align="left" width="200" alt="Explorer">
 
-**Explorer** · `subagent_explorer` — blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected.
+**Explorer** · `explorer-<n>` — blank-context and divergent. Proposes lemmas, equations, constructions, and candidate methods with exact statements. Status reports are rejected.
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-offgrid.png" align="left" width="200" alt="OffGridThinker">
 
-**OffGridThinker** · `subagent_offgrid` — the off-grid lane. Raw model intelligence plus the pinned compute lane (sympy, numpy, mpmath, cvxpy, hypothesis, jax; Lean checkers when provisioned) — and nothing else: no web, no skills, no delegation, no other agents' results. Its own agent, not an Explorer variant: isolation is the identity.
+**OffGridThinker** · `offgrid-<n>` — the off-grid lane. Raw model intelligence plus the pinned compute lane (sympy, numpy, mpmath, cvxpy, hypothesis, jax; Lean checkers when provisioned) — and nothing else: no web, no skills, no delegation, no other agents' results. Its own agent, not an Explorer variant: isolation is the identity.
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-doublechecker.png" align="left" width="200" alt="DoubleChecker">
 
-**DoubleChecker** · `subagent_double_checker` — blind (no web, no skills, no delegation, no drafts). Re-derives the load-bearing claims from first principles, twice by different means.
+**DoubleChecker** · `doublechecker-<n>` — blind (no web, no skills, no delegation, no drafts). Re-derives the load-bearing claims from first principles, twice by different means.
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-adversary.png" align="left" width="200" alt="Adversary">
 
-**Adversary** · `subagent_adversary` — runs the check group and hunts counterexamples. Ends in a verdict: `PASS` or `NEEDS-EDITS`.
+**Adversary** · `adversary-<n>` — runs the check group and hunts counterexamples. Ends in a verdict: `PASS` or `NEEDS-EDITS`.
 
 <br clear="left">
 
 
 <img src="docs/figs/avatar-literature.png" align="left" width="200" alt="Literature">
 
-**Literature** · `subagent_lit_line` · `_adversary` — a walled citation-graph sweep, then an independent adversary re-retrieves each claim and certifies it's real **and** current.
+**Literature** · `lit-line-<n>` · `lit-adversary-<n>` — a walled citation-graph sweep, then an independent adversary re-retrieves each claim and certifies it's real **and** current.
 
 <br clear="left">
 
@@ -109,46 +111,57 @@ idea dies only on a concrete counterexample, never on style or vibes.
 
 <img src="docs/figs/avatar-document-adversary.png" align="left" width="200" alt="Document adversary">
 
-**Document adversary** · `subagent_document_adversary` — an independent agent that audits each finished deliverable for **self-completeness** (the thing 90% of AI-generated writing drops): every jargon term, symbol, and abbreviation the document uses must be defined in the artifact itself or the audience spec's symbol registry. Returns `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`; a `NEEDS-EDITS` is a blocking gap the validator refuses a `PASS` without.
+**Document adversary** · `doc-adversary-<n>` — an independent agent that audits each finished deliverable for **self-completeness** (the thing 90% of AI-generated writing drops): every jargon term, symbol, and abbreviation the document uses must be defined in the artifact itself or the audience spec's symbol registry. Returns `VERDICT: PASS` / `VERDICT: NEEDS-EDITS`; a `NEEDS-EDITS` is a blocking gap the validator refuses a `PASS` without.
 
 <br clear="left">
 
-### The team, live — the activity view
+### The team, live — the native team view
 
-The plugin ships a **live activity panel** (the `rq-activity` host half, the
-`shell.overlay` floater in the browser half): while a RigorQuant session runs,
-a pill appears vertically centered on the main window's right edge (it follows
-the conversation column, so the workspace rail and right-docked panels stay
-clear), expanding into a panel that shows, for the **current session's lab
-only** (never other sessions, and only while the current session is a
-RigorQuant one), the
-**five-move stage** the run is on, a hub-and-spoke role map (the Orchestrator
-at the hub, every role it can delegate to as a spoke), a
-working/idle roster with
-their `docs/figs/` portraits, each role's last action, and a newest-first
-activity feed. It is pure observation — it reads the events the core already
-publishes and serves a JSON snapshot + portraits over
-`/plugins/dsh-rigorquant/...`, and it changes no tool, route, or model. Colors
-are `--dsw-alias` tokens, so it follows the shell's own light/dark theme.
+A study runs on the harness's own Agent Teams surface, so there is no custom
+panel to learn: while a RigorQuant session runs, the session header's team
+action opens the **roster** (name, role, status) and the round's **task board**
+with its blocking edges — the two things to watch. The roster's model column
+is the member's own model option, not the route `rq-model-router` applies to
+its requests (Decision 16), so read a role's route off the **Plugins →
+dsh-rigorquant** card, never off the roster. Each teammate is a row there:
+**open one** and its own conversation opens, so you can read a derivation or
+an audit while it runs (steering it is the ordinary conversation, and it
+breaks that teammate's blank context — documented, not prevented).
+
+RigorQuant adds one small thing to that surface: a **move pill** in the
+session header, beside the team action, showing which move the current round
+is on — Promise, Fan out, Ground-truth, Attack, Certify — derived from the
+task board's blocking edges (the shallowest layer with work left), plus a
+compact badge with a running teammate's role initials (hover for its name). It
+is display only: nothing clickable, no tool, route or model changed, and on a
+profile where the Team bundle is absent it renders nothing at all.
+
+The topology is **hub-and-spoke**, and the guards enforce it rather than
+asking: a teammate's message reaches the orchestrator or nowhere, a teammate
+cannot list the roster or the whole board, and it may read or update only a
+task no other teammate owns (the one its brief names, which it claims). The
+figure below is that topology — the orchestrator at the hub, the roles it
+creates as spokes, the round's tasks beneath them:
 
 <p align="center">
-  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant agent team activity view — team summary, segmented progress, member roster, and task dependency graph">
+  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant agent team topology — hub-and-spoke roles over the round's task dependency graph">
 </p>
 
-The picture above is the reader-safe rendering of the same design (the live
-panel is only visible in a running web session) — adapted from the live
-activity panel of [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
-— the picture in
+The figure is the reader-safe rendering of that view, generated from
+[`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) — the
+live roster and board are visible only in a running web session. It is adapted
+from the activity panel of
+[dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) — the picture
+in
 [its README](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)
-— showing RigorQuant's own eight roles at a fan-out moment. The panel SVG is
-generated from [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js).
+— showing RigorQuant's own eight roles at a fan-out moment.
 
-> **Attribution.** The activity-panel design is adapted from
+> **Attribution.** The figure adapts the activity-panel design of
 > [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) by
 > [NanmiCoder](https://github.com/NanmiCoder) (程序员阿江 / Relakkes) —
 > Copyright (c) 2026, MIT License. The role portraits are this repo's own
-> `docs/figs/` assets. The header banner is likewise reworked from the
-> upstream hero graphic.
+> `docs/figs/` assets. The hero banner (`docs/figs/agent-team-hero.svg`) is
+> likewise reworked from the upstream hero graphic.
 
 **The loop, in five moves.** Each round is fan-out → ground truth → adversary → synthesize.
 
@@ -164,14 +177,44 @@ generated from [`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activit
 
 ## Install
 
-Requires DSH ≥ 0.1.5-alpha.2. The preset uses native child
+Requires DSH ≥ 0.1.6-alpha.2. The preset uses native child
 `agentOptions.reasoningEffort` (0.1.2-alpha.1), the `prefix`/`suffix` persona
 split (0.1.3-alpha.2 — a row whose config fails rejects the whole preset
 mount), the final-assistant-message delivery contract (`report` was removed in
-0.1.2-rc.1), and the `present` deliverables tool (0.1.5).
+0.1.2-rc.1), and the `present` deliverables tool (0.1.5). The floor is
+0.1.6-alpha.2 because the browser half registers into slots that release
+introduced and the fallback route names a model only its catalog lists — on
+0.1.5 the routing card renders nothing, silently, and the fallback lane has no
+model to route to.
+
+That floor is an alpha and the team layer is experimental: 0.1.6 has not
+shipped final, and this release runs team-only on the **Agent Teams** bundles
+the harness ships as **Beta** cards — *Agent Teams* and *Agent Teams Web UI*,
+under **Plugins → Official**. Turn both on there yourself, or let a full
+install do it for you (below). The seams this release follows are recorded in
+Decision 20's 0.1.6 amendment (`docs/architecture.md`).
+
+Fan-out is bounded by the host: eight live children per root
+(`maxActiveSubagents`, **Plugins → Subagent**). A literature-heavy study that
+wants four lines running beside its explorers can raise it there.
+
+A full install also turns on those two **Beta** bundles — the Plugins page's
+*Agent Teams* and *Agent Teams Web UI* cards under **Official** — when the
+target profile does not have them, pinned to the core's own version (a profile
+that lists them at some other version is re-pinned; a bundle you enabled
+without a recorded version is left alone), and raises the team service's
+lifetime member cap to 64 through a marked `dsh-rigorquant` block it appends
+to the profile's user patch
+(`$DSH_HOME/profiles/<profile>/cordis.patch.yml`), printing every line it
+writes. Re-running changes nothing once installed; `--uninstall` removes the
+marked block and disables the bundles only if that block records the installer
+having turned them on, leaving a bundle you enabled yourself untouched. With
+no `dsh` on the path this step is skipped with a warning, same as the rest of
+the install — the two Beta cards on the Plugins page are then yours to toggle
+(docs/adr/0001-rigorquant-on-agent-teams.md).
 
 **One line, everything** — the preset, the compute lane, and the plugin (role
-model router + its Settings card):
+model router + its card on the Plugins page):
 
 ```sh
 npx dsh-rigorquant
@@ -198,7 +241,7 @@ package declares a `dsh.bundle` manifest whose rows include a boot-sync half
 distribution (docs/architecture.md Decision 22):
 
 ```sh
-dsh --version                 # must be >= 0.1.5-alpha.2
+dsh --version                 # must be >= 0.1.6-alpha.2
 dsh plugin --profile web add dsh-rigorquant
 ```
 
@@ -213,6 +256,42 @@ Start a new DSH session and pick the **RigorQuant** preset. Then:
 
 > rigorquant: derive and validate a method for [problem], simplified cases
 > first, before any numerical implementation.
+
+## Deployment notes
+
+Three harness facts a research deployment should decide on. None of them is
+RigorQuant's own machinery, and installing RigorQuant changes none of them:
+
+- **The DeepSeek session log is on by default.** The base bundle mounts
+  `session-log-deepseek` with `enabled: true`: each session's canonical event
+  log goes up as request metadata to the official DeepSeek API — no model-input
+  tokens, but the whole run leaves the machine. To turn it off, overlay the row
+  in the profile's user patch
+  (`$DSH_HOME/profiles/<profile>/cordis.patch.yml`) and restart the profile —
+  changes land at the next start:
+
+  ```yaml
+  - id: session-log-deepseek
+    config:
+      enabled: false
+  ```
+
+- **The goal-round driver is the harness's, and it is already mounted.** The
+  goal service and `goal-round-driver` are host-plane rows of the shipped base
+  bundle (`@deepseek-ai/dsh-base`); the preset re-mounts only the human
+  `/goal` command and the model-facing goal tool, which the web bundle
+  disables at the host plane. Nothing in this repo ships, mounts or arms the
+  round driver: "unattended" is a native contract, and crossing a session
+  boundary still disarms the goal until one human turn re-arms it (Decision
+  10).
+
+- **The workspace-changes card is the human-visible witness of an edit.** The
+  web bundle's `workspace-changes` row records each top-level turn's changed
+  files from git working-tree snapshots and renders the changed-files card
+  under that turn, so an edit that lands after a verdict is visible exactly
+  where and when it happened — what the frozen-write rule of Decision 19 needs
+  a human to be able to see. Certification itself reads the study record,
+  never the session (`docs/architecture.md` Decision 19).
 
 ## Compute lane (one-time)
 
@@ -230,36 +309,40 @@ via the skill's `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian
 ## Role-routed models (rq-model-router)
 
 The bundled plugin gives each RigorQuant role a model + reasoning-effort
-policy, with one fallback per role. The DoubleChecker and adversary tool rows
-use DSH 0.1.2's native `agentOptions` for their shipped primary
-(`deepseek-v4-pro` @ `high`); the router only overlays explicit Settings
-choices and fallback retries. Configure overrides in **Settings → Plugins → RigorQuant model
-routing**: the last saved selection persists (settings user layer). Shipped
-defaults:
+policy, with one fallback per role. Role identity comes from the teammate's
+Team membership name (`<role>-<n>`; the Lead is the orchestrator) — the
+router carries the shipped tier matrix itself (DoubleChecker and adversary
+default to `deepseek-v4-pro` @ `high`) and overlays an explicit Settings
+choice on top when one is saved. Configure overrides in **Plugins → dsh-rigorquant**
+(the bundle's own page, under its description): only Save writes, the last
+saved selection persists (settings user layer), and leaving the page drops
+staged edits. Shipped defaults:
 
 | Role | Primary | Fallback |
 | --- | --- | --- |
-| DoubleChecker | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
-| Adversary | `deepseek-v4-pro` @ high | `deepseek-v4-flash` @ low |
+| DoubleChecker | `deepseek-v4-pro` @ high | `deepseek-flash` @ low |
+| Adversary | `deepseek-v4-pro` @ high | `deepseek-flash` @ low |
 | Root, explorers, OffGridThinker, literature/document roles | inherit (root follows the chatbox picker) | — |
 
 On a terminal primary failure (no adapter / HTTP 4xx, including the official
 quota response `1308` / “Usage limit reached”) the role degrades to its
 fallback for one forced retry, and recovers on the next success or after 10
-minutes. Untagged agents (other presets, workflow workers, forks) are never
-touched. The router needs DSH ≥ 0.1.5-alpha.2 (its persona-section constant
-follows the 0.1.3-alpha.2 `deployment:persona-prefix` rename). Design record:
-[docs/architecture.md](docs/architecture.md) Decision 16.
+minutes. An agent outside a RigorQuant team (another preset, or with no Team
+membership at all) is never touched. The router needs DSH ≥ 0.1.6-alpha.2
+(its card registers on the Plugins page's bundle-config slot, which 0.1.6
+introduced). Design record: [docs/architecture.md](docs/architecture.md)
+Decision 16.
 
 ## Repository layout
 
 ```
 package.json                dsh.bundle manifest (dsh plugin add support)
-cordis.patch.yml            bundle patch: skills layer + rq-model-router +
-                            rq-activity + rq-preset-sync rows
-dsh/                        host halves (rq-model-router router, rq-activity
-                            monitor, rq-preset-sync boot-sync) and the web
-                            client bundle (settings card + activity floater)
+cordis.patch.yml            bundle patch: skill layer + rq-model-router +
+                            rq-team + rq-preset-sync rows
+dsh/                        host halves (role router, team composition and
+                            per-call guard, boot-sync) + one persona file per
+                            role, and the web client bundle (routing card +
+                            move pill)
 agent-presets/rigorquant/   preset composition + persona + bundled skills
   skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)
@@ -268,12 +351,12 @@ agent-presets/rigorquant/   preset composition + persona + bundled skills
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources
-docs/figs/agent-team-activity.svg  reader-safe activity-view picture
+docs/figs/agent-team-activity.svg  reader-safe hub-and-spoke topology figure
 docs/figs/agent-team-activity.js   its generator (freshness-pinned in tests)
-docs/figs/agent-team-hero.svg       team-graph banner, reworked from the
-                             dsh-agent-teams hero graphic (see credit below)
+docs/figs/agent-team-hero.svg       hero banner, reworked from the
+                             dsh-agent-teams hero graphic (see the credit above)
 tests/                      the validator's test suite (see Testing below)
-studies/                    one study folder per task (Mode B; a checkout's own
+studies/                    one folder per study (Mode B; a checkout's own
                             live studies — not shipped in the npm bundle)
 ```
 
@@ -308,8 +391,9 @@ commit only with Git's standard `git commit --no-verify`.
 
 
 `tests/test_repo_consistency.py` covers the other half: one validator, one
-schema, documented commands that resolve, and layout blocks that match the
-filesystem. That is the defect class this repository actually produces.
+schema, documented commands that resolve, layout blocks that match the
+filesystem, and one word per concept across the tracked docs. That is the
+defect class this repository actually produces.
 
 **What a green validator means:** nothing declared is missing, and the
 deliverables build. It does not mean the mathematics is right — that stays with
@@ -317,11 +401,11 @@ the check battery, the independent ground-truth track, and the adversary.
 
 ## Studies
 
-A **study** is one self-contained rigorquant task with an identical folder
-structure everywhere: durable deliverables at the study root (`study.json`,
-`STUDY.md`, `registry.json`, `journal.md`, `derivations/`, `audits/`,
-`artifacts/`) are meant to be committed; all scratch lives in a gitignored
-`interim/`. Two modes, implied by location:
+A **study** is the assignment: one self-contained piece of work with an
+identical folder structure everywhere. Its durable deliverables
+(`study.json`, `STUDY.md`, `registry.json`, `journal.md`, `derivations/`,
+`audits/`, `artifacts/`) sit at the study root and are meant to be committed;
+all scratch lives in a gitignored `interim/`. Two modes, implied by location:
 
 - **One study per repo** — `study.json` at the repo root.
 - **Multiple studies per repo** — `studies/<slug>/study.json`; the roster is

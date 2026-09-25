@@ -20,15 +20,14 @@ sandbox.globalThis = sandbox
 // emitting: diagnostics stay on the verdict, stdout stays pure JSON.
 const collectedLogs = []
 sandbox.console = { ...console, log: (...args) => { collectedLogs.push(args.map(String).join(' ')) } }
-sandbox.document = {
-  querySelectorAll: () => [],
-  createElement: () => ({ dataset: {}, setAttribute() {}, remove() {} }),
-  head: { append() {}, appendChild() {} },
-}
 // The card's lazy catalog retry uses window.setTimeout; the VM window is the
-// sandbox itself, so surface the host timers.
+// sandbox itself, so surface the host timers. The move pill re-reads its team
+// view on an interval, so the interval pair is surfaced too (the browser has
+// both).
 sandbox.setTimeout = setTimeout
 sandbox.clearTimeout = clearTimeout
+sandbox.setInterval = setInterval
+sandbox.clearInterval = clearInterval
 sandbox.window.__ModuleLoader__ = { load: (h) => { handoff = h } }
 vm.createContext(sandbox)
 
@@ -51,6 +50,23 @@ if (handoff === null) {
 verdict.registered = true
 verdict.id = handoff.id
 verdict.factoryIsFunction = typeof handoff.factory === 'function'
+// 0.1.6 made client sessions references and dropped the list's `current`
+// field (client-session-references, 2026-09-15). A read of it is silent —
+// `undefined`, never an error — so the source is scanned for the member
+// itself: `.current` followed by a non-word character (a name merely ending
+// in "...current", like `currentSessionId`, does not match).
+verdict.currentFieldReads = (code.match(/\.current\b/g) ?? []).length
+verdict.retiredSettingsSlotReferences = (code.match(/settings\.plugin\.item/g) ?? []).length
+// The pill must read its team view through the Team namespace's `view` RPC.
+// A projection-shaped read is dead code on the installed 0.1.6-alpha.2: that
+// client store does not exist there — `git grep projectionsBySession` over the
+// harness is empty — so the read is silently undefined and the pill renders
+// nothing on every real session, forever. The probe's behavioural scenarios
+// above are what prove the replacement works; this pin is on the READ EXPRESSION
+// (comments explaining the retired API are prose, not a read), so the fictional
+// call cannot come back behind a feature check.
+verdict.fictionalProjectionReads = (code.match(/useSessions\s*\(|state\.projectionsBySession/g) ?? []).length
+verdict.teamNamespaceReads = (code.match(/remote\.agentTeams/g) ?? []).length
 
 // The module table only answers platform seed words; anything else is a
 // guaranteed runtime throw in the browser, so record what was asked for.
@@ -65,17 +81,62 @@ const PLATFORM = new Set([
 ])
 const required = []
 const registrations = []
+/** Disposers the mount context's effects returned, in registration order. */
+const effectDisposers = []
 const rings = []
 const ops = []
 let modelCatalogCalls = 0
 // Mutable persisted user layer: the ops the card emits land here, so a
 // follow-up edit sees the same layering the real seam would show it.
 const userLayer = {}
-/** Scenario-pinned useState value; `undefined` restores the initial value. */
-let useStateOverride
-// Minimal React: enough to run one render pass of a function component and
-// record the element tree. The card only needs createElement plus the hooks it
-// calls; the framework supplies its snapshot through the bound selector hook.
+// The move pill reads the Lead's live team view through the Team package's own
+// browser seam: the `remote.agentTeams` namespace, whose `view(agentId)`
+// answers `RemoteResult<TeamView>`
+// (agent-team `lib/typert.remote-client.d.ts`; the same call
+// `client-ui-agent-team`'s own header action makes). That is the ONLY read
+// that works on the installed 0.1.6-alpha.2: the client Session store has no
+// `projectionsBySession` there — `git grep projectionsBySession` over the
+// installed harness is empty — so a projection-shaped read is silently
+// undefined forever, and the pill renders nothing on every real session.
+// `remote.agentTeams` is INJECTED, never read off the root context: with the
+// Team bundle unmounted the namespace does not exist, the `ctx.inject` gate
+// never fires, and the pill never registers at all — "renders nothing when
+// the namespace is absent" as a registration gate, not a null branch.
+//
+// Two fake sessions cover the header's two shapes: 'lab-lead' (a Team Lead, no
+// parent) and 'lab-teammate' (a teammate whose own header must resolve back to
+// the same Lead's board via `subagent.address.parentSessionId`). `teamViews` is
+// the mutable per-Lead source a scenario flips between "no team running"
+// (the namespace answers a failed RemoteResult) and a populated TeamView.
+const sessionSnapshots = {
+  'lab-lead': { subagent: undefined },
+  'lab-teammate': { subagent: { address: { parentSessionId: 'lab-lead' } } },
+}
+let teamViews = {}
+const teamViewLeadIds = []
+const teamNamespace = {
+  view: async (leadSessionId) => {
+    teamViewLeadIds.push(leadSessionId)
+    return teamViews[leadSessionId] === undefined
+      ? { ok: false, error: { code: 'team/not-found' } }
+      : { ok: true, value: teamViews[leadSessionId] }
+  },
+}
+/** Session-scoped standard props for one session, layered onto whatever the
+ *  registration's own `inject()` face contributes (propsOf below). */
+const sessionPropsFor = (sessionId) => ({
+  sessionId,
+  useSession: (selector) => selector(sessionSnapshots[sessionId]),
+})
+// Minimal React: enough to run renders of a function component and record the
+// element tree. The card needs createElement plus a snapshot hook; the pill
+// additionally loads its team view asynchronously, so state and effects are
+// REAL here — `mount` below renders, runs the effects a render scheduled,
+// settles their promises, and renders again until the tree stops moving, which
+// is the loop React itself drives. Hook slots are positional per component.
+const hookSlots = []
+let hookCursor = 0
+let hookDirty = false
 const react = {
   createElement: (type, props, ...children) => ({
     type: typeof type === 'function' ? (type.name || 'component') : type,
@@ -86,15 +147,34 @@ const react = {
     children: children.flat(Infinity).filter((child) => child !== null && child !== undefined),
   }),
   useState: (initial) => {
-    // A scenario can pin the state (e.g. force the card's `open` disclosure)
-    // because the stub has no re-render loop to update it through.
-    const value = typeof initial === 'function' ? initial() : initial
-    return [useStateOverride !== undefined ? useStateOverride : value, () => {}]
+    const slot = (hookSlots[hookCursor] ??= {
+      value: typeof initial === 'function' ? initial() : initial,
+    })
+    hookCursor += 1
+    return [slot.value, (next) => {
+      const value = typeof next === 'function' ? next(slot.value) : next
+      if (value !== slot.value) {
+        slot.value = value
+        hookDirty = true
+      }
+    }]
   },
   useMemo: (factory) => factory(),
   useCallback: (fn) => fn,
-  useRef: (initial) => ({ current: initial }),
-  useEffect: () => {},
+  useRef: (initial) => {
+    const slot = (hookSlots[hookCursor] ??= { ref: { current: initial } })
+    hookCursor += 1
+    return slot.ref
+  },
+  useEffect: (effect, deps) => {
+    const slot = (hookSlots[hookCursor] ??= {})
+    hookCursor += 1
+    const same = slot.deps !== undefined && deps !== undefined
+      && slot.deps.length === deps.length && deps.every((dep, i) => dep === slot.deps[i])
+    if (same) return
+    slot.deps = deps === undefined ? undefined : [...deps]
+    slot.effect = effect
+  },
   useId: () => 'probe-id',
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
 }
@@ -141,6 +221,55 @@ const settingsSchemaService = {
   hasPath: schemaForm.hasPath,
   setPath: schemaForm.setPath,
   deletePath: schemaForm.deletePath,
+}
+/** Props as the slot framework composes them from a registration's face:
+ *  every `hooks` source becomes a bound `use<Name>` selector hook and the
+ *  `hooks` key itself never reaches the component (ui-slots InjectFace). */
+const propsOf = (face) => {
+  const props = { t: (key) => key }
+  for (const [name, value] of Object.entries(face)) {
+    if (name === 'hooks') continue
+    props[name] = value
+  }
+  for (const [name, source] of Object.entries(face.hooks ?? {})) {
+    props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
+  }
+  return props
+}
+/** Poll `done` at `stepMs` until it holds or `steps` elapse. */
+const settle = async (done, steps = 100, stepMs = 10) => {
+  for (let i = 0; i < steps; i += 1) {
+    if (done()) return true
+    await new Promise((resolve) => setTimeout(resolve, stepMs))
+  }
+  return done()
+}
+/** Render one function component the way React mounts it: render, run the
+ *  effects that render scheduled, let their promises settle, re-render while
+ *  anything changed, and hand back the final tree plus the cleanups an unmount
+ *  would run (the pill re-reads its team view on a timer, so its interval MUST
+ *  be cleared or this process never exits). */
+const mount = async (component, props, budget = 12) => {
+  hookSlots.length = 0
+  hookCursor = 0
+  hookDirty = false
+  let tree = null
+  const cleanups = []
+  for (let pass = 0; pass < budget; pass += 1) {
+    hookCursor = 0
+    hookDirty = false
+    tree = component(props)
+    const due = hookSlots.filter((slot) => typeof slot.effect === 'function')
+    if (due.length === 0 && !hookDirty) break
+    for (const slot of due) {
+      const effect = slot.effect
+      slot.effect = undefined
+      const cleanup = effect()
+      if (typeof cleanup === 'function') cleanups.push(cleanup)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+  return { tree, cleanups }
 }
 const reqStub = (spec) => {
   required.push(spec)
@@ -189,11 +318,16 @@ if (verdict.applyIsFunction) {
         value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] },
       }),
     },
+    // The namespace the move pill reads its roster and board through. It is
+    // reached only from inside `ctx.inject(['remote.agentTeams'], …)`, never
+    // from the root context (the gate below enforces that).
+    agentTeams: teamNamespace,
   }
-  const remote = new Proxy(remoteNamespaces, {
+  /** One remote face, gated on the namespaces its scope actually injected. */
+  const makeRemote = (allowed) => new Proxy(remoteNamespaces, {
     get(target, prop) {
       if (typeof prop === 'string' && prop in target) {
-        if (!declaredRemote.includes(`remote.${prop}`)) {
+        if (!allowed.includes(`remote.${prop}`)) {
           throw new Error(`cannot get property "remote.${prop}" without inject`)
         }
         return target[prop]
@@ -201,8 +335,27 @@ if (verdict.applyIsFunction) {
       return Reflect.get(target, prop)
     },
   })
+  const remote = makeRemote(declaredRemote)
+  // Services this scope's context provides. `remote.agentTeams` is one of them
+  // here — this composition has the Team bundle — but it is reached only from
+  // inside the scope that injects it, never off the root context.
+  const injectDeps = []
+  const provides = (name) => [
+    'slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'settingsScope',
+    'remote.agentTeams',
+  ].includes(name)
   const ctx = {
-    effect: (fn) => fn(),
+    // `ctx.effect` runs the body at once and keeps what it returns as the
+    // disposer; the disposers are collected so the disposal scenario can run
+    // them the way a fiber unload does.
+    effect: (fn) => { const dispose = fn(); if (typeof dispose === 'function') effectDisposers.push(dispose); return dispose },
+    // Cordis's scoped service gate: the callback runs once every named service
+    // exists, against a scope that reaches exactly those namespaces.
+    inject: (deps, fn) => {
+      injectDeps.push(deps)
+      if (deps.some((dep) => !provides(dep))) return undefined
+      return fn({ ...ctx, remote: makeRemote([...declaredRemote, ...deps]) })
+    },
     remote,
     get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
     locale: { register: () => {}, bind: () => (key) => key },
@@ -237,6 +390,12 @@ if (verdict.applyIsFunction) {
     verdict.mounted = true
     verdict.mountedRings = rings
     verdict.cards = cards
+    // The Plugins page finds a bundle's form by the slot name and the KEY:
+    // `plugins.bundle.config` keyed by the bundle's package name, which is
+    // also the id the bundle registered with the loader.
+    const card = registrations.find((reg) => reg.descriptor.name !== 'conversation.session.header.utilities')
+    verdict.cardSlot = card?.descriptor.name ?? null
+    verdict.cardKey = card?.descriptor.key ?? null
   } catch (error) {
     verdict.mounted = false
     verdict.mountError = `${error.name}: ${error.message}`
@@ -250,75 +409,42 @@ if (verdict.applyIsFunction) {
   // -- registration and render are separate failure surfaces.
   if (registrations.length > 0) {
     const { descriptor, component } = registrations[0]
-    const face = descriptor.inject()
-    const props = { t: (key) => key }
-    for (const [name, value] of Object.entries(face)) {
-      if (name === 'hooks') continue
-      props[name] = value
-    }
-    for (const [name, source] of Object.entries(face.hooks ?? {})) {
-      props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
-    }
+    const props = propsOf(descriptor.inject())
     verdict.renderProps = Object.keys(props).sort()
+    // The page asks every configuration entry for two views through its
+    // owner props: `summary` is the one-liner under the title, `page` the
+    // form with its own save control (ui-plugin-manager slot-contract). Only
+    // a save writes: there is no discard control and no unsaved marker.
+    const textOf = (node, found = []) => {
+      if (typeof node === 'string') found.push(node)
+      else if (node !== null && typeof node === 'object') for (const child of node.children ?? []) textOf(child, found)
+      return found
+    }
+    const buttonsOf = (node, found = []) => {
+      if (node === null || typeof node !== 'object') return found
+      if (node.type === 'button') found.push(textOf(node).join(''))
+      for (const child of node.children ?? []) buttonsOf(child, found)
+      return found
+    }
     try {
-      const tree = component(props)
+      const summary = component({ ...props, view: 'summary' })
+      verdict.summaryView = typeof summary === 'string' ? summary : (summary?.type ?? null)
+      const page = component({ ...props, view: 'page' })
       verdict.rendered = true
-      verdict.rootType = tree?.type ?? null
+      verdict.rootType = page?.type ?? null
+      verdict.pageButtons = buttonsOf(page)
+      verdict.pageText = textOf(page)
     } catch (error) {
       verdict.rendered = false
       verdict.renderError = `${error.name}: ${error.message}`
     }
   }
 
-  // The activity floater is a second registration (root-scoped shell.overlay).
-  // Its panel must render null while no lab is running — and must not crash.
-  if (registrations.length > 1) {
-    const { descriptor, component } = registrations[1]
-    const face = descriptor.inject()
-    const props = { t: (key) => key }
-    for (const [name, value] of Object.entries(face)) {
-      if (name === 'hooks') continue
-      props[name] = value
-    }
-    for (const [name, source] of Object.entries(face.hooks ?? {})) {
-      props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
-    }
-    try {
-      const overlayTree = component(props)
-      verdict.overlayRendered = true
-      verdict.overlayTree = overlayTree === null ? null : (overlayTree.type ?? 'element')
-    } catch (error) {
-      verdict.overlayRendered = false
-      verdict.overlayRenderError = `${error.name}: ${error.message}`
-    }
-
-    // Current-session scoping: the floater appears only while the current
-    // session is a lab (its captain session or one of its subagents). Two labs
-    // in the store, but a non-lab current session must render null; a matching
-    // current session must render (the collapsed pill).
-    const scopeStore = face.hooks.rqActivity
-    const mkLab = (id) => ({
-      id, title: id, stage: 'fan out',
-      summary: { total: 1, working: 0, idle: 1 },
-      captain: { label: 'Orchestrator', status: 'idle' },
-      members: [], feed: [],
-    })
-    const scopedRender = () => {
-      try { return component(props) } catch { return null }
-    }
-    scopeStore.set({
-      status: 'ready', anchorRight: null, currentSessionId: 'unrelated',
-      labs: [mkLab('lab-current'), mkLab('lab-other')],
-    })
-    verdict.scopeMismatchNull = scopedRender() === null
-    scopeStore.set({
-      status: 'ready', anchorRight: null, currentSessionId: 'lab-current',
-      labs: [mkLab('lab-current'), mkLab('lab-other')],
-    })
-    verdict.scopeMatchRendered = scopedRender() !== null
-  }
+  // The move pill is the second registration
+  // (conversation.session.header.utilities, scope 'session'); its behaviours
+  // are exercised by the async scenario below, which drives the real
+  // `remote.agentTeams.view` face the way the browser does.
 }
-
 
 // Drive the draft model through the same face the card uses. This is the
 // schema-form contract in motion: staging a choice records an override,
@@ -405,6 +531,9 @@ async function exerciseDelayedCatalog() {
       register: (descriptor, component) => { delayedRegs.push({ descriptor, component }); return descriptor },
     },
     effect: (fn) => fn(),
+    // This scenario is about the card's catalog retry; the Team namespace is
+    // not in its composition, so the pill's injected callback never runs.
+    inject: () => undefined,
     // Serve the settingsSchema service so the card never falls back to the
     // legacy schema-form module require (which would perturb `required`).
     get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
@@ -426,7 +555,7 @@ async function exerciseDelayedCatalog() {
     }
   }, 120)
   await new Promise((resolve) => setTimeout(resolve, 900))
-  const card = delayedRegs.find((reg) => reg.descriptor.key === 'rigorquant-models')
+  const card = delayedRegs.find((reg) => reg.descriptor.name === 'plugins.bundle.config')
   verdict.delayedCatalogStatus = card?.descriptor?.inject?.().hooks?.rqCard?.getSnapshot?.().catalog?.status ?? null
   verdict.delayedCatalogCalls = delayedCalls
 }
@@ -440,21 +569,10 @@ async function exerciseDelayedCatalog() {
 async function exerciseEffortDropdown() {
   if (registrations.length === 0) return
   // The card loads its catalog asynchronously; wait for it to settle.
-  for (let i = 0; i < 100; i += 1) {
-    const status = registrations[0].descriptor.inject().hooks.rqCard.getSnapshot().catalog.status
-    if (status === 'ready' || status === 'failed') break
-    await new Promise((resolve) => setTimeout(resolve, 20))
-  }
   const { component } = registrations[0]
   const face = registrations[0].descriptor.inject()
-  const props = { t: (key) => key }
-  for (const [name, value] of Object.entries(face)) {
-    if (name === 'hooks') continue
-    props[name] = value
-  }
-  for (const [name, source] of Object.entries(face.hooks ?? {})) {
-    props[`use${name[0].toUpperCase()}${name.slice(1)}`] = (selector) => selector(source.getSnapshot())
-  }
+  await settle(() => ['ready', 'failed'].includes(face.hooks.rqCard.getSnapshot().catalog.status), 100, 20)
+  const props = propsOf(face)
   const renderNode = (node) => {
     if (node === null || typeof node !== 'object') return node
     // Render one function-component level the framework would: the card's
@@ -492,29 +610,196 @@ async function exerciseEffortDropdown() {
   }
   const effortSelects = (tree) => collectSelects(renderNode(tree))
     .filter((select) => select.options.some((option) => option.label === 'effortInherit'))
-  // The card body (the 16 role rows) renders only when the disclosure is open;
-  // pin the stub's useState so this render sees the expanded card.
-  useStateOverride = true
-  try {
-    const cleanTree = component(props)
-    verdict.effortSelectCount = effortSelects(cleanTree).length
-    verdict.effortSelectsDefaultOnly = effortSelects(cleanTree).every((select) =>
-      select.options.length === 1 && select.options[0].value === '' && select.options[0].disabled === false)
-    face.stage('explorerPrimary', { provider: 'deepseek', model: 'v4-pro', reasoningEffort: 'high' })
-    const stale = effortSelects(component(props)).filter((select) => select.value === 'high')
-    verdict.staleEffortOptions = stale.length === 1 ? stale[0].options : null
-  } finally {
-    useStateOverride = undefined
+  // The role rows are the page view's form; the summary view is one line.
+  const pageProps = { ...props, view: 'page' }
+  const cleanTree = component(pageProps)
+  verdict.effortSelectCount = effortSelects(cleanTree).length
+  verdict.effortSelectsDefaultOnly = effortSelects(cleanTree).every((select) =>
+    select.options.length === 1 && select.options[0].value === '' && select.options[0].disabled === false)
+  face.stage('explorerPrimary', { provider: 'deepseek', model: 'v4-pro', reasoningEffort: 'high' })
+  const stale = effortSelects(component(pageProps)).filter((select) => select.value === 'high')
+  verdict.staleEffortOptions = stale.length === 1 ? stale[0].options : null
+  face.discard()
+  // Issue #22: a stored choice naming a model its provider does not list
+  // (the catalog lists `deepseek` with `v4-pro` only) is flagged in the model
+  // select — visible, disabled, not re-selectable — instead of the select
+  // silently showing "Inherit" for a value it has no option for. A provider
+  // the catalog does not list at all is not flagged: its listing may simply
+  // have failed, and the card cannot tell that from an unknown model.
+  const modelSelects = (tree) => collectSelects(renderNode(tree))
+    .filter((select) => !select.options.some((option) => option.label === 'effortInherit'))
+  const optionFor = (tree, value) => {
+    const select = modelSelects(tree).find((candidate) => candidate.value === value)
+    return select === undefined ? null : select.options.find((option) => option.value === value) ?? null
   }
+  face.stage('explorerPrimary', { provider: 'deepseek', model: 'v4-flash-dspark' })
+  face.stage('adversaryFallback', { provider: 'unlisted-provider', model: 'some-model' })
+  const undeclaredTree = component(pageProps)
+  verdict.undeclaredModelOption = optionFor(undeclaredTree, 'deepseek::v4-flash-dspark')
+  verdict.unlistedProviderOption = optionFor(undeclaredTree, 'unlisted-provider::some-model')
+  verdict.flaggedModelOptions = modelSelects(undeclaredTree)
+    .flatMap((select) => select.options.filter((option) => option.disabled).map((option) => option.value))
   face.discard()
 }
 
-exerciseEffortDropdown().catch((error) => {
+// The move pill in full. It reads the Lead's roster and board through the
+// injected `remote.agentTeams.view` namespace — the only team read the
+// installed 0.1.6-alpha.2 browser half serves — resolving a teammate's own
+// header back to its Lead, and rendering nothing while there is no team.
+async function exerciseMovePill() {
+  // Registration is already evidenced by `mountedRings`/`cards` (asserted by
+  // the ring test); this scenario owns behaviour only.
+  const pill = registrations.find((reg) => reg.descriptor.id === 'rigorquant-move')
+  if (pill === undefined) return
+  const props = propsOf(pill.descriptor.inject())
+  const mountPill = async (sessionId) => {
+    const mounted = await mount(pill.component, { ...props, ...sessionPropsFor(sessionId) })
+    // The pill re-reads on an interval; unmount, or this process never exits.
+    mounted.cleanups.forEach((cleanup) => cleanup())
+    return mounted.tree
+  }
+  const titlesOf = (node, found = []) => {
+    if (node === null || typeof node !== 'object') return found
+    if (typeof node.props?.title === 'string') found.push(node.props.title)
+    for (const child of node.children ?? []) titlesOf(child, found)
+    return found
+  }
+
+  try {
+    // No team running: the namespace answers a failed RemoteResult (a Lead with
+    // no team has no view). Nothing renders and nothing throws.
+    teamViews = {}
+    verdict.pillNullWithoutTeam = (await mountPill('lab-lead')) === null
+    verdict.pillRenderedAbsent = true
+
+    // A completed Fan-out task and a still-pending Ground-truth task blocked on
+    // it: the move must read as the SHALLOWEST incomplete layer (Ground-truth),
+    // never the completed one. `blockedBy` also names an id absent from the
+    // board (a stale edge to a task another round already dropped) to prove a
+    // dangling edge is ignored rather than crashing. One RUNNING teammate
+    // (doublechecker-1) must produce a badge; an idle one (explorer-1) and the
+    // Lead row must not.
+    teamViewLeadIds.length = 0
+    teamViews = {
+      'lab-lead': {
+        members: [
+          { id: 'lab-lead', name: 'root', role: 'lead', status: 'running', diagnostics: [] },
+          { id: 'lab-explorer-1', name: 'explorer-1', role: 'teammate', status: 'idle', diagnostics: [] },
+          { id: 'lab-dc-1', name: 'doublechecker-1', role: 'teammate', status: 'running', diagnostics: [] },
+        ],
+        tasks: [
+          {
+            id: 'task-1', revision: 1, subject: 'explore', description: '', status: 'completed',
+            blockedBy: [], writeScopes: [], ready: true, writeScopeWarnings: [],
+          },
+          {
+            id: 'task-2', revision: 1, subject: 'verify', description: '', status: 'pending',
+            blockedBy: ['task-1', 'task-9'], writeScopes: [], ready: false, writeScopeWarnings: [],
+          },
+        ],
+      },
+    }
+    const tree = await mountPill('lab-lead')
+    verdict.pillRendered = tree !== null && typeof tree === 'object'
+    verdict.pillMoveText = tree?.children?.[0]?.children?.[0] ?? null
+    verdict.pillBadgeTitles = titlesOf(tree)
+    // A teammate's OWN header must resolve the same Lead's board through
+    // `subagent.address.parentSessionId` — opening a teammate shows the same
+    // pill, not a blank one. The view source is keyed by Lead alone, so a
+    // failed resolution would render nothing instead of the board.
+    verdict.pillFromTeammateRendered = (await mountPill('lab-teammate')) !== null
+    verdict.pillViewLeadIds = [...new Set(teamViewLeadIds)]
+  } catch (error) {
+    verdict.pillRendered = false
+    verdict.pillRenderError = `${error.name}: ${error.message}`
+  }
+  teamViews = {}
+}
+
+// The Team namespace is OPTIONAL. With the Team bundle unmounted there is no
+// team to read, so the pill must not register at all — the `ctx.inject` gate,
+// not a null branch inside the component. A second, Team-less context proves
+// it: the card still mounts on its own services, and no
+// conversation.session.header.utilities ring is ever claimed.
+async function exercisePillGate() {
+  if (pluginSurface === null) return
+  const gateRings = []
+  const gateDeps = []
+  const teamlessNamespaces = {
+    session: {
+      modelCatalog: async () => ({
+        ok: true,
+        value: { groups: [], failures: [], routableProviders: [], default: { provider: 'deepseek', model: 'v4-pro' } },
+      }),
+    },
+    settings: { describe: async () => ({ ok: true, value: { namespaces: [] } }) },
+  }
+  const gateRemote = new Proxy(teamlessNamespaces, {
+    get(target, prop) {
+      if (typeof prop === 'string' && prop in target) {
+        if (!(verdict.inject ?? []).includes(`remote.${prop}`)) {
+          throw new Error(`cannot get property "remote.${prop}" without inject`)
+        }
+        return target[prop]
+      }
+      return Reflect.get(target, prop)
+    },
+  })
+  const gateCtx = {
+    remote: gateRemote,
+    locale: { register: () => {}, bind: () => (key) => key },
+    settingsScope: {
+      bind: () => ({
+        getSnapshot: () => ({ status: 'ready', writable: true, mode: 'host', revision: 1, value: {}, base: {}, user: {} }),
+        subscribe: () => () => {},
+        set: async () => {},
+        unset: async () => {},
+      }),
+    },
+    slots: {
+      inject: (ring, fn) => { gateRings.push(ring); return fn() },
+      register: (descriptor) => descriptor,
+    },
+    effect: (fn) => fn(),
+    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
+    // The gate itself: no Team bundle in this composition, so an injected
+    // callback that asks for `remote.agentTeams` never runs.
+    inject: (deps, fn) => {
+      gateDeps.push(deps)
+      if (deps.includes('remote.agentTeams')) return undefined
+      return fn(gateCtx)
+    },
+  }
+  pluginSurface.apply(gateCtx)
+  verdict.pillGateDeps = gateDeps
+  verdict.pillGateRings = gateRings
+}
+
+// A fiber unload runs every effect disposer collected during mount: `ctx.effect`
+// keeps what the body RETURNS as the disposer. Nothing this bundle registers
+// mounts a DOM side effect any more (the retired activity floater's
+// docked-panel dodge stylesheet was the only one), so this proves a fiber
+// unload runs cleanly rather than checking a specific artifact. Runs after
+// the scenarios that need the first mount alive and before the
+// delayed-catalog scenario, which mounts a second time on its own context.
+function exerciseDisposal() {
+  for (const dispose of effectDisposers.splice(0).reverse()) {
+    try { dispose() } catch (error) { verdict.disposeError = `${error.name}: ${error.message}` }
+  }
+}
+
+Promise.resolve().then(() => exerciseEffortDropdown()).catch((error) => {
   verdict.effortDropdownError = `${error.name}: ${error.message}`
+}).then(() => exerciseMovePill()).catch((error) => {
+  verdict.pillRenderError = `${error.name}: ${error.message}`
 }).then(() => exerciseDraft()).catch((error) => {
   verdict.draftError = `${error.name}: ${error.message}`
+}).then(() => exerciseDisposal()).catch((error) => {
+  verdict.disposeError = `${error.name}: ${error.message}`
 }).then(() => exerciseDelayedCatalog()).catch((error) => {
   verdict.delayedCatalogError = `${error.name}: ${error.message}`
+}).then(() => exercisePillGate()).catch((error) => {
+  verdict.pillGateError = `${error.name}: ${error.message}`
 }).finally(() => {
   verdict.modelCatalogCalls = modelCatalogCalls
   process.stdout.write(JSON.stringify(verdict))

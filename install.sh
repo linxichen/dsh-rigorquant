@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install the dsh-rigorquant agent preset (and its bundled skills) into DSH.
 #   ./install.sh                 → install everything: preset, compute lane, and the
-#                                  plugin (model router + settings card) into a profile
+#                                  plugin (model router + its Plugins-page card) into a profile
 #   ./install.sh --skill-only    → install only the skills, for use with any preset
 #                                  and WITHOUT the plugin
 #   ./install.sh --uninstall     → remove everything this script installed
@@ -15,18 +15,43 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="${DSH_PROFILE:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
-MIN_DSH_VERSION="0.1.5-alpha.2"
+MIN_DSH_VERSION="0.1.6-alpha.2"
+# The two optional bundles that carry Agent Teams — the harness's Beta "Agent
+# Teams" and "Agent Teams Web UI" cards on the Plugins page. RigorQuant 0.5.0
+# runs team-only, so a full install enables both and raises the team
+# service's lifetime member cap (docs/adr/0001-rigorquant-on-agent-teams.md).
+TEAM_BUNDLE_HOST="@deepseek-ai/dsh-experimental-agent-team-profile"
+TEAM_BUNDLE_WEB="@deepseek-ai/dsh-experimental-agent-team-web-profile"
+# Marks the block this installer owns inside a profile's user patch
+# (`cordis.patch.yml`), so a re-run finds it and `--uninstall` can remove
+# exactly it and nothing the operator wrote by hand.
+TEAM_PATCH_MARK_BEGIN='# >>> dsh-rigorquant BEGIN (managed by ./install.sh; see docs/adr/0001-rigorquant-on-agent-teams.md) >>>'
+TEAM_PATCH_MARK_END='# <<< dsh-rigorquant END <<<'
+
+# Whether $HERE is a git checkout OR a linked worktree. In a worktree `.git` is
+# a FILE holding the gitdir pointer rather than a directory, so `[ -d ]` alone is
+# false there — and a worktree is exactly where this repository's own agents and
+# maintainers install from. A copy npm fetched (`npx dsh-rigorquant`) has
+# neither, which is the case the `file:` decision below deliberately separates.
+is_git_checkout() { [ -d "$HERE/.git" ] || [ -f "$HERE/.git" ]; }
+
+# The version the installed CLI reports, e.g. `0.1.6-alpha.2`, read once for the
+# whole run: it gates the install (require_dsh_version) and pins the Agent Teams
+# bundles to the core they are published in lockstep with
+# (install_agent_teams). Empty when `dsh --version` cannot answer at all.
+DSH_CORE_VERSION=""
 
 usage() {
   cat <<EOF
 Usage: $0 [--skill-only] [--uninstall] [--profile <name>] [--version] [--help]
 
-  Full install requires DSH >= $MIN_DSH_VERSION. `--skill-only` does not.
+  Full install requires DSH >= $MIN_DSH_VERSION; --skill-only does not.
 
   (no args)      Install everything: the RigorQuant preset, the shared compute
                  lane under \$DSH_HOME/share/rigorquant, and the plugin (role
-                 model router + its Settings card) into the '$PROFILE' profile.
-                 The plugin supplies the skills, so no global copies are made.
+                 model router + its card on the Plugins page) into the
+                 '$PROFILE' profile. The plugin supplies the skills, so no
+                 global copies are made.
   --skill-only   Install ONLY the skills into \$DSH_HOME/skills, for use with
                  any preset and without the plugin.
   --uninstall    Remove the preset, skills, shared lane, and the plugin.
@@ -95,7 +120,7 @@ NODE
 }
 
 require_dsh_version() {
-  actual="$(dsh --version 2>/dev/null || true)"
+  actual="$DSH_CORE_VERSION"
   if [ -z "$actual" ] || ! version_at_least "$actual" "$MIN_DSH_VERSION"; then
     printf 'error: dsh-rigorquant requires dsh >= %s (found %s)\n' \
       "$MIN_DSH_VERSION" "${actual:-unknown}" >&2
@@ -104,15 +129,18 @@ require_dsh_version() {
   fi
 }
 
-# The full preset is only mountable on the harness it was written against:
-# the persona row uses the `prefix`/`suffix` split (0.1.3-alpha.2 replaced the
-# single `text` key, and a row whose config fails rejects the WHOLE preset
-# mount), the child-delivery contract is the final assistant message
-# (`report` was removed in 0.1.2-rc.1), and the deliverables flow needs the
-# `present` tool (0.1.5). Fail before copying anything when the installed CLI
-# is older; a missing CLI keeps the historical warning and can be installed
-# later.
+# The full distribution is only mountable on the harness it was written
+# against: the persona row uses the `prefix`/`suffix` split (0.1.3-alpha.2
+# replaced the single `text` key, and a row whose config fails rejects the
+# WHOLE preset mount), the child-delivery contract is the final assistant
+# message (`report` was removed in 0.1.2-rc.1), the deliverables flow needs
+# the `present` tool (0.1.5), and the browser half registers into slots
+# 0.1.6-alpha.2 introduced — on 0.1.5 the routing card renders nothing at all,
+# silently, and the fallback lane has no model to route to. Fail before
+# copying anything when the installed CLI is older; a missing CLI keeps the
+# historical warning and can be installed later.
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
+  DSH_CORE_VERSION="$(dsh --version 2>/dev/null || true)"
   require_dsh_version
 fi
 
@@ -130,24 +158,184 @@ install_plugin() {
   fi
   # Which spec to install depends on where this script is running from.
   #
-  # A git checkout is a developer's working tree: install `file:$HERE` so the
-  # profile carries a copy of THIS tree, and re-running the script refreshes
-  # it. `file:` rather than a bare path, because pnpm resolves a bare directory
-  # argument as `link:` — a live symlink into the checkout, so moving or
-  # deleting the clone would break the installed profile.
+  # A git checkout (or a linked worktree, where `.git` is a file) is a
+  # developer's working tree: install `file:$HERE` so the profile carries a copy
+  # of THIS tree, and re-running the script refreshes it. `file:` rather than a
+  # bare path, because pnpm resolves a bare directory argument as `link:` — a
+  # live symlink into the checkout, so moving or deleting the clone would break
+  # the installed profile.
   #
   # Anything else is a copy npm already fetched — `npx dsh-rigorquant` unpacks
   # into a cache directory that disappears afterwards, so a `file:` spec would
   # point at nothing. Install the published version by name instead.
-  if [ -d "$HERE/.git" ]; then
+  if is_git_checkout; then
     spec="file:$HERE"
   else
     spec="dsh-rigorquant@${VERSION:-latest}"
   fi
   if dsh plugin --profile "$PROFILE" add "$spec" >/dev/null 2>&1; then
-    echo "Installed the plugin ($spec) into the '$PROFILE' profile (model router + Settings card)."
+    echo "Installed the plugin ($spec) into the '$PROFILE' profile (model router + its card on the Plugins page)."
   else
     printf 'warning: `dsh plugin --profile %s add %s` failed; the preset and lane are installed, the plugin is not.\n' "$PROFILE" "$spec" >&2
+  fi
+}
+
+# Enable the Agent Teams bundles on PROFILE and raise the team service's
+# lifetime member cap, both idempotently.
+#
+# A profile's enabled bundles are `dsh.profile.bundles` in its package.json —
+# the same list `dsh plugin add` reconciles, so only the bundles actually
+# absent are added (`dsh plugin add` also lazily initializes the profile
+# directory, including an empty `cordis.patch.yml`, when it does not exist
+# yet). Without `dsh` there is no way to add a bundle or safely locate/create
+# a profile, so this warns and does nothing else — the historical behaviour
+# for a missing CLI, and how CI's install smoke test (no `dsh` on PATH) stays
+# green.
+install_agent_teams() {
+  if ! command -v dsh >/dev/null 2>&1; then
+    printf 'warning: dsh is not on PATH; skipped enabling Agent Teams for the "%s" profile.\n' "$PROFILE" >&2
+    printf '         install it later and re-run, or add %s and %s\n' "$TEAM_BUNDLE_HOST" "$TEAM_BUNDLE_WEB" >&2
+    printf '         yourself (Plugins page, or dsh plugin --profile %s add <pkg>).\n' "$PROFILE" >&2
+    return 0
+  fi
+  profile_dir="$DSH_HOME/profiles/$PROFILE"
+  manifest="$profile_dir/package.json"
+  patch_file="$profile_dir/cordis.patch.yml"
+
+  missing="$(node - "$manifest" "$DSH_CORE_VERSION" "$TEAM_BUNDLE_HOST" "$TEAM_BUNDLE_WEB" <<'NODE'
+const { existsSync, readFileSync } = require('node:fs')
+const [manifest, coreVersion, ...wanted] = process.argv.slice(2)
+let bundles = []
+let dependencies = {}
+if (existsSync(manifest)) {
+  try {
+    const parsed = JSON.parse(readFileSync(manifest, 'utf8'))
+    const listed = parsed?.dsh?.profile?.bundles
+    if (Array.isArray(listed)) bundles = listed
+    if (parsed?.dependencies !== null && typeof parsed?.dependencies === 'object') dependencies = parsed.dependencies
+  } catch {}
+}
+// A wanted bundle is ABSENT when it is not in the profile's bundle list, and
+// STALE when the profile pins it at a version other than this core's. The
+// second case is the repair path: an installer that added the pair unpinned
+// left `latest` (two prereleases behind) in the manifest, and the names being
+// present means a name-only check would leave that profile unable to boot
+// forever. A bundle listed with no recorded version was enabled by the operator
+// rather than by us, and is left alone.
+const absent = []
+const stale = []
+for (const name of wanted) {
+  if (!bundles.includes(name)) absent.push(name)
+  else if (typeof dependencies[name] === 'string' && coreVersion !== '' && dependencies[name] !== coreVersion) stale.push(name)
+}
+process.stdout.write(absent.join(' ') + '|' + stale.join(' '))
+NODE
+  )"
+
+  absent="${missing%%|*}"
+  stale="${missing#*|}"
+  enabled=""
+  if [ -n "$absent$stale" ]; then
+    # Unpinned, `dsh plugin add` resolves the `latest` dist-tag, which is not
+    # the version this core was built against: the Team bundles are published in
+    # lockstep with the CLI and their typert codecs are validated against it, so
+    # a mismatched pair makes the whole profile fail to boot ("parameter codec
+    # has no create() factory"). Ask for the core's own version whenever the CLI
+    # can name it; with no version to go on, add unpinned and say so.
+    core="$DSH_CORE_VERSION"
+    specs=""
+    for bundle in $absent $stale; do
+      if [ -n "$core" ]; then
+        specs="$specs $bundle@$core"
+      else
+        specs="$specs $bundle"
+      fi
+    done
+    if [ -z "$core" ]; then
+      printf 'warning: could not read the dsh version; adding the Agent Teams bundles unpinned, which may not match this core.\n' >&2
+    fi
+    # Unquoted on purpose: $specs is a space-separated list, and a package name
+    # (with an optional @version) contains no whitespace or glob character, so
+    # the split is the argument list and the glob cannot fire.
+    if dsh plugin --profile "$PROFILE" add $specs >/dev/null 2>&1; then
+      for bundle in $absent; do echo "Enabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile."; done
+      for bundle in $stale; do echo "Re-pinned the Agent Teams bundle '$bundle' to $core on the '$PROFILE' profile."; done
+      enabled="$absent $stale"
+    else
+      printf 'warning: `dsh plugin --profile %s add %s` failed; Agent Teams may not be fully enabled.\n' "$PROFILE" "$specs" >&2
+    fi
+  fi
+
+  # Append the cap override under our marker, unless it is already there
+  # (idempotent: a second run of an already-installed profile writes
+  # nothing). A freshly-initialized patch file is a bare `[]`; a block
+  # sequence cannot follow a flow-style empty array in the same YAML
+  # document, so that placeholder is replaced rather than appended after.
+  written="$(node - "$patch_file" "$enabled" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" <<'NODE'
+const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs')
+const { dirname } = require('node:path')
+const [patchFile, enabled, markBegin, markEnd] = process.argv.slice(2)
+const content = existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : ''
+if (content.includes(markBegin)) process.exit(0)
+const block = [
+  markBegin,
+  '# rq-enabled-bundles: ' + enabled,
+  '- id: agent-team',
+  '  config:',
+  '    maxMembers: 64',
+  '    maxTasks: 256',
+  '    maxPendingMessagesPerMember: 64',
+  '    maxMessageBytes: 65536',
+  '    disposalTimeoutMs: 5000',
+  markEnd,
+  '',
+].join('\n')
+const next = /\[\]\s*$/.test(content)
+  ? content.replace(/\[\]\s*$/, '') + block
+  : (content === '' || content.endsWith('\n') ? content : content + '\n') + block
+mkdirSync(dirname(patchFile), { recursive: true })
+writeFileSync(patchFile, next)
+process.stdout.write(block)
+NODE
+  )"
+  if [ -n "$written" ]; then
+    echo "Wrote the Agent Teams maxMembers override to $patch_file:"
+    printf '%s\n' "$written" | sed 's/^/  /'
+  fi
+}
+
+# Undo exactly what install_agent_teams wrote: the marker block in the
+# profile's user patch, and the bundles it recorded having enabled (never a
+# bundle the operator had already turned on before installing).
+uninstall_agent_teams() {
+  patch_file="$DSH_HOME/profiles/$PROFILE/cordis.patch.yml"
+  [ -f "$patch_file" ] || return 0
+  command -v node >/dev/null 2>&1 || return 0
+  enabled="$(node - "$patch_file" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" <<'NODE'
+const { readFileSync, writeFileSync } = require('node:fs')
+const [patchFile, markBegin, markEnd] = process.argv.slice(2)
+const content = readFileSync(patchFile, 'utf8')
+const begin = content.indexOf(markBegin)
+const end = begin === -1 ? -1 : content.indexOf(markEnd, begin)
+if (begin === -1 || end === -1) process.exit(0)
+const enabledMatch = content.slice(begin, end).match(/^# rq-enabled-bundles:\s*(.*)$/m)
+let rest = content.slice(0, begin) + content.slice(end + markEnd.length)
+rest = rest.replace(/\n{3,}/g, '\n\n')
+// Removing the only block sequence entry can leave a file of nothing but
+// comments, which is not valid YAML on its own; restore the placeholder the
+// profile template ships so the file still parses as the empty array it is.
+if (!/^\s*-\s/m.test(rest.replace(/^#.*$/gm, ''))) rest = rest.replace(/\s+$/, '') + '\n[]\n'
+writeFileSync(patchFile, rest)
+process.stdout.write(enabledMatch ? enabledMatch[1].trim() : '')
+NODE
+  )"
+  echo "Removed the Agent Teams maxMembers override from $patch_file."
+  if [ -n "$enabled" ] && command -v dsh >/dev/null 2>&1; then
+    for bundle in $enabled; do
+      dsh plugin --profile "$PROFILE" remove "$bundle" >/dev/null 2>&1 \
+        && echo "Disabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile (the installer had enabled it)." \
+        || true
+    done
   fi
 }
 
@@ -174,6 +362,7 @@ if [ "$mode" = uninstall ]; then
   rm -rf "$DSH_HOME/skills/arxiv"
   rm -rf "$DSH_HOME/skills/academic-paper-search"
   rm -rf "$DSH_HOME/share/rigorquant"
+  uninstall_agent_teams
   if command -v dsh >/dev/null 2>&1; then
     # Removing the dependency drops it from dsh.profile.bundles in the same
     # reconcile step that added it, so no manifest is left naming a package
@@ -183,7 +372,7 @@ if [ "$mode" = uninstall ]; then
       || true
   fi
   # Undo the hook wiring only when it still points at ours.
-  if [ -d "$HERE/.git" ] && [ "$(cd "$HERE" && git config core.hooksPath 2>/dev/null)" = ".githooks" ]; then
+  if is_git_checkout && [ "$(cd "$HERE" && git config core.hooksPath 2>/dev/null)" = ".githooks" ]; then
     (cd "$HERE" && git config --unset core.hooksPath) 2>/dev/null || true
     echo "Disabled the pre-commit coverage gate (unset core.hooksPath)."
   fi
@@ -192,10 +381,11 @@ if [ "$mode" = uninstall ]; then
 fi
 
 # Developer convenience for git checkouts only: point git at the repo's hooks
-# so every commit runs the coverage gate (.githooks/pre-commit). Non-fatal by
+# so every commit runs the coverage gate (.githooks/pre-commit). A linked
+# worktree counts (its `.git` is a file, see is_git_checkout). Non-fatal by
 # design: exported tarballs / npx cache copies have no .git, and a failed `git
 # config` must never fail an install.
-if [ -d "$HERE/.git" ] && [ -x "$HERE/.githooks/pre-commit" ]; then
+if is_git_checkout && [ -x "$HERE/.githooks/pre-commit" ]; then
   if (cd "$HERE" && git config core.hooksPath .githooks) 2>/dev/null; then
     echo "Enabled the pre-commit coverage gate (git config core.hooksPath .githooks)."
   fi
@@ -221,5 +411,6 @@ else
   install_plugin
   echo "Installed preset to $DSH_HOME/.agent-presets/rigorquant"
   echo "Installed compute lane to $DSH_HOME/share/rigorquant"
+  install_agent_teams
   echo "Start a new session and pick the 'RigorQuant' preset in the session picker."
 fi

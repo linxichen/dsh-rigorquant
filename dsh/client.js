@@ -1,12 +1,15 @@
 // RigorQuant model router — browser half.
 //
-// One card in the Plugins settings tab, keyed by the `rigorquant-models`
-// settings namespace this package's host half serves. Each role row stages an
-// explicit primary override (model + reasoning effort) and a per-role fallback
-// choice; "inherit" clears the user layer for that field so the native
-// tool-subagent default (fixed-tier roles) or the parent/session route (root and
-// inherit roles) governs again. The last saved selection is the persistent one:
-// it lives in the settings user layer, not in this page's state.
+// One configuration entry on the Plugins page: the bundle's own form, rendered
+// on this bundle's page between its description and its rows
+// (`plugins.bundle.config`, keyed by the package name), editing the
+// `rigorquant-models` settings namespace this package's host half serves. Each
+// role row stages an explicit primary override (model + reasoning effort) and a
+// per-role fallback choice; "inherit" clears the user layer for that field so
+// the router's shipped tier matrix (fixed-tier roles) or the parent/session
+// route (root and inherit roles) governs again. Only a save writes: the last
+// saved selection is the persistent one (the settings user layer), and leaving
+// the page drops whatever was staged.
 //
 // Shipped in the shell's client-bundle format, because that is what the browser
 // half is REQUIRED to be: the web shell appends this file as a classic
@@ -26,6 +29,13 @@
 
 window.__ModuleLoader__.load({ id: 'dsh-rigorquant', factory: (require) => {
 
+// The bundle's package name: the key the Plugins page looks the bundle's
+// configuration entry up by. It repeats the loader id above on purpose — the
+// shell concatenates every plugin's bundle into one classic script, so a
+// top-level binding shared with the `load` call would collide with any other
+// bundle's; the probe pins that the two literals agree.
+const BUNDLE = 'dsh-rigorquant'
+// The settings namespace the host half serves; also this entry's locale namespace.
 const CARD_KEY = 'rigorquant-models'
 const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 const SLOTS = ['Primary', 'Fallback']
@@ -91,9 +101,13 @@ function createStore(initial) {
 
 // `remote` is the 0.1.2 typed Host RPC carrier. Its sub-namespaces are gated:
 // Cordis throws `cannot get property "remote.session" without inject` unless
-// each one is declared here. The settings card reads session.modelCatalog and
+// each one is declared here. The routing card reads session.modelCatalog and
 // settings.describe, so declare both sub-namespaces (plus the raw `remote`).
-const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'settingsScope', 'sessions']
+// `sessions` is NOT here: the move pill reads the team view through props the
+// session-scoped slot itself supplies (see applyMovePill below), never
+// through ctx.get('sessions') at mount time the way the retired activity
+// floater did.
+const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'settingsScope']
 
 const copy = {
   en: {
@@ -103,11 +117,9 @@ const copy = {
     none: 'None',
     effortInherit: 'Default',
     effortUnsupported: 'unsupported',
+    modelUndeclared: 'not in provider catalog',
     save: 'Save',
-    discard: 'Discard',
-    expand: 'Expand',
-    collapse: 'Collapse',
-    pending: 'Unsaved',
+    unavailable: 'Model routing is not served by this profile: the rq-model-router row is off.',
     primary: 'Primary',
     fallback: 'Fallback',
     overridden: 'Overridden',
@@ -147,11 +159,9 @@ const copy = {
     none: '无',
     effortInherit: '默认',
     effortUnsupported: '不支持',
+    modelUndeclared: '不在提供方模型目录中',
     save: '保存',
-    discard: '放弃',
-    expand: '展开',
-    collapse: '收起',
-    pending: '未保存',
+    unavailable: '当前配置未提供模型路由：rq-model-router 行已关闭。',
     primary: '主选择',
     fallback: '回退',
     overridden: '已覆盖',
@@ -186,63 +196,25 @@ const copy = {
   },
 }
 
-// Card chrome. `settings.plugin.item` renders its entries into a <ul>, so a
-// card MUST be an <li> — a bare <div> lands outside the card frame, which is
-// what "showing at root level" looks like. PluginCard itself is exported as a
-// type only and lives behind the bundle purity gate, so the chrome is restated
-// here against the same `--dsw-alias-*` tokens the built-in cards use.
-const cardStyle = (open) => ({
-  listStyle: 'none',
-  overflow: 'hidden',
-  border: '1px solid var(--dsw-alias-border-l2)',
-  borderRadius: 12,
-  background: open ? 'var(--dsw-alias-bg-layer-2)' : 'var(--dsw-alias-bg-layer-3)',
-  borderColor: open ? 'var(--dsw-alias-label-dimmed)' : 'var(--dsw-alias-border-l2)',
-})
-const headerStyle = {
-  boxSizing: 'border-box', width: '100%', appearance: 'none', border: 0,
-  background: 'none', font: 'inherit', color: 'inherit', textAlign: 'left',
-  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12,
-  padding: '14px 16px', borderRadius: 12,
-}
-const headTextStyle = { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }
-const nameStyle = { fontSize: 15, fontWeight: 600, lineHeight: 1.4, color: 'var(--dsw-alias-label-primary)' }
+// Page chrome. The Plugins page renders this entry inside its own section on
+// the bundle's page (`detailSection`), so the form is a plain block headed the
+// way the page heads its rows section — a 14px/500 title with a one-line
+// description — followed by the role rows and a footer holding the save.
+// The page draws the bundle's title, icon and crumb itself. Tokens are the
+// same `--dsw-alias-*` the page's own sections use.
+const formStyle = { display: 'flex', flexDirection: 'column', minWidth: 0 }
+const sectionHeadStyle = { display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }
+const sectionTitleStyle = { margin: 0, fontSize: 14, lineHeight: '20px', fontWeight: 500, color: 'var(--dsw-alias-label-primary)' }
 const cardDescriptionStyle = { fontSize: 13, lineHeight: 1.5, color: 'var(--dsw-alias-label-tertiary)' }
-const pendingStyle = {
-  flex: 'none', borderRadius: 999, padding: '1px 8px', fontSize: 11, lineHeight: '17px',
-  fontWeight: 500, whiteSpace: 'nowrap',
-  background: 'var(--dsw-alias-bg-module-platform)', color: 'var(--dsw-alias-label-secondary)',
-}
-const bodyStyle = { borderTop: '1px solid var(--dsw-alias-border-l2)', margin: '0 16px', paddingBottom: 8 }
+const statusStyle = { margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--dsw-alias-label-tertiary)' }
 const footerStyle = {
   display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8,
-  padding: '12px 0 4px', borderTop: '1px solid var(--dsw-alias-border-l2)',
-}
-const buttonBase = {
-  appearance: 'none', border: '1px solid transparent', borderRadius: 8,
-  padding: '5px 14px', font: 'inherit', fontSize: 13, lineHeight: 1.5, cursor: 'pointer',
-}
-const discardStyle = {
-  ...buttonBase, borderColor: 'var(--dsw-alias-border-l2)', background: 'none',
-  color: 'var(--dsw-alias-label-secondary)',
+  paddingTop: 16,
 }
 const saveStyle = {
-  ...buttonBase, background: 'var(--dsw-alias-label-primary)', color: 'var(--dsw-alias-bg-layer-3)',
-}
-
-/** Disclosure chevron, drawn inline: the icon set is a platform module whose
- *  export names this package cannot verify at build time (it has no build). */
-function Chevron(props) {
-  return React().createElement('svg', {
-    width: 14, height: 14, viewBox: '0 0 14 14', 'aria-hidden': 'true',
-    style: {
-      flex: 'none', color: 'var(--dsw-alias-label-tertiary)',
-      transition: 'transform .16s', transform: props.open ? 'rotate(180deg)' : 'none',
-    },
-  }, React().createElement('path', {
-    d: 'M3.5 5.25 7 8.75l3.5-3.5', fill: 'none', stroke: 'currentColor',
-    strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round',
-  }))
+  appearance: 'none', border: '1px solid transparent', borderRadius: 8,
+  padding: '5px 14px', font: 'inherit', fontSize: 13, lineHeight: 1.5, cursor: 'pointer',
+  background: 'var(--dsw-alias-label-primary)', color: 'var(--dsw-alias-bg-layer-3)',
 }
 
 
@@ -617,6 +589,11 @@ function RoleRow(props) {
   // select lists what that exact route accepts (a model that doesn't support
   // "high" must not offer it).
   const modelByKey = new Map(models.map((model) => [model.value, model]))
+  // Providers the ready catalog actually listed. A stored model one of them
+  // does not list is a route the adapter refuses (UNKNOWN_MODEL, issue #22);
+  // a provider absent from the catalog is not judged — its listing may have
+  // failed, which the card cannot tell apart from an unknown model.
+  const listedProviders = new Map(catalog.providers.map((provider) => [provider.id, provider.name]))
   const renderSlot = (slot) => {
     const field = `${role}${slot}`
     const state = fields[field]
@@ -631,9 +608,16 @@ function RoleRow(props) {
     const inheritLabel = state.inherited === null
       ? placeholder
       : `${placeholder} · ${state.inherited.model}`
+    // Without its own option the select shows "Inherit" for a stored value
+    // it cannot match, hiding a broken override behind the placeholder.
+    const undeclared = choice !== null && chosenModel === undefined
+      && catalog.status === 'ready' && listedProviders.has(choice.provider)
     const options = [
       { value: '', label: inheritLabel },
       ...models,
+      ...undeclared
+        ? [{ value: choiceKey(choice), label: `${listedProviders.get(choice.provider)} · ${choice.model} · ${t('modelUndeclared')}`, disabled: true }]
+        : [],
     ]
     const onModel = (key) => {
       if (key === '') {
@@ -719,14 +703,26 @@ function RqModelsCard(props) {
   // `hooks: { rqCard: store }` and the component receives the bound selector
   // hook `useRqCard` instead — the `hooks` key itself never reaches props.
   const snapshot = props.useRqCard((value) => value)
-  const [open, setOpen] = R.useState(false)
   const t = props.t
-  // A deployment that does not serve this namespace should show no trace of the
-  // plugin, rather than a card the user cannot act on.
-  if (!snapshot.available) return null
+  // Only a save writes. Leaving the page drops every staged edit, so the page
+  // view discards on unmount and offers no discard control and no unsaved
+  // marker (the Plugins page's form contract). The summary view stages
+  // nothing, so its unmount drops nothing. `discard` is bound to the one
+  // controller this bundle mounts, so the closure the effect captured stays
+  // valid however often the renderer re-runs `inject()` (it does on every
+  // locale revision); keying the effect on its identity would drop the draft
+  // on a language switch instead.
+  const view = props.view
+  const { discard } = props
+  R.useEffect(() => (view === 'page' ? () => { discard() } : undefined), [view])
+  // The page asks every entry for two views: `summary` is the one-liner it
+  // places under the title, `page` the form with its own save control.
+  if (view === 'summary') return t('description')
+  // A profile whose host half does not serve the namespace (the router row is
+  // off) says so in place of controls nothing would accept.
+  if (!snapshot.available) return R.createElement('p', { role: 'status', style: statusStyle }, t('unavailable'))
 
   const dirty = Object.values(snapshot.fields).some((field) => field.dirty)
-  const title = t('title')
 
   const body = []
   for (const role of ROLES) {
@@ -751,13 +747,6 @@ function RqModelsCard(props) {
     }, snapshot.failed === 'write' ? t('failed') : `${t('invalid')}: ${snapshot.failed}`))
   }
   controls.push(R.createElement('button', {
-    key: 'discard',
-    type: 'button',
-    onClick: props.discard,
-    disabled: snapshot.saving || !dirty,
-    style: { ...discardStyle, ...(snapshot.saving || !dirty ? { opacity: 0.4, cursor: 'default' } : {}) },
-  }, t('discard')))
-  controls.push(R.createElement('button', {
     key: 'save',
     type: 'button',
     onClick: props.save,
@@ -768,27 +757,12 @@ function RqModelsCard(props) {
     },
   }, t('save')))
 
-  const header = R.createElement('button', {
-    type: 'button',
-    style: headerStyle,
-    'aria-expanded': open,
-    'aria-label': `${t(open ? 'collapse' : 'expand')}: ${title}`,
-    onClick: () => { setOpen(!open) },
-  },
-    R.createElement('span', { style: headTextStyle },
-      R.createElement('span', { style: nameStyle }, title),
+  return R.createElement('div', { style: formStyle, 'data-rq-models': '' },
+    R.createElement('div', { style: sectionHeadStyle },
+      R.createElement('h4', { style: sectionTitleStyle }, t('title')),
       R.createElement('span', { style: cardDescriptionStyle }, t('description'))),
-    // Carried on the header so a collapsed card still says it holds edits.
-    dirty ? R.createElement('span', { style: pendingStyle }, t('pending')) : null,
-    R.createElement(Chevron, { open }))
-
-  return R.createElement('li', { style: cardStyle(open) },
-    header,
-    open
-      ? R.createElement('div', { style: bodyStyle },
-        ...body,
-        R.createElement('div', { style: footerStyle }, ...controls))
-      : null)
+    ...body,
+    R.createElement('div', { style: footerStyle }, ...controls))
 }
 
 function apply(ctx) {
@@ -797,986 +771,194 @@ function apply(ctx) {
   ctx.effect(() => {
     void controller.load()
   }, 'rq-model-router: catalog load')
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register(
+  // The bundle's configuration entry: the Plugins page renders it on this
+  // bundle's page, looked up by the package name. (The Settings-tab plugin
+  // card slot this entry once used is retired on 0.1.6 — a registration
+  // there renders nowhere, silently.)
+  ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register(
     {
-      name: 'settings.plugin.item',
-      key: CARD_KEY,
+      name: 'plugins.bundle.config',
+      key: BUNDLE,
       locale: CARD_KEY,
       inject: () => controller.inject(),
     },
     (props) => RqModelsCard({ ...props, t: ctx.locale.bind(CARD_KEY) }),
   ))
-  applyActivityOverlay(ctx)
+  applyMovePill(ctx)
 }
 
-// ---------------------------------------------------------------- activity
-// The team-activity floater (design adapted from dsh-agent-teams — see
-// README "The team, live"). Registered into the root-scoped `shell.overlay`
-// list: a pill vertically centered on the main window's right edge, expanded
-// into a live panel whenever one or more RigorQuant labs are running. Data
-// comes from the host half (dsh/activity.js) by polling
-// /plugins/dsh-rigorquant/activity — a JSON snapshot of role agents, their
-// status and last actions, plus the loop stage. Every color below is a
-// --dsw-alias token, so the panel follows the shell's own theme.
-
-const ACTIVITY_NS = 'rigorquant-activity'
-const ACTIVITY_URL = '/plugins/dsh-rigorquant/activity'
-const POLL_MS = 2000
-
-/** role → display label (mirrors the host ROLE_DEF; the client bundle is standalone). */
-const ROLE_DEF_CLIENT = {
-  root: { label: 'Orchestrator', avatar: 'avatar-orchestrator.png' },
-  explorer: { label: 'Explorer', avatar: 'avatar-explorer.png' },
-  offgrid: { label: 'OffGrid', avatar: 'avatar-offgrid.png' },
-  doublechecker: { label: 'DoubleChecker', avatar: 'avatar-doublechecker.png' },
-  adversary: { label: 'Adversary', avatar: 'avatar-adversary.png' },
-  'lit-line': { label: 'Literature', avatar: 'avatar-literature.png' },
-  // Compact for the 96px hub-map node; the roster caption shows the full
-  // "Literature adversary" from the host ROLE_DEF.
-  'lit-adversary': { label: 'Lit adversary', avatar: 'avatar-literature-adversary.png' },
-  'doc-adversary': { label: 'Doc adversary', avatar: 'avatar-document-adversary.png' },
-}
-
-const activityCopy = {
+// ------------------------------------------------------------------ move pill
+// The round's move, read live off the Agent Teams task board (Decision 24;
+// docs/architecture.md, docs/adr/0001-rigorquant-on-agent-teams.md). This
+// registers into the conversation's per-session header utilities slot, right
+// next to the Team package's own roster action -- which sits in the sibling
+// `conversation.session.header.actions` seat
+// (client-ui-agent-team/lib/client.js, id 'agent-team').
+//
+// The read is the Team package's OWN browser seam: the `remote.agentTeams`
+// namespace, whose `view(agentId)` answers `RemoteResult<TeamView>`
+// (agent-team `lib/typert.remote-client.d.ts`). That is the only team read the
+// installed 0.1.6-alpha.2 serves: the client Session store has no
+// `projectionsBySession` at that tag (`git grep projectionsBySession` over the
+// harness is empty), so a projection-shaped read is silently undefined and the
+// pill renders nothing on every real session. `remote.agentTeams` is INJECTED,
+// never read off the root context: the Team bundle is optional, so with the
+// bundle absent the namespace does not exist, this callback never runs, and the
+// pill never registers -- "renders nothing when the namespace is absent" is
+// that gate, not a null branch.
+//
+// The namespace answers requests, not subscriptions, so the pill re-reads on a
+// timer while a session header is on screen: one local request per interval per
+// mounted header, with no stop condition — deliberately unconditional, because
+// the normal case is a session opened BEFORE its team exists, so a read that
+// reports no team must not end the watch. The cost is bounded in practice by
+// the header being mounted; a harness that serves this view as a subscription
+// (0.1.7 turns it into a session projection) retires the timer outright.
+const MOVE_REFRESH_MS = 4000
+const MOVE_NS = 'rigorquant-move'
+const moveCopy = {
   en: {
-    title: 'RigorQuant Activity',
-    collapse: 'Collapse',
-    expand: 'Expand',
-    working: 'working',
-    idle: 'idle',
-    members: 'members',
-    feed: 'activity',
-    empty: 'No RigorQuant session running.',
-    live: 'live',
-    credit: 'Design adapted from dsh-agent-teams © NanmiCoder (MIT)',
-    now: 'now',
-    history: 'history',
-    hideHistory: 'hide',
-    pending: 'pending',
-    float: 'float',
-    dock: 'dock',
+    'move.promise': 'Promise', 'move.fan-out': 'Fan out',
+    'move.ground-truth': 'Ground-truth', 'move.attack': 'Attack', 'move.certify': 'Certify',
   },
   zh: {
-    title: 'RigorQuant 活动',
-    collapse: '收起',
-    expand: '展开',
-    working: '执行中',
-    idle: '空闲',
-    members: '成员',
-    feed: '动态',
-    empty: '当前没有 RigorQuant 会话。',
-    live: '实时',
-    credit: '设计改编自 dsh-agent-teams © NanmiCoder (MIT)',
-    now: '刚刚',
-    history: '条历史',
-    hideHistory: '收起',
-    pending: '待命',
-    float: '浮动',
-    dock: '停靠',
+    'move.promise': '许诺', 'move.fan-out': '扇出',
+    'move.ground-truth': '证据核验', 'move.attack': '攻击', 'move.certify': '认证',
   },
 }
+// One layer per move past Promise, in loop order; a task's layer is
+// STRUCTURAL (its `blockedBy` depth), never guessed from its id or subject --
+// the board's own DAG is the only contract the orchestrator's task-creation
+// text (SKILL.md Step 3's Promise move: one `blocked_by` layer per move) has
+// to honor for the pill to read it correctly.
+const MOVE_ORDER = ['promise', 'fan-out', 'ground-truth', 'attack', 'certify']
 
-/** Set once when the current session first resolves to a live lab, so it opens itself. */
-let activityAutoExpanded = false
-/** The user's collapse decision wins until the page reloads. */
-let activityCollapsed = true
-/** Lab ids whose feed history is expanded; default shows only the latest. */
-const activityFeedOpen = new Set()
-let activityStore = null
+/** role → (badge initials, tooltip label), mirroring dsh/team.js's TEAMMATE_ROLES
+ *  and the retired ROLE_DEF_CLIENT's compact labels. Duplicated here because
+ *  the client bundle is standalone (it runs in the browser; dsh/team.js runs
+ *  host-side and is not requirable from here). */
+const ROLE_BADGE = {
+  explorer: ['EX', 'Explorer'],
+  offgrid: ['OG', 'OffGrid'],
+  doublechecker: ['DC', 'DoubleChecker'],
+  adversary: ['AD', 'Adversary'],
+  'lit-line': ['LL', 'Literature'],
+  'lit-adversary': ['LA', 'Lit adversary'],
+  'doc-adversary': ['DA', 'Doc adversary'],
+}
+const ROLE_NAME_PATTERN = new RegExp(`^(${Object.keys(ROLE_BADGE).join('|')})-.+$`)
 
-/** One shared mutable state the store publishes (never handed out raw). */
-const activityState = {
-  status: 'idle', labs: [], anchorRight: null, currentSessionId: null,
-  // An expanded panel belongs to one current-session route. The shell overlay
-  // outlives route changes, so this owner gate prevents stale dock padding or
-  // an expanded panel leaking into another conversation.
-  openOwner: null,
-  panelLayout: null, panelBounds: null,
+function roleFromName(name) {
+  const match = typeof name === 'string' ? ROLE_NAME_PATTERN.exec(name) : null
+  return match !== null ? match[1] : null
 }
 
-function snapshotStore() {
-  if (activityStore === null) {
-    activityStore = createStore({
-      status: activityState.status, labs: [], anchorRight: null, currentSessionId: null,
-      openOwner: null, panelLayout: null, panelBounds: null,
-    })
+/** Each task's distance from the DAG's roots (no blockers = 0), memoized per
+ *  call. A `blockedBy` id absent from `tasks` is ignored, not a root -- an
+ *  edge to a task the pill was not handed is not evidence of one. */
+function taskDepth(tasks) {
+  const byId = new Map(tasks.map((task) => [task.id, task]))
+  const cache = new Map()
+  const visiting = new Set()
+  const depthOf = (task) => {
+    if (cache.has(task.id)) return cache.get(task.id)
+    // A real board's `blocked_by` is a DAG; a cycle here is a defensive
+    // dead-end (treat as a root) rather than a stack overflow.
+    if (visiting.has(task.id)) return 0
+    visiting.add(task.id)
+    const blockers = (task.blockedBy ?? []).map((id) => byId.get(id)).filter((t) => t !== undefined)
+    const depth = blockers.length === 0 ? 0 : 1 + Math.max(...blockers.map(depthOf))
+    visiting.delete(task.id)
+    cache.set(task.id, depth)
+    return depth
   }
-  return activityStore
+  return depthOf
 }
 
-const publishActivity = () => snapshotStore().set({ ...activityState, labs: activityState.labs })
-
-/**
- * Horizontal dock for the floater: the RIGHT EDGE of the active conversation
- * column, measured the same way dsh-agent-teams does — against the
- * `[data-shell-overlay]` layer and the `[data-phase='active']` element that
- * ui-layout/ui-conversation publish. The left workspace rail and right-docked
- * panels (dsh-better-sidebar's task view) both stay clear: when such a panel
- * opens and the conversation column shrinks, the ResizeObserver re-measures
- * and the pill follows. Best-effort by design: without a measurable column it
- * falls back to the viewport edge.
- */
-const PANEL_DOCK_RIGHT = 18
-
-function sameBounds(left, right) {
-  if (left === null || right === null) return left === right
-  return left.width === right.width && left.height === right.height && left.anchorRight === right.anchorRight
+/** The first incomplete of the five moves (Decision 24's replacement for the
+ *  retired tool-name heuristic, `stageOf` in the deleted dsh/activity.js): no
+ *  tasks yet, or every task done, reads as Promise; otherwise the shallowest
+ *  layer that still has a pending or in-progress task. */
+function deriveMove(tasks) {
+  const list = Array.isArray(tasks) ? tasks.filter((task) => task && task.status !== 'deleted') : []
+  if (list.length === 0) return MOVE_ORDER[0]
+  const depthOf = taskDepth(list)
+  const maxLayer = MOVE_ORDER.length - 2
+  let shallowest = null
+  for (const task of list) {
+    if (task.status === 'completed') continue
+    const layer = Math.min(depthOf(task), maxLayer)
+    if (shallowest === null || layer < shallowest) shallowest = layer
+  }
+  return shallowest === null ? MOVE_ORDER[0] : MOVE_ORDER[shallowest + 1]
 }
 
-/** Measure the shell-overlay box and the active conversation's right edge,
- * publishing both the pill's `right` offset and the dock/floating bounds the
- * panel geometry resolves against. Best-effort: falls back to the viewport. */
-function measureAnchorRight() {
-  try {
-    if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return
-    const overlay = document.querySelector('[data-shell-overlay]')
-    if (overlay === null || overlay === undefined || typeof overlay.getBoundingClientRect !== 'function') return
-    const overlayRect = overlay.getBoundingClientRect()
-    const conversation = document.querySelector("[data-phase='active']")
-    let right = PANEL_DOCK_RIGHT
-    let anchorRight = overlayRect.width
-    if (conversation !== null && conversation !== undefined
-      && typeof conversation.getBoundingClientRect === 'function') {
-      const conversationRect = conversation.getBoundingClientRect()
-      anchorRight = Math.min(Math.max(conversationRect.right - overlayRect.left, 0), overlayRect.width)
-      right = Math.round(overlayRect.width - anchorRight + PANEL_DOCK_RIGHT)
-    }
-    const bounds = { width: overlayRect.width, height: overlayRect.height, anchorRight }
-    let changed = false
-    if (right !== activityState.anchorRight) { activityState.anchorRight = right; changed = true }
-    if (!sameBounds(activityState.panelBounds, bounds)) { activityState.panelBounds = bounds; changed = true }
-    if (changed) publishActivity()
-  } catch {
-    // Layout probing is best-effort; the viewport fallback still renders.
-  }
-}
-
-function persistPanelLayout(layout) {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(PANEL_LAYOUT_STORAGE_KEY, JSON.stringify(layout))
-    }
-  } catch {
-    // Storage may be unavailable (private mode, strict sandbox).
-  }
-}
-
-function applyPanelLayout(layout) {
-  activityState.panelLayout = layout
-  publishActivity()
-  updatePanelShift()
-}
-
-/** Dodge the main text area: while the expanded panel is docked-open, make
- * the active conversation column yield width so the panel never covers text. */
-function updatePanelShift() {
-  try {
-    const root = typeof document !== 'undefined' ? document.documentElement : null
-    if (root === null) return
-    const compact = (activityState.panelBounds?.width ?? window.innerWidth ?? Infinity) <= PANEL_COMPACT_BREAKPOINT
-    const expanded = !activityCollapsed && activityState.openOwner === activityState.currentSessionId
-    const docked = activityState.panelLayout?.mode === 'docked'
-    if (expanded && docked && !compact) {
-      const width = activityState.panelLayout?.width ?? PANEL_DEFAULT_WIDTH
-      root.setAttribute(PANEL_OPEN_ATTRIBUTE, '')
-      root.style.setProperty(PANEL_SHIFT_PROPERTY, `${width + PANEL_CONVERSATION_GAP + 18}px`)
-    } else {
-      root.removeAttribute(PANEL_OPEN_ATTRIBUTE)
-      root.style.removeProperty(PANEL_SHIFT_PROPERTY)
-    }
-  } catch {
-    // Best-effort: if the root is unavailable there is nothing to shift.
-  }
-}
-
-function setActivityCollapsed(collapsed) {
-  activityCollapsed = collapsed
-  activityState.openOwner = collapsed ? null : activityState.currentSessionId
-  publishActivity()
-  updatePanelShift()
-}
-
-/** Walk the headers/resize handles: bound the gesture to the current layout. */
-function beginPanelGesture(kind, edge, event, layout, bounds) {
-  if (typeof window === 'undefined') return
-  const startX = event.clientX
-  const startY = event.clientY
-  const onMove = (moveEvent) => {
-    const dx = moveEvent.clientX - startX
-    const dy = moveEvent.clientY - startY
-    applyPanelLayout(kind === 'move'
-      ? movePanelLayout(layout, dx, dy, bounds)
-      : resizePanelLayout(layout, edge, dx, dy, bounds))
-  }
-  const end = () => {
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', end)
-    window.removeEventListener('pointercancel', end)
-    persistPanelLayout(activityState.panelLayout)
-    updatePanelShift()
-  }
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', end, { once: true })
-  window.addEventListener('pointercancel', end, { once: true })
-}
-
-function ago(ms) {
-  if (typeof ms !== 'number' || ms === 0) return ''
-  const delta = Date.now() - ms
-  if (delta < 60_000) return `${Math.max(1, Math.round(delta / 1000))}s`
-  if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m`
-  return `${Math.round(delta / 3_600_000)}h`
-}
-
-/** The active RigorQuant lab for a captain or member transcript, if any. */
-function labForSession(labs, sessionId) {
-  if (sessionId === null || sessionId === undefined) return null
-  for (const lab of labs) {
-    if (lab.id === sessionId) return lab
-    if ((lab.members ?? []).some((member) => member.sessionId === sessionId)) return lab
-  }
-  return null
-}
-
-function startActivityPoller(ctx) {
-  // The web shell, and nothing else: the probe and webless hosts have no
-  // fetch/interval, and the floater is only meaningful in a browser anyway.
-  if (typeof window === 'undefined'
-    || typeof window.fetch !== 'function'
-    || typeof window.setInterval !== 'function') {
-    return
-  }
-  const store = snapshotStore()
-  // Restore the persisted panel layout, then inject the rules that make the
-  // conversation column yield width while the panel is docked-open (the dodge).
-  try {
-    if (activityState.panelLayout === null) {
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(PANEL_LAYOUT_STORAGE_KEY) : null
-      activityState.panelLayout = parsePanelLayout(raw)
-    }
-  } catch {
-    activityState.panelLayout = DEFAULT_PANEL_LAYOUT
-  }
-  if (typeof document !== 'undefined' && typeof document.head !== 'undefined') {
-    const shiftCss = document.createElement('style')
-    shiftCss.setAttribute('data-rq-panel-shift', '')
-    shiftCss.textContent = `html[${PANEL_OPEN_ATTRIBUTE}] [data-phase='active']{padding-right:var(${PANEL_SHIFT_PROPERTY});}`
-    document.head.appendChild(shiftCss)
-    ctx.effect(() => {
-      const parent = shiftCss.parentNode
-      if (parent !== null && parent !== undefined && typeof parent.removeChild === 'function') parent.removeChild(shiftCss)
-    }, 'rq-activity: dodge css')
-  }
-  updatePanelShift()
-  // The floater follows the CURRENT session (same as dsh-agent-teams): only
-  // the lab owned by the session open in the conversation view is shown, and
-  // only while that session is a RigorQuant one (labs exist only for those).
-  // Bind before the first fetch: this immediately-loaded bundle used to call
-  // tick() before these lexical bindings existed, causing a TDZ rejection.
-  let sessionList = null
-  let unsubscribeSessionList = null
-  const syncCurrentSession = () => {
-    try {
-      const next = typeof sessionList?.getSnapshot === 'function'
-        ? sessionList.getSnapshot().current
-        : null
-      if (next !== activityState.currentSessionId) {
-        activityState.currentSessionId = next ?? null
-        publishActivity()
-        updatePanelShift()
-      }
-    } catch {
-      // The sessions feed is a best-effort scope, not a hard dependency.
-    }
-  }
-  const bindSessionList = () => {
-    const list = ctx.get('sessions')?.list
-    if (list === sessionList) return
-    if (typeof unsubscribeSessionList === 'function') unsubscribeSessionList()
-    sessionList = typeof list?.subscribe === 'function' ? list : null
-    unsubscribeSessionList = null
-    if (sessionList !== null) {
-      syncCurrentSession()
-      unsubscribeSessionList = sessionList.subscribe(syncCurrentSession)
-    }
-  }
-  bindSessionList()
-  ctx.effect(() => () => {
-    if (typeof unsubscribeSessionList === 'function') unsubscribeSessionList()
-  }, 'rq-activity: current-session listener')
-  let inFlight = false
-  let disposed = false
-  let request = null
-  const tick = async () => {
-    if (inFlight || disposed) return
-    inFlight = true
-    measureAnchorRight()
-    // Re-check until the optional service exists and if its instance changes.
-    bindSessionList()
-    if (typeof document !== 'undefined' && document.hidden) {
-      inFlight = false
-      return
-    }
-    request = typeof AbortController === 'function' ? new AbortController() : null
-    try {
-      const response = await window.fetch(ACTIVITY_URL, {
-        cache: 'no-store', ...(request === null ? {} : { signal: request.signal }),
-      })
-      if (!response.ok || disposed) return
-      const next = await response.json()
-      if (disposed) return
-      const labs = Array.isArray(next?.labs) ? next.labs : []
-      if (!activityAutoExpanded && labForSession(labs, activityState.currentSessionId) !== null) {
-        activityAutoExpanded = true
-        setActivityCollapsed(false)
-      }
-      activityState.status = 'ready'
-      activityState.labs = labs
-      publishActivity()
-    } catch {
-      // Transient: the host route may be absent or restarting.
-    } finally {
-      inFlight = false
-      request = null
-    }
-  }
-  void tick()
-  measureAnchorRight()
-  const id = window.setInterval(() => { void tick() }, POLL_MS)
-  if (typeof window.addEventListener === 'function') {
-    window.addEventListener('resize', measureAnchorRight)
-    ctx.effect(() => () => window.removeEventListener('resize', measureAnchorRight),
-      'rq-activity: anchor resize listener')
-  }
-  // Follow the conversation column the instant it resizes (a right dock
-  // opening, the details column, window reflow) instead of waiting a poll.
-  const observer = typeof window.ResizeObserver === 'function'
-    ? new window.ResizeObserver(() => measureAnchorRight())
-    : null
-  if (observer !== null && typeof document !== 'undefined' && typeof document.querySelector === 'function') {
-    const overlay = document.querySelector('[data-shell-overlay]')
-    const conversation = document.querySelector("[data-phase='active']")
-    if (overlay !== null) observer.observe(overlay)
-    if (conversation !== null) observer.observe(conversation)
-  }
-  ctx.effect(() => () => {
-    disposed = true
-    if (request !== null) request.abort()
-    if (observer !== null) observer.disconnect()
-    window.clearInterval(id)
-  }, 'rq-activity: poller')
-}
-
-function ActivityRow(props) {
+function MovePill(props) {
   const R = React()
-  const { def, caption } = props
-  const size = def?.avatarWidth ?? 28
-  const img = def?.avatar !== null && def?.avatar !== undefined
-    ? R.createElement('img', {
-      src: `/plugins/dsh-rigorquant/avatar/${def.avatar}`,
-      alt: '',
-      style: {
-        width: size, height: Math.round(size * 0.75),
-        objectFit: 'cover', objectPosition: 'top center',
-        borderRadius: 6, flex: 'none',
-        background: 'var(--dsw-alias-bg-module-platform)',
-      },
-    })
-    : null
-  const right = typeof props.lastAt === 'number' && props.lastAt !== 0
-    ? R.createElement('span', {
-      style: {
-        marginLeft: 'auto', flex: 'none', fontSize: 10,
-        color: 'var(--dsw-alias-label-tertiary)',
-      },
-    }, ago(props.lastAt))
-    : null
-  return R.createElement('div', {
+  const { sessionId, useSession, load, t } = props
+  // A teammate's own header shows the Lead's round: the same address hop the
+  // Team package's own action makes before it reads the view.
+  const leadSessionId = useSession((snapshot) => snapshot?.subagent?.address?.parentSessionId) ?? sessionId
+  const [team, setTeam] = R.useState(null)
+  R.useEffect(() => {
+    let live = true
+    const read = () => {
+      // A failed RemoteResult (no team for this Lead, or the service refusing)
+      // reads the same as an absent team: nothing to show.
+      Promise.resolve(load(leadSessionId)).then(
+        (result) => { if (live) setTeam(result?.ok === true ? result.value : null) },
+        () => { if (live) setTeam(null) },
+      )
+    }
+    read()
+    const timer = setInterval(read, MOVE_REFRESH_MS)
+    return () => { live = false; clearInterval(timer) }
+  }, [load, leadSessionId])
+  if (team === null || team === undefined) return null
+  const move = deriveMove(team.tasks)
+  const running = (team.members ?? []).filter(
+    (member) => member.role === 'teammate' && member.status === 'running' && roleFromName(member.name) !== null)
+  return R.createElement('span', {
     style: {
-      display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
-      padding: '3px 0',
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      borderRadius: 999, padding: '0 10px', height: 24,
+      background: 'var(--dsw-alias-bg-module-platform)',
+      color: 'var(--dsw-alias-label-secondary)', fontSize: 12, whiteSpace: 'nowrap',
     },
   },
-    img,
-    R.createElement('span', {
-      style: {
-        width: 6, height: 6, borderRadius: 99, flex: 'none',
-        background: props.status === 'running'
-          ? 'var(--dsw-alias-label-primary)'
-          : 'var(--dsw-alias-label-tertiary)',
-      },
-    }),
-    R.createElement('span', { style: { minWidth: 0, flex: 1 } },
-      R.createElement('span', {
+    R.createElement('span', { style: { fontWeight: 500, color: 'var(--dsw-alias-label-primary)' } }, t(`move.${move}`)),
+    ...running.map((member) => {
+      const [initials, label] = ROLE_BADGE[roleFromName(member.name)]
+      return R.createElement('span', {
+        key: member.id,
+        title: `${label} — ${member.name}`,
         style: {
-          display: 'block', fontSize: 11.5, fontWeight: 600, lineHeight: 1.35,
-          color: 'var(--dsw-alias-label-primary)', whiteSpace: 'nowrap',
-          overflow: 'hidden', textOverflow: 'ellipsis',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 18, height: 18, borderRadius: 999, flex: 'none',
+          background: 'var(--dsw-alias-fill-secondary)', color: 'var(--dsw-alias-label-primary)',
+          fontSize: 9, fontWeight: 600,
         },
-      }, caption),
-      props.lastText
-        ? R.createElement('span', {
-          style: {
-            display: 'block', fontSize: 10.5, lineHeight: 1.4,
-            color: 'var(--dsw-alias-label-tertiary)', whiteSpace: 'nowrap',
-            overflow: 'hidden', textOverflow: 'ellipsis',
-          },
-        }, props.lastText)
-        : null),
-    right)
-}
-
-// ---- role hub-and-spoke map ----------------------------------------------
-// The RigorQuant preset has no durable task DAG (unlike dsh-agent-teams'
-// scheduler) and no role-to-role handoffs either: the root orchestrator is the
-// HUB. It spawns every role, holds every brief, receives every report, and
-// re-delegates — two child roles never talk directly. Render that honestly as
-// a hub-and-spoke map instead of a stage DAG: the orchestrator in the middle,
-// the seven child roles as spokes around it, each spoke colored by live
-// status and ordered the way the orchestrator actually calls them
-// (proposal → retrieval → re-derivation → audit → certification).
-
-const RQ_NODE_WIDTH = 88
-const RQ_NODE_HEIGHT = 28
-const RQ_HUB_WIDTH = 104
-// Spoke ellipse: sized so the graph (296px) fits the panel body at its default
-// docked width and only barely bleeds at PANEL_MIN_WIDTH, and so the two
-// lowest spokes (an odd count puts no spoke at the bottom center) stay clear
-// of each other: their centers are 2 * RQ_SPOKE_RX * sin(pi/7) = 90px apart,
-// more than RQ_NODE_WIDTH.
-const RQ_SPOKE_RX = 104
-const RQ_SPOKE_RY = 86
-
-const RQ_HUB = 'root'
-const RQ_SPOKES = [
-  'explorer', 'offgrid', 'lit-line',
-  'doublechecker', 'adversary', 'lit-adversary',
-  'doc-adversary',
-]
-
-// ---- panel geometry ------------------------------------------------------
-// Ported from dsh-agent-teams panel-geometry.ts: a docked/floating panel that
-// ignores its own size and is resized by dragging its edges, persisted between
-// browser sessions. Purely functions of a layout + shell bounds.
-const PANEL_DEFAULT_WIDTH = 340
-const PANEL_DEFAULT_HEIGHT = 640
-const PANEL_MIN_WIDTH = 320
-const PANEL_MAX_WIDTH = 640
-const PANEL_MIN_HEIGHT = 360
-const PANEL_DOCK_TOP = 64
-const PANEL_DOCK_BOTTOM = 40
-const PANEL_FLOAT_MARGIN = 12
-const PANEL_COMPACT_BREAKPOINT = 960
-const PANEL_CONVERSATION_GAP = 14
-const PANEL_LAYOUT_STORAGE_KEY = 'dsh-rigorquant:panel:v1'
-const PANEL_OPEN_ATTRIBUTE = 'data-rq-panel-open'
-const PANEL_SHIFT_PROPERTY = '--rq-panel-shift'
-
-const DEFAULT_PANEL_LAYOUT = Object.freeze({
-  mode: 'docked', x: 0, y: PANEL_DOCK_TOP,
-  width: PANEL_DEFAULT_WIDTH, height: PANEL_DEFAULT_HEIGHT, heightMode: 'auto',
-})
-
-const clampValue = (value, minimum, maximum) => Math.min(Math.max(value, minimum), maximum)
-const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value)
-
-function parsePanelLayout(value) {
-  if (value === null || value === undefined) return DEFAULT_PANEL_LAYOUT
-  try {
-    const parsed = JSON.parse(value)
-    if (typeof parsed !== 'object' || parsed === null) return DEFAULT_PANEL_LAYOUT
-    if ((parsed.mode !== 'docked' && parsed.mode !== 'floating')
-      || !isFiniteNumber(parsed.x) || !isFiniteNumber(parsed.y)
-      || !isFiniteNumber(parsed.width) || !isFiniteNumber(parsed.height)) {
-      return DEFAULT_PANEL_LAYOUT
-    }
-    return {
-      mode: parsed.mode, x: parsed.x, y: parsed.y, width: parsed.width, height: parsed.height,
-      heightMode: parsed.mode === 'floating' && parsed.heightMode === 'manual' ? 'manual' : 'auto',
-    }
-  } catch {
-    return DEFAULT_PANEL_LAYOUT
-  }
-}
-
-const compactPanelForBounds = (bounds) => bounds.width <= PANEL_COMPACT_BREAKPOINT
-const panelUsesAutoHeight = (layout, bounds) => compactPanelForBounds(bounds) || layout.mode === 'docked' || layout.heightMode === 'auto'
-
-function resolvePanelGeometry(layout, bounds) {
-  const boundsWidth = Math.max(1, bounds.width)
-  const boundsHeight = Math.max(1, bounds.height)
-  if (compactPanelForBounds(bounds)) {
-    return {
-      ...layout, x: PANEL_FLOAT_MARGIN, y: PANEL_FLOAT_MARGIN,
-      width: Math.max(1, boundsWidth - PANEL_FLOAT_MARGIN * 2),
-      height: Math.max(1, boundsHeight - PANEL_FLOAT_MARGIN * 2),
-    }
-  }
-  const maximumWidth = Math.max(1, Math.min(PANEL_MAX_WIDTH, boundsWidth - PANEL_FLOAT_MARGIN * 2))
-  const minimumWidth = Math.min(PANEL_MIN_WIDTH, maximumWidth)
-  const width = clampValue(layout.width, minimumWidth, maximumWidth)
-  const maximumHeight = Math.max(1, boundsHeight - PANEL_FLOAT_MARGIN * 2)
-  const minimumHeight = Math.min(PANEL_MIN_HEIGHT, maximumHeight)
-  if (layout.mode === 'docked') {
-    const y = clampValue(PANEL_DOCK_TOP, PANEL_FLOAT_MARGIN, Math.max(PANEL_FLOAT_MARGIN, boundsHeight - minimumHeight - PANEL_FLOAT_MARGIN))
-    const availableHeight = Math.max(1, boundsHeight - y - PANEL_DOCK_BOTTOM)
-    const height = clampValue(availableHeight, Math.min(minimumHeight, availableHeight), maximumHeight)
-    const anchorRight = clampValue(bounds.anchorRight, 0, boundsWidth)
-    const maximumX = Math.max(PANEL_FLOAT_MARGIN, boundsWidth - width - PANEL_FLOAT_MARGIN)
-    const x = clampValue(anchorRight - PANEL_DOCK_RIGHT - width, PANEL_FLOAT_MARGIN, maximumX)
-    return { mode: 'docked', x, y, width, height, heightMode: layout.heightMode }
-  }
-  const height = clampValue(layout.height, minimumHeight, maximumHeight)
-  return {
-    mode: 'floating', x: clampValue(layout.x, PANEL_FLOAT_MARGIN, Math.max(PANEL_FLOAT_MARGIN, boundsWidth - width - PANEL_FLOAT_MARGIN)),
-    y: clampValue(layout.y, PANEL_FLOAT_MARGIN, Math.max(PANEL_FLOAT_MARGIN, boundsHeight - height - PANEL_FLOAT_MARGIN)),
-    width, height, heightMode: layout.heightMode,
-  }
-}
-
-const floatPanelLayout = (geometry, bounds) => resolvePanelGeometry({ ...geometry, mode: 'floating' }, bounds)
-const dockPanelLayout = (layout, bounds) => resolvePanelGeometry({ ...layout, mode: 'docked', heightMode: 'auto' }, bounds)
-
-function movePanelLayout(start, dx, dy, bounds) {
-  return resolvePanelGeometry({ ...start, mode: 'floating', x: start.x + dx, y: start.y + dy }, bounds)
-}
-
-function resizePanelLayout(start, edge, dx, dy, bounds) {
-  if (start.mode === 'docked') {
-    if (edge !== 'left') return resolvePanelGeometry(start, bounds)
-    return resolvePanelGeometry({ ...start, width: start.width - dx }, bounds)
-  }
-  const resolved = resolvePanelGeometry(start, bounds)
-  const minimumWidth = Math.min(PANEL_MIN_WIDTH, resolved.x + resolved.width - PANEL_FLOAT_MARGIN)
-  const minimumHeight = Math.min(PANEL_MIN_HEIGHT, bounds.height - resolved.y - PANEL_FLOAT_MARGIN)
-  if (edge === 'left') {
-    const right = resolved.x + resolved.width
-    const maximumWidth = Math.max(1, Math.min(PANEL_MAX_WIDTH, right - PANEL_FLOAT_MARGIN))
-    const width = clampValue(resolved.width - dx, Math.min(minimumWidth, maximumWidth), maximumWidth)
-    return { ...resolved, x: right - width, width }
-  }
-  const maximumHeight = Math.max(1, bounds.height - resolved.y - PANEL_FLOAT_MARGIN)
-  const height = clampValue(resolved.height + dy, Math.min(minimumHeight, maximumHeight), maximumHeight)
-  if (edge === 'bottom') return { ...resolved, height, heightMode: 'manual' }
-  const maximumWidth = Math.max(1, Math.min(PANEL_MAX_WIDTH, bounds.width - resolved.x - PANEL_FLOAT_MARGIN))
-  const width = clampValue(resolved.width + dx, Math.min(minimumWidth, maximumWidth), maximumWidth)
-  return { ...resolved, width, height, heightMode: 'manual' }
-}
-
-/** role → live status: running, idle (present), or pending (not yet spawned). */
-function roleStatusOf(lab, role) {
-  if (role === 'root') return lab.captain?.status === 'running' ? 'running' : 'idle'
-  const members = (lab.members ?? []).filter((member) => member.role === role)
-  if (members.length === 0) return 'pending'
-  return members.some((member) => member.status === 'running') ? 'running' : 'idle'
-}
-
-function RoleGraph(props) {
-  const R = React()
-  const { lab, t } = props
-  // Ellipse geometry: the hub sits at the center, spokes on the ellipse. The
-  // map is a fixed-size island centered in the panel body, so the widest spoke
-  // pair never clips even at PANEL_MIN_WIDTH.
-  const graphWidth = 2 * RQ_SPOKE_RX + RQ_NODE_WIDTH
-  const graphHeight = 2 * RQ_SPOKE_RY + RQ_NODE_HEIGHT
-  const hubX = graphWidth / 2
-  const hubY = graphHeight / 2
-  const positions = new Map([[RQ_HUB, { x: hubX - RQ_HUB_WIDTH / 2, y: hubY - RQ_NODE_HEIGHT / 2 }]])
-  RQ_SPOKES.forEach((role, i) => {
-    // Start at the top and walk clockwise: proposal roles, retrieval, the
-    // blind re-derivation, the audits, and certification last.
-    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / RQ_SPOKES.length
-    positions.set(role, {
-      x: hubX + RQ_SPOKE_RX * Math.cos(angle) - RQ_NODE_WIDTH / 2,
-      y: hubY + RQ_SPOKE_RY * Math.sin(angle) - RQ_NODE_HEIGHT / 2,
-    })
-  })
-  // One spoke per child role: a straight line from the hub to the spoke. The
-  // node boxes paint over both endpoints, so the lines run center to center.
-  // A running spoke tints its line with the live tone; every other spoke stays
-  // at the panel hairline.
-  const edges = RQ_SPOKES.map((role) => {
-    const pos = positions.get(role)
-    const running = roleStatusOf(lab, role) === 'running'
-    return R.createElement('line', {
-      key: RQ_HUB + ':' + role,
-      x1: hubX, y1: hubY,
-      x2: pos.x + RQ_NODE_WIDTH / 2, y2: pos.y + RQ_NODE_HEIGHT / 2,
-      stroke: running ? 'var(--dsw-alias-state-business-primary)' : 'var(--dsw-alias-border-l2)',
-      strokeWidth: running ? 1.5 : 1,
-      opacity: running ? 0.9 : 1,
-    })
-  })
-
-  const nodeOf = (role, isHub) => {
-    const status = roleStatusOf(lab, role)
-    const def = ROLE_DEF_CLIENT[role]
-    const pos = positions.get(role)
-    const tone = status === 'running'
-      ? 'var(--dsw-alias-state-business-primary)'
-      : status === 'idle'
-        ? 'var(--dsw-alias-label-secondary)'
-        : 'var(--dsw-alias-label-tertiary)'
-    return R.createElement('div', {
-      key: role,
-      'data-role': role,
-      'data-status': status,
-      title: (def?.label ?? role) + ' · ' + (status === 'running' ? t('working') : status === 'idle' ? t('idle') : t('pending')),
-      style: {
-        position: 'absolute', left: pos.x, top: pos.y,
-        width: isHub ? RQ_HUB_WIDTH : RQ_NODE_WIDTH, height: RQ_NODE_HEIGHT,
-        boxSizing: 'border-box', borderRadius: 7, padding: '0 7px',
-        display: 'flex', alignItems: 'center', gap: 5,
-        fontSize: 10, fontWeight: 600,
-        // The hub reads heavier than any spoke: it is the only role that sees
-        // every other role's report.
-        border: (isHub ? 1.5 : 1) + 'px solid ' + (status === 'pending' && !isHub ? 'var(--dsw-alias-border-l2)' : tone),
-        background: status === 'pending' && !isHub ? 'transparent' : 'var(--dsw-alias-bg-layer-2)',
-        color: tone,
-        whiteSpace: 'nowrap', overflow: 'hidden',
-      },
-    },
-      // The role's docs/figs portrait, so working roles are recognizable.
-      R.createElement('img', {
-        src: '/plugins/dsh-rigorquant/avatar/' + (def?.avatar ?? ''),
-        alt: '',
-        style: {
-          flex: 'none', width: 16, height: 16, borderRadius: 4,
-          objectFit: 'cover', objectPosition: 'top center',
-          background: 'var(--dsw-alias-bg-module-platform)',
-          opacity: status === 'pending' && !isHub ? 0.45 : 1,
-        },
-      }),
-      R.createElement('span', {
-        style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
-      }, def?.label ?? role))
-  }
-
-  const nodes = [nodeOf(RQ_HUB, true),
-    ...RQ_SPOKES.map((role) => nodeOf(role, false))]
-
-  return R.createElement('div', {
-    style: {
-      position: 'relative', width: graphWidth, height: graphHeight,
-      margin: '6px auto 2px',
-    },
-  },
-    R.createElement('svg', {
-      width: graphWidth, height: graphHeight, style: { position: 'absolute', left: 0, top: 0, overflow: 'visible' },
-      'aria-hidden': true,
-    }, ...edges),
-    ...nodes)
-}
-
-function ActivityPanel(props) {
-  const R = React()
-  const t = props.t
-  const snapshot = props.useRqActivity((value) => value)
-  const currentSessionId = snapshot?.currentSessionId ?? null
-  const allLabs = snapshot?.labs ?? []
-  // Only the lab relevant to the current session (its own captain session, or
-  // one of its subagent transcripts) is shown — never other sessions' labs,
-  // and only while the current session is a RigorQuant one (labs exist only
-  // for those). Mirrors dsh-agent-teams' captain-session scoping.
-  const labs = (() => {
-    if (currentSessionId === null || currentSessionId === undefined) return []
-    const labBySession = new Map()
-    for (const lab of allLabs) {
-      labBySession.set(lab.id, lab.id)
-      for (const member of lab.members ?? []) labBySession.set(member.sessionId, lab.id)
-    }
-    const relevant = labBySession.get(currentSessionId)
-    return relevant === undefined ? [] : allLabs.filter((lab) => lab.id === relevant)
-  })()
-  if (labs.length === 0) return null
-  // The shell overlay survives a navigation; only its owning session can keep
-  // the expanded panel (and its docked conversation concession) visible.
-  const collapsed = activityCollapsed || snapshot.openOwner !== currentSessionId
-  if (collapsed) {
-    const working = labs.reduce((total, lab) => total + (lab.summary?.working ?? 0), 0)
-    return R.createElement('button', {
-      type: 'button', 'aria-label': t('expand'),
-      onClick: () => setActivityCollapsed(false),
-      style: {
-        // Vertically centered on the active conversation's right edge (measured
-        // against the shell overlay + [data-phase='active']), so right-docked
-        // panels and the left workspace rail both stay clear. Absolute — the
-        // entry renders inside the shell's own overlay layer.
-        position: 'absolute',
-        right: typeof snapshot.anchorRight === 'number' ? snapshot.anchorRight : 18,
-        top: '50%',
-        transform: 'translateY(-50%)',
-        zIndex: 9999,
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
-        border: '1px solid var(--dsw-alias-border-l2)',
-        background: 'var(--dsw-alias-bg-layer-2)',
-        color: 'var(--dsw-alias-label-primary)',
-        fontSize: 12, fontWeight: 600,
-        boxShadow: '0 4px 16px rgba(0,0,0,.25)',
-      },
-    },
-      R.createElement('span', {
-        style: {
-          width: 8, height: 8, borderRadius: 99,
-          background: 'var(--dsw-alias-label-primary)',
-          animation: 'rq-pulse 1.6s ease-in-out infinite',
-        },
-      }),
-      t('title'),
-      R.createElement('span', {
-        style: {
-          borderRadius: 99, padding: '0 7px', fontSize: 10.5, lineHeight: '16px',
-          background: 'var(--dsw-alias-bg-module-platform)',
-          color: 'var(--dsw-alias-label-secondary)',
-        },
-      }, `${working} ${t('working')}`))
-  }
-
-  const bodies = labs.map((lab) => {
-    const captain = lab.captain
-    const rows = [R.createElement(ActivityRow, {
-      key: `${lab.id}:captain`,
-      def: { avatar: captain?.avatar, avatarWidth: 34 },
-      caption: `CAPTAIN · ${captain?.label ?? 'Orchestrator'}`,
-      lastText: captain?.lastText ?? '',
-      lastAt: captain?.lastAt ?? 0,
-      status: captain?.status ?? 'idle',
-    })]
-    for (const member of lab.members ?? []) {
-      // Roster rows show only live agents; the hub map (below) paints the
-      // full role set from the same roster including just-completed ones.
-      if (member.disposed) continue
-      rows.push(R.createElement(ActivityRow, {
-        key: `${lab.id}:${member.sessionId}`,
-        def: { avatar: member.avatar, avatarWidth: 28 },
-        caption: `${member.label ?? ''} · ${member.tool ?? ''}`,
-        lastText: member.lastText ?? '',
-        lastAt: member.lastAt ?? 0,
-        status: member.status,
-      }))
-    }
-    const feedItems = lab.feed ?? []
-    const feedOpen = activityFeedOpen.has(lab.id)
-    const visibleFeed = feedOpen ? feedItems : feedItems.slice(0, 1)
-    const feed = visibleFeed.map((item) => R.createElement('div', {
-      key: `${lab.id}:${item.t}:${item.sessionId}:${item.kind}`,
-      style: {
-        display: 'flex', gap: 6, alignItems: 'baseline',
-        fontSize: 10.5, lineHeight: 1.4, color: 'var(--dsw-alias-label-secondary)',
-      },
-    },
-      R.createElement('span', {
-        style: { flex: 'none', color: 'var(--dsw-alias-label-tertiary)', fontSize: 9.5 },
-      }, ago(item.t)),
-      R.createElement('span', {
-        style: { flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-      },
-        item.kind === 'tool'
-          ? R.createElement('span', {
-            style: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 10 },
-          }, item.text)
-          : item.text)))
-    return R.createElement('div', {
-      key: lab.id,
-      style: { padding: '8px 0', borderTop: '1px solid var(--dsw-alias-border-l2)' },
-    },
-      R.createElement('div', {
-        style: { display: 'flex', alignItems: 'baseline', gap: 8 },
-      },
-        R.createElement('span', {
-          style: {
-            fontSize: 12, fontWeight: 600, color: 'var(--dsw-alias-label-primary)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          },
-        }, lab.title ?? `session ${String(lab.id).slice(0, 8)}`),
-        R.createElement('span', {
-          style: {
-            flex: 'none', borderRadius: 99, padding: '0 7px', fontSize: 10,
-            lineHeight: '15px', background: 'var(--dsw-alias-bg-module-platform)',
-            color: 'var(--dsw-alias-label-secondary)',
-          },
-        }, lab.stage),
-        R.createElement('span', {
-          style: {
-            marginLeft: 'auto', flex: 'none', fontSize: 10,
-            color: 'var(--dsw-alias-label-tertiary)',
-          },
-        }, `${lab.summary?.working ?? 0} ${t('working')} · ${lab.summary?.idle ?? 0} ${t('idle')}`)),
-      R.createElement(RoleGraph, {
-        key: `${lab.id}:rolemap`,
-        lab,
-        t,
-      }),
-      rows,
-      R.createElement('div', {
-        style: {
-          display: 'grid', gap: 3, marginTop: 4, paddingTop: 6,
-          borderTop: '1px dashed var(--dsw-alias-border-l2)',
-        },
-      },
-        feedItems.length > 1
-          ? R.createElement('button', {
-            type: 'button',
-            onClick: () => {
-              if (activityFeedOpen.has(lab.id)) activityFeedOpen.delete(lab.id)
-              else activityFeedOpen.add(lab.id)
-              publishActivity()
-            },
-            style: {
-              display: 'inline-flex', alignItems: 'center', gap: 4, justifySelf: 'start',
-              appearance: 'none', border: 'none', background: 'none', cursor: 'pointer',
-              font: 'inherit', fontSize: 10, padding: 0,
-              color: 'var(--dsw-alias-label-tertiary)',
-            },
-          },
-            R.createElement('span', {
-              style: { transition: 'transform .15s ease', transform: feedOpen ? 'rotate(90deg)' : 'none' },
-            }, '▸'),
-            feedOpen
-              ? t('hideHistory')
-              : `${feedItems.length - 1} ${t('history')}`)
-          : null,
-        ...feed))
-  })
-
-  const layout = snapshot?.panelLayout ?? DEFAULT_PANEL_LAYOUT
-  const bounds = snapshot?.panelBounds ?? null
-  const resolved = bounds !== null
-    ? resolvePanelGeometry(layout, bounds)
-    : { ...layout, mode: layout.mode }
-  const floating = resolved.mode === 'floating'
-  const autoHeight = bounds !== null ? panelUsesAutoHeight(layout, bounds) : true
-  const onHeaderDown = (event) => {
-    // No move when the pointer lands on the collapse button.
-    if (typeof event?.target?.closest === 'function' && event.target.closest('button') !== null) return
-    const gestureBounds = bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }
-    beginPanelGesture('move', undefined, event, resolved, gestureBounds)
-  }
-
-  return R.createElement('div', {
-    style: {
-      position: 'absolute', left: resolved.x, top: resolved.y,
-      width: resolved.width,
-      height: autoHeight ? undefined : resolved.height,
-      maxHeight: resolved.height,
-      zIndex: 9999,
-      display: 'flex', flexDirection: 'column',
-      overflow: 'hidden', borderRadius: 12,
-      border: '1px solid var(--dsw-alias-border-l2)',
-      background: 'var(--dsw-alias-bg-layer-3)',
-      boxShadow: '0 8px 32px rgba(0,0,0,.35)',
-    },
-    'data-rq-panel': '',
-    'data-mode': resolved.mode,
-  },
-    // Drag handle / header.
-    R.createElement('div', {
-      onPointerDown: onHeaderDown,
-      style: {
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '9px 12px', borderBottom: '1px solid var(--dsw-alias-border-l2)',
-        cursor: floating ? 'grab' : 'grab',
-      },
-    },
-      R.createElement('span', {
-        style: {
-          width: 8, height: 8, borderRadius: 99, flex: 'none',
-          background: 'var(--dsw-alias-label-primary)',
-          animation: 'rq-pulse 1.6s ease-in-out infinite',
-        },
-      }),
-      R.createElement('span', {
-        style: {
-          flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600,
-          color: 'var(--dsw-alias-label-primary)',
-        },
-      }, t('title')),
-      R.createElement('button', {
-        type: 'button',
-        onPointerDown: (event) => { if (typeof event.stopPropagation === 'function') event.stopPropagation() },
-        onClick: () => {
-          if (floating) {
-            if (bounds !== null) applyPanelLayout(dockPanelLayout(resolved, bounds))
-          } else {
-            applyPanelLayout(floatPanelLayout(resolved, bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }))
-          }
-        },
-        style: {
-          appearance: 'none', border: '1px solid var(--dsw-alias-border-l2)',
-          borderRadius: 8, cursor: 'pointer', font: 'inherit', fontSize: 10.5,
-          padding: '2px 8px', background: 'none',
-          color: 'var(--dsw-alias-label-secondary)',
-        },
-      }, floating ? t('dock') : t('float')),
-      R.createElement('button', {
-        type: 'button',
-        onPointerDown: (event) => { if (typeof event.stopPropagation === 'function') event.stopPropagation() },
-        onClick: () => setActivityCollapsed(true),
-        style: {
-          appearance: 'none', border: '1px solid var(--dsw-alias-border-l2)',
-          borderRadius: 8, cursor: 'pointer', font: 'inherit', fontSize: 10.5,
-          padding: '2px 8px', background: 'none',
-          color: 'var(--dsw-alias-label-secondary)',
-        },
-      }, t('collapse'))),
-    R.createElement('div', { style: { padding: '2px 12px 8px', overflowY: 'auto' } }, ...bodies),
-    R.createElement('div', {
-      style: {
-        padding: '6px 12px', borderTop: '1px solid var(--dsw-alias-border-l2)',
-        fontSize: 9.5, color: 'var(--dsw-alias-label-tertiary)',
-      },
-    }, `${t('credit')} · ${t('live')} · ${POLL_MS / 1000}s`),
-    // Resize handles for edge dragging.
-    R.createElement('div', {
-      'data-resize-edge': 'left',
-      onPointerDown: (event) => {
-        const gestureBounds = bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }
-        beginPanelGesture('resize', 'left', event, resolved, gestureBounds)
-      },
-      style: {
-        position: 'absolute', left: 0, top: 0, bottom: 0, width: 6,
-        cursor: 'ew-resize', touchAction: 'none', opacity: 0,
-      },
-    }),
-    R.createElement('div', {
-      'data-resize-edge': 'bottom',
-      onPointerDown: (event) => {
-        const gestureBounds = bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }
-        beginPanelGesture('resize', 'bottom', event, resolved, gestureBounds)
-      },
-      style: {
-        position: 'absolute', left: 0, right: 0, bottom: 0, height: 6,
-        cursor: 'ns-resize', touchAction: 'none', opacity: 0,
-      },
-    }),
-    R.createElement('div', {
-      'data-resize-edge': 'corner',
-      onPointerDown: (event) => {
-        const gestureBounds = bounds ?? { width: window.innerWidth, height: window.innerHeight, anchorRight: window.innerWidth }
-        beginPanelGesture('resize', 'corner', event, resolved, gestureBounds)
-      },
-      style: {
-        position: 'absolute', right: 0, bottom: 0, width: 14, height: 14,
-        cursor: 'nwse-resize', touchAction: 'none', opacity: 0,
-      },
+      }, initials)
     }))
 }
 
-function applyActivityOverlay(ctx) {
-  ctx.effect(() => ctx.locale.register(ACTIVITY_NS, activityCopy), 'rq-activity: panel dictionaries')
-  startActivityPoller(ctx)
-  ctx.slots.inject('shell.overlay', () => ctx.slots.register(
-    {
-      name: 'shell.overlay',
-      id: 'rigorquant-activity',
-      order: 80,
-      label: 'RigorQuant activity',
-      locale: ACTIVITY_NS,
-      inject: () => ({ hooks: { rqActivity: snapshotStore() } }),
-    },
-    (props) => ActivityPanel({ ...props, t: ctx.locale.bind(ACTIVITY_NS) }),
-  ))
+function applyMovePill(ctx) {
+  ctx.effect(() => ctx.locale.register(MOVE_NS, moveCopy), 'rq-move: pill dictionaries')
+  // `ctx.inject` is the optionality seam: the callback runs only while the
+  // Team namespace exists in this composition, and reaches exactly what it
+  // named. No Team bundle, no namespace, no registration, nothing rendered.
+  ctx.inject(['remote.agentTeams'], (scope) => {
+    scope.slots.inject('conversation.session.header.utilities', () => scope.slots.register(
+      {
+        name: 'conversation.session.header.utilities',
+        id: 'rigorquant-move',
+        order: 10,
+        locale: MOVE_NS,
+        inject: () => ({ load: (leadSessionId) => scope.remote.agentTeams.view(leadSessionId) }),
+      },
+      (props) => MovePill({ ...props, t: scope.locale.bind(MOVE_NS) }),
+    ))
+  })
 }
 
 return { apply, inject }
