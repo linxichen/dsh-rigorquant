@@ -8,7 +8,7 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-09-23
+## [0.5.0] - 2026-09-24
 
 RigorQuant on Agent Teams, team-only (Decision 24,
 `docs/adr/0001-rigorquant-on-agent-teams.md`). The orchestrator is the team's
@@ -125,6 +125,20 @@ who cannot enable a Beta bundle stay on 0.4.2.
   probe (issue #11): a role now comes from the teammate's name.
 
 ### Fixed
+- **The orchestrator could re-brief a settled fresh-per-brief teammate**
+  (found in the live release run, `docs/upgrade-0.1.6.md` §3.15). It sent
+  hash-bound "erratum briefs" back to a settled `doublechecker-5` and
+  `explorer-3`, although Explorers, OffGridThinkers and DoubleCheckers are
+  fresh per brief. The orchestrator's guard now reads the live roster and
+  refuses a `send_message` to one of those roles once it is idle or
+  inactive, naming the next unused `<role>-<n>` to brief instead. A running
+  one may still be answered, and the reused roles are unaffected. SKILL.md
+  and protocol.md say a correction is a new brief for a new teammate.
+- **A cold resume left the goal disarmed** (same run). The text said one
+  human turn re-arms the goal but never said who makes which call, so the
+  orchestrator worked on inside the "continue" turn with the goal inactive.
+  The persona and SKILL.md now make it the orchestrator's first act on that
+  turn: `get_goal`, then `update_goal` with action `resume`.
 - **Toggling the `rq-team` row in the Plugins page left the orchestrator
   armed, and the row could not be turned back on** (found verifying this release live,
   `docs/upgrade-0.1.6.md` §3.15). Every persona, context, restriction and

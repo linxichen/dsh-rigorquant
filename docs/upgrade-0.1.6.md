@@ -1196,6 +1196,17 @@ block. Boot: `dsh --profile rq50 --port 38150 --no-open` under a PTY.
     2. After the cold resume, the goal widget stayed **Inactive**, and
        `create_goal` was never called again. The study finished inside the
        single long "continue" turn, not under a re-armed goal.
+
+    Both are fixed after the run. (1) The orchestrator's guard in
+    `dsh/team.js` reads `listMembers` and refuses a `send_message` to a
+    settled (idle or inactive) Explorer, OffGridThinker or DoubleChecker,
+    naming the next unused `<role>-<n>`. A running one may be answered, and
+    the reused roles are untouched. The probe drives all six cases. (2) The
+    persona and SKILL.md name the re-arm calls: `get_goal`, then
+    `update_goal` with action `resume`, before any other study work, which
+    is the goal tool's own documented resume path. Both texts are pinned in
+    `test_repo_consistency.py`. Neither fix was re-run live: the guard rests
+    on the probe, and the re-arm is procedure text the model follows.
 - **Outstanding at the time of writing:** the `v0.5.0` tag and the npm
   publish, pending the operator's go-ahead.
 

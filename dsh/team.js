@@ -213,16 +213,45 @@ function teammateGuard(agent, membership, role, teams) {
   }
 }
 
+/** Roles whose blank context is the point: each brief gets a new teammate. */
+const FRESH_PER_BRIEF_ROLES = new Set(['explorer', 'offgrid', 'doublechecker'])
+
+/** The next unused `<role>-<n>` on the roster (counters only increase). */
+function nextNameFor(role, roster) {
+  const used = roster
+    .filter((member) => roleFromName(member.name) === role)
+    .map((member) => Number(member.name.slice(role.length + 1)))
+    .filter(Number.isInteger)
+  return `${role}-${Math.max(0, ...used) + 1}`
+}
+
 /**
  * The orchestrator's guard: `spawn_teammate` refuses a name that does not
  * parse to `<role>-<n>` (an unnamed teammate would run the orchestrator
  * persona with the full catalog — Decision 8's exact forbidden failure) and
  * refuses `context: 'fork'` (fork inherits the parent conversation).
+ *
+ * `send_message` refuses a new brief to a settled fresh-per-brief teammate
+ * (Explorer, OffGridThinker, DoubleChecker) — found live in the 0.5.0
+ * release run (docs/upgrade-0.1.6.md §3.15), where the orchestrator sent
+ * "erratum briefs" back to the authors instead of briefing new teammates.
+ * Settled is read live from the roster: a running teammate may still be
+ * answered (a blocking question mid-turn), the reused roles are untouched,
+ * and a name the roster does not hold is left to the tool's own error.
  */
-function leadGuard() {
+function leadGuard(agent, teams) {
   return (execution) => {
-    if (execution.name !== 'spawn_teammate') return undefined
     const args = argsOf(execution)
+    if (execution.name === 'send_message') {
+      const role = roleFromName(args.target)
+      if (!FRESH_PER_BRIEF_ROLES.has(role)) return undefined
+      const roster = teams.listMembers(agent)
+      const member = roster.find((row) => row.name === args.target)
+      if (member === undefined || member.status === 'running' || member.status === 'provisioning') return undefined
+      return `rq-team: ${args.target} is fresh per brief and has settled (${member.status}) — ` +
+        `brief a new ${nextNameFor(role, roster)} with spawn_teammate instead of messaging it`
+    }
+    if (execution.name !== 'spawn_teammate') return undefined
     if (roleFromName(args.name) === null) {
       return `rq-team: spawn_teammate refused — '${args.name}' does not parse to <role>-<n>`
     }
@@ -290,7 +319,7 @@ function apply(ctx, config = {}) {
     const tools = agent.ctx.get('tools')
     if (membership.role === 'lead') {
       const disposeContext = systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT })
-      const disposeGuard = tools !== undefined ? tools.guard(leadGuard()) : () => {}
+      const disposeGuard = tools !== undefined ? tools.guard(leadGuard(agent, teams)) : () => {}
       installed.set(agent, () => {
         disposeContext()
         disposeGuard()

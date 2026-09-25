@@ -78,6 +78,19 @@ function drive(guardFn, name, args) {
   return reason === undefined ? null : reason
 }
 
+// Fixture roster the Lead's reuse guard reads live statuses from: a settled
+// fresh-per-brief teammate (idle or inactive) must never get a new brief,
+// while a running one may be answered (a blocking question mid-turn), and
+// the reused roles may be briefed again once settled.
+const ROSTER = [
+  { name: 'lead', role: 'lead', status: 'running' },
+  { name: 'explorer-1', role: 'teammate', status: 'idle' },
+  { name: 'offgrid-1', role: 'teammate', status: 'inactive' },
+  { name: 'doublechecker-1', role: 'teammate', status: 'running' },
+  { name: 'adversary-1', role: 'teammate', status: 'idle' },
+  { name: 'lit-line-1', role: 'teammate', status: 'inactive' },
+]
+
 // Fixture task board for the ownership guard: 'own-task' is owned by
 // doublechecker-1, 'foreign-task' by explorer-1, 'unowned-task' has no owner
 // yet (still claimable), and any other id is unknown (getTask throws, the
@@ -99,6 +112,7 @@ async function runPresentScenario(mod) {
       if (task === undefined) throw new Error(`team-task-not-found: ${taskId}`)
       return task
     },
+    listMembers: () => ROSTER,
   }
   const ctx = {
     logger: { warn: () => {} },
@@ -173,6 +187,16 @@ async function runPresentScenario(mod) {
     spawnBadNameDenied: drive(leadGuard, 'spawn_teammate', { name: 'scout-1', context: 'fresh' }),
     spawnForkDenied: drive(leadGuard, 'spawn_teammate', { name: 'doublechecker-9', context: 'fork' }),
     spawnFreshRoleAllowed: drive(leadGuard, 'spawn_teammate', { name: 'doublechecker-9', context: 'fresh' }),
+    // The orchestrator's reuse guard: a settled fresh-per-brief teammate is
+    // never briefed again; a running one may be answered; reused roles may be
+    // briefed once settled; a name the roster does not hold is left to the
+    // tool's own error.
+    briefSettledExplorerDenied: drive(leadGuard, 'send_message', { target: 'explorer-1', message: 'erratum' }),
+    briefInactiveOffgridDenied: drive(leadGuard, 'send_message', { target: 'offgrid-1', message: 'erratum' }),
+    answerRunningDoublecheckerAllowed: drive(leadGuard, 'send_message', { target: 'doublechecker-1', message: 'answer' }),
+    briefSettledAdversaryAllowed: drive(leadGuard, 'send_message', { target: 'adversary-1', message: 'new brief' }),
+    briefInactiveLitLineAllowed: drive(leadGuard, 'send_message', { target: 'lit-line-1', message: 'new brief' }),
+    unknownTargetLeftToTheTool: drive(leadGuard, 'send_message', { target: 'doublechecker-99', message: 'x' }),
   }
 
   return {

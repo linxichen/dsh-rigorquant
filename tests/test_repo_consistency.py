@@ -575,6 +575,34 @@ def test_the_roster_policy_is_stated_once_and_consistently():
     assert "idle or inactive" in policy
 
 
+def test_a_correction_to_a_fresh_role_goes_to_a_new_teammate():
+    """Found live in the 0.5.0 release run (docs/upgrade-0.1.6.md §3.15): the
+    orchestrator sent "erratum briefs" back to a settled doublechecker and
+    explorer. Both the skill and the protocol must say a correction is a new
+    brief for a new teammate, and that the guard refuses the message."""
+    skill = " ".join((SKILL_DIR / "SKILL.md").read_text().split())
+    protocol = " ".join(_protocol().split())
+    for name, text in (("SKILL.md", skill), ("protocol.md", protocol)):
+        assert "never the author" in text or "never back to the author" in text, (
+            "%s lets a correction go back to the author" % name)
+        assert ("refuses a `send_message` to a settled Explorer, OffGridThinker "
+                "or DoubleChecker") in text, "%s does not state the guard" % name
+
+
+def test_resuming_rearms_the_goal_by_its_tool_calls():
+    """Found live in the 0.5.0 release run (docs/upgrade-0.1.6.md §3.15): after
+    a cold resume the orchestrator worked on while the goal stayed inactive,
+    because the text said a human turn re-arms it without saying who calls
+    what. The persona and the skill both name the calls."""
+    persona = " ".join((REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text().split())
+    skill = " ".join((SKILL_DIR / "SKILL.md").read_text().split())
+    for name, text in (("persona", persona), ("SKILL.md", skill)):
+        assert "`get_goal`, then `update_goal` with action `resume`" in text, (
+            "%s does not name the re-arm calls" % name)
+        assert "before any other study work" in text, (
+            "%s does not put the re-arm first" % name)
+
+
 def test_skill_text_uses_the_glossary_vocabulary():
     """CONTEXT.md: "study" is the assignment, "task" a board item, "move" the
     loop position, "stage" a validity stage."""

@@ -69,7 +69,9 @@
 
       UNATTENDED, stated precisely: the framework runs unattended WITHIN one
       live session. Crossing a session boundary disarms the goal, and one human
-      turn ("continue") is required to rearm it. Rounds do not continue
+      turn ("continue") is required to rearm it: on that turn, before any
+      other study work, call `get_goal`, then `update_goal` with action
+      `resume` and its exact `goal_id` and `revision`. Rounds do not continue
       autonomously across restarts; checkpoint state and resume explicitly.
 
       When a tool result is spilled (a bounded preview plus a locator), read

@@ -236,6 +236,27 @@ def test_the_orchestrator_spawn_teammate_guard_refuses_bad_names_and_fork(probe)
 # ── a session composed as rigorquant only after its own agent/created ──────
 
 
+def test_the_orchestrator_never_rebriefs_a_settled_fresh_per_brief_teammate(probe):
+    """Explorer, OffGridThinker and DoubleChecker are fresh per brief.
+
+    Found live in the 0.5.0 release run (docs/upgrade-0.1.6.md §3.15): the
+    orchestrator sent hash-bound "erratum briefs" to a settled
+    doublechecker and explorer instead of briefing new teammates. Reuse is
+    a new brief after the teammate settled, so the guard reads the live
+    roster status: settled (idle/inactive) is refused, running (answering a
+    blocking question mid-turn) is allowed, and the reused roles are
+    untouched.
+    """
+    checks = probe["guardChecks"]
+    assert "fresh per brief" in checks["briefSettledExplorerDenied"]
+    assert "explorer-2" in checks["briefSettledExplorerDenied"]
+    assert "fresh per brief" in checks["briefInactiveOffgridDenied"]
+    assert checks["answerRunningDoublecheckerAllowed"] is None
+    assert checks["briefSettledAdversaryAllowed"] is None
+    assert checks["briefInactiveLitLineAllowed"] is None
+    assert checks["unknownTargetLeftToTheTool"] is None
+
+
 def test_a_late_preset_switch_gets_no_composition_until_the_switch_lands(probe):
     """Before `agent-preset/selected` fires, the session was still on its
     original (non-rigorquant) preset when `agent/created` ran — this module

@@ -38,8 +38,12 @@ enforced by `rq_check.py` at PASS time (see
 
 **Unattended, precisely:** the framework runs unattended within one live
 session. Crossing a session boundary disarms the goal; one human turn
-("continue") re-arms it. Checkpoint state to `study.json` / `registry.json` /
-`journal.md` every round so a resumed session can reconstruct the study.
+("continue") re-arms it, and the re-arming is yours to do on that turn,
+before any other study work: `get_goal`, then `update_goal` with action
+`resume` and the exact `goal_id` and `revision` it returned (a goal the user
+paused stays theirs to resume). Checkpoint state to `study.json` /
+`registry.json` / `journal.md` every round so a resumed session can
+reconstruct the study.
 
 If this is the first message of a RigorQuant study, run Steps 0–2 in order, then
 enter the round loop.
@@ -219,7 +223,11 @@ inherits your conversation and is refused.
 
 **Roster policy.** Explorer, OffGridThinker and DoubleChecker are **fresh per
 brief** (`explorer-<n>`, `offgrid-<n>`, `doublechecker-<n>`): blank context is
-the point, so each brief gets a new teammate. Adversary, Literature adversary,
+the point, so each brief gets a new teammate — a correction to one of their
+artifacts included: brief a new teammate of that role with the defect and the
+frozen snapshot, never the author. The team guard refuses a `send_message` to
+a settled Explorer, OffGridThinker or DoubleChecker (a running one may still
+be answered). Adversary, Literature adversary,
 Document adversary and each literature line (`adversary-<n>`,
 `lit-adversary-<n>`, `doc-adversary-<n>`, `lit-line-<n>` with `n` = the line
 number) are **reused across rounds by message**: their accumulated knowledge

@@ -122,7 +122,11 @@ unaudited. Decision 24 (docs/architecture.md) carries them onto Agent Teams.
 - **Roster policy.** Fresh per brief: `explorer-<n>`, `offgrid-<n>`,
   `doublechecker-<n>` — blank context is the point, and the two independent
   derivations of a load-bearing claim are two fresh DoubleCheckers with
-  different means. Reused across rounds by message: `adversary-<n>`,
+  different means. A correction to a fresh-per-brief teammate's artifact is
+  itself a new brief, so it goes to a new teammate of that role with the
+  defect and the frozen snapshot, never back to the author; the team guard
+  refuses a `send_message` to a settled Explorer, OffGridThinker or
+  DoubleChecker, and a running one may still be answered. Reused across rounds by message: `adversary-<n>`,
   `lit-adversary-<n>`, `doc-adversary-<n>`, and each `lit-line-<n>` (`n` = the
   line number; lines are numbered in creation order, so it is also the
   counter) — their accumulated knowledge is the job — only while idle or
