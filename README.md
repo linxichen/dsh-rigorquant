@@ -131,29 +131,14 @@ breaks that teammate's blank context — documented, not prevented).
 The topology is **hub-and-spoke**, and the guards enforce it rather than
 asking: a teammate's message reaches the orchestrator or nowhere, a teammate
 cannot list the roster or the whole board, and it may read or update only a
-task no other teammate owns (the one its brief names, which it claims). The
-figure below is that topology — the orchestrator at the hub, the roles it
-creates as spokes, the round's tasks beneath them:
+task no other teammate owns (the one its brief names, which it claims).
 
-<p align="center">
-  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant agent team topology — hub-and-spoke roles over the round's task dependency graph">
-</p>
-
-The figure is the reader-safe rendering of that view, generated from
-[`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) — the
-live roster and board are visible only in a running web session. It is adapted
-from the activity panel of
-[dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) — the picture
-in
-[its README](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)
-— showing RigorQuant's own eight roles at a fan-out moment.
-
-> **Attribution.** The figure adapts the activity-panel design of
+> **Attribution.** The hero banner (`docs/figs/agent-team-hero.svg`) is
+> reworked from the hero graphic of
 > [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) by
 > [NanmiCoder](https://github.com/NanmiCoder) (程序员阿江 / Relakkes) —
 > Copyright (c) 2026, MIT License. The role portraits are this repo's own
-> `docs/figs/` assets. The hero banner (`docs/figs/agent-team-hero.svg`) is
-> likewise reworked from the upstream hero graphic.
+> `docs/figs/` assets.
 
 **The loop, in five moves.** Each round is fan-out → ground truth → adversary → synthesize.
 
@@ -384,8 +369,6 @@ agent-presets/
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources
-docs/figs/agent-team-activity.svg  reader-safe hub-and-spoke topology figure
-docs/figs/agent-team-activity.js   its generator (freshness-pinned in tests)
 docs/figs/agent-team-hero.svg       hero banner, reworked from the
                              dsh-agent-teams hero graphic (see the credit above)
 tests/                      the validator's test suite (see Testing below)

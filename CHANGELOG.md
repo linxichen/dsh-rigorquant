@@ -178,6 +178,10 @@ tests that pinned it:
   exemptions of the vocabulary and retired-model pins went with them.
   `docs/hard-lessons-from-the-var-expected-return-run.md` (the skill cites
   it) and `docs/showcase.html` stay.
+- The activity-panel figure in both READMEs: `docs/figs/agent-team-activity.svg`,
+  its generator `docs/figs/agent-team-activity.js`, and
+  `test_agent_team_activity_svg_is_fresh`. It pictured the retired activity
+  panel; the hero banner keeps the dsh-agent-teams credit.
 - Checks the stale-surface sweep now covers: `test_client_bundle.py`'s
   `settingsScope`/`remote.agentTeams` read test and its probe verdicts, and
   the per-file `mcp-jacobian` and `rq-preset-sync` asserts in

@@ -751,22 +751,21 @@ def test_both_readmes_describe_the_team_through_the_native_surface():
     view, so the section that used to describe the `rq-activity` host half and
     its `shell.overlay` floater must describe the native things a researcher
     looks at -- the roster and the task board in the session header, and a
-    teammate opened as an ordinary conversation -- and must keep the
-    hub-and-spoke figure as the picture of the topology the per-call guards
-    enforce. The retired implementation may not be named:
-    not the host half, not the overlay slot, not the floater/悬浮件. The
-    upstream *design* may still be credited -- the figure is adapted from it.
+    teammate opened as an ordinary conversation -- and the hub-and-spoke
+    topology the per-call guards enforce. The retired implementation may not
+    be named: not the host half, not the overlay slot, not the floater/悬浮件.
+    Nor may the activity-panel figure come back (Decision 25 removed it).
     """
     for name, heading, words in (
         ("README.md", "The team, live",
          ("roster", "task board", "session header", "hub-and-spoke",
-          "enforce", "docs/figs/agent-team-activity.svg")),
+          "enforce")),
         ("README.zh-CN.md", "团队实时视图",
-         ("花名册", "任务看板", "会话头部", "枢纽", "强制",
-          "docs/figs/agent-team-activity.svg")),
+         ("花名册", "任务看板", "会话头部", "枢纽", "强制")),
     ):
         body = _pin_section_words(name, heading, words, level=3)
-        for retired in ("rq-activity", "shell.overlay", "floater", "悬浮件", "悬浮条"):
+        for retired in ("rq-activity", "shell.overlay", "floater", "悬浮件", "悬浮条",
+                        "agent-team-activity"):
             assert retired not in body, (
                 "%s's team section still describes the retired %r" % (name, retired))
 
@@ -1294,6 +1293,11 @@ def test_no_reference_to_a_docs_file_dangles():
     for rel in tracked_files():
         if rel.endswith((".png", ".pdf", ".lock")):
             continue
+        # The changelog is a historical record: a release note that removed a
+        # file keeps naming it, and renaming the entry would falsify history.
+        # Every other tracked file must reference only what still exists.
+        if rel == "CHANGELOG.md":
+            continue
         try:
             text = (REPO / rel).read_text()
         except (OSError, UnicodeDecodeError):
@@ -1513,31 +1517,6 @@ def test_a_fetched_copy_installs_the_published_version():
         "install.sh no longer distinguishes checkout from fetched copy")
     assert 'spec="dsh-rigorquant@${VERSION:-latest}"' in script, (
         "the fetched-copy path must install the published version by name")
-
-
-def test_agent_team_activity_svg_is_fresh():
-    """The committed panel SVG must be exactly what the generator emits.
-
-    The activity view is generated (docs/figs/agent-team-activity.js embeds
-    the role portraits as data URIs); a hand-edited SVG is the drift class
-    this suite exists to catch -- and an edit here would silently stop
-    matching the README's credited source.
-    """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required to regenerate the activity SVG")
-    svg = REPO / "docs/figs/agent-team-activity.svg"
-    generator = REPO / "docs/figs/agent-team-activity.js"
-    before = svg.read_bytes()
-    after = before
-    try:
-        subprocess.run([node, str(generator)], cwd=REPO, check=True, capture_output=True)
-        after = svg.read_bytes()
-    finally:
-        if after != before:
-            svg.write_bytes(before)
-    assert after == before, (
-        "docs/figs/agent-team-activity.svg is stale; run `node docs/figs/agent-team-activity.js`")
 
 
 # ── the stale-surface sweep (Decision 25, issue #32) ─────────────────────────

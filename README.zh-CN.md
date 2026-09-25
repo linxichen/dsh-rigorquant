@@ -117,24 +117,12 @@ RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到
 
 拓扑是**枢纽-辐条（hub-and-spoke）**，而且由守卫**强制**成事实而非约定：
 队友的消息要么到编排者、要么发不出去；队友无法列出花名册或整个看板；只能读取或
-更新没有被其他队友占有的任务（也就是它简报指定的那一条，由它 claim）。下图就是
-这一拓扑——编排者居中，它创建的角色为辐条，本轮的任务在下方：
+更新没有被其他队友占有的任务（也就是它简报指定的那一条，由它 claim）。
 
-<p align="center">
-  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant 团队拓扑——枢纽-辐条式角色与其下方本轮的任务依赖图">
-</p>
-
-上图是该视图的读者友好静态渲染，由
-[`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) 生成——
-实时花名册与看板只在运行中的 web 会话里可见。它改绘自
-[dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
-的活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身八个角色在"扇出"时刻的状态。
-
-> **署名。** 本图改编自
-> [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的活动面板设计，作者
+> **署名。** hero 横幅（`docs/figs/agent-team-hero.svg`）改自
+> [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的 hero 图，作者
 > [NanmiCoder](https://github.com/NanmiCoder)（程序员阿江 / Relakkes）——
-> Copyright (c) 2026，MIT 许可证。角色头像为本仓库 `docs/figs/` 自有资源；
-> hero 横幅（`docs/figs/agent-team-hero.svg`）同样改自上游 hero 图。
+> Copyright (c) 2026，MIT 许可证。角色头像为本仓库 `docs/figs/` 自有资源。
 
 **五步循环。** 每轮＝扇出 → 求真 → 对抗 → 综合。
 
@@ -329,8 +317,6 @@ agent-presets/
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
-docs/figs/agent-team-activity.svg  读者友好的枢纽-辐条拓扑静态图
-docs/figs/agent-team-activity.js   其生成脚本（测试锁定不漂移）
 docs/figs/agent-team-hero.svg       hero 横幅，改自 dsh-agent-teams
                             的 hero 图（见上方署名）
 tests/                      校验器测试套件（见下方"测试"）
