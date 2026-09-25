@@ -42,14 +42,13 @@ module (via tests/team_probe.cjs, not by re-implementing it in Python):
    network verb denied for a web-denied role and allowed for an open role;
    a bad `spawn_teammate` name or `context: 'fork'` denied on the Lead.
 8. a session composed as rigorquant only AFTER its own `agent/created`
-   already ran (found live against the installed 0.1.6-alpha.2 harness,
-   docs/upgrade-0.1.6.md §3.11 — a "New Session" switched to the RigorQuant
+   already ran (found live on the harness 0.5.0 ran on, Decision 24 — a "New Session" switched to the RigorQuant
    preset in the picker, rather than created with it already selected)
    still gets the Lead's guard-armed context and `spawn_teammate` guard,
    via a second trigger on `agent-preset/selected`.
 9. unloading the plugin (the Plugins-page row toggle) disposes every
    composition it installed on a live agent, and reloading it recomposes
-   those agents exactly once (found live, docs/upgrade-0.1.6.md §3.15).
+   those agents exactly once (found live, Decision 24).
 10. the escalation lane (Decision 25, issue #27): the Lead alone gets the
    `rq_escalate` tool, which mounts the jacobian MCP client into the caller
    or a named live teammate, once per agent; the guard refuses it to every
@@ -245,7 +244,7 @@ def test_the_orchestrator_spawn_teammate_guard_refuses_bad_names_and_fork(probe)
 def test_the_orchestrator_never_rebriefs_a_settled_fresh_per_brief_teammate(probe):
     """Explorer, OffGridThinker and DoubleChecker are fresh per brief.
 
-    Found live in the 0.5.0 release run (docs/upgrade-0.1.6.md §3.15): the
+    Found live in the 0.5.0 release run (Decision 24): the
     orchestrator sent hash-bound "erratum briefs" to a settled
     doublechecker and explorer instead of briefing new teammates. Reuse is
     a new brief after the teammate settled, so the guard reads the live
@@ -276,7 +275,7 @@ def test_a_late_preset_switch_to_rigorquant_installs_the_lead_composition(probe)
     own recompose already landed on agent.ctx), the Lead gets exactly what it
     would have gotten from a same-preset agent/created: the armed context and
     its spawn_teammate guard — found missing live on the installed harness
-    (docs/upgrade-0.1.6.md §3.11) before this second trigger existed."""
+    (Decision 24) before this second trigger existed."""
     after = probe["latePresetSelection"]["afterSwitch"]
     assert after["sections"] == []
     assert after["guardCount"] == 1

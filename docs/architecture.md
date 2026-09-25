@@ -72,7 +72,7 @@
    shipped base bundle (`@deepseek-ai/dsh-base`), and the preset re-mounts only
    the human `/goal` command and the model-facing goal tool, which the web
    bundle disables at the host plane. The 0.1.5 study's "mount it" is
-   superseded by `docs/upgrade-0.1.6.md` §5 N1.)*
+   superseded by Decision 24.)*
 9. **Model routing** — one model everywhere (user's choice); reasoning-effort
    knob available per role; independence comes from context separation.
    *(Superseded by Decision 16: routing is per-role through the
@@ -112,8 +112,8 @@
 
 ## Review amendments
 
-The four-pass repository review ([docs/repository-review.md](repository-review.md))
-recorded accepted verdicts that amend decisions 1 (unattended scope), 3/6
+The four-pass repository review (retired in 0.6.0 under Decision 25; it
+stays readable at tag `v0.5.0`) recorded accepted verdicts that amend decisions 1 (unattended scope), 3/6
 (sanity gate + statistical criteria), 4/7/8 (isolation language + per-role
 tools), 5 (opt-in, pinned jacobian), 10 (one goal, auto-implement safety), and
 11/12 (bundle contents + workspace). Those verdicts are the source of truth for
@@ -411,7 +411,7 @@ byte-compatible and the browser half hit one breaking change:
 into the `settingsSchema` service (`rehydrate`/`validate`; path helpers
 unchanged).
 
-**Re-surveyed for 0.1.5** (`docs/upgrade-0.1.5.md`): the dual-version client is
+**Re-surveyed for 0.1.5** (0.4.1): the dual-version client is
 gone and the floor moved to `0.1.5-alpha.2` (0.1.6 raised it again — see the
 amendment below). 0.1.3-alpha.2
 split the persona row's single `text` key into a required `prefix` plus a
@@ -435,8 +435,7 @@ the deliverables tool (`present`) and the right Sidebar land. Decision:
   to the agent that started it (and what wakes it). Every role persona and the
   protocol/SKILL documents say exactly that, and the seven child `toolFilter`
   deny lists no longer name `send_message` — a depth-1 child may message its
-  direct parent (`interrupt_agent`/`list_agents` stay denied). See
-  `docs/upgrade-0.1.5.md` §4.3.
+  direct parent (`interrupt_agent`/`list_agents` stay denied).
 - **One persona section, split.** 0.1.3-alpha.2 replaced the single
   `deployment:persona` section with `deployment:persona-prefix` and
   `deployment:persona-suffix`, and the `dsh-persona` row now takes
@@ -463,9 +462,9 @@ the deliverables tool (`present`) and the right Sidebar land. Decision:
   DAG, `spawn_teammate`/`wait_agent`) is the closest native match to the
   round-loop fan-out; adopt only when it stabilizes.
 
-**Amended for 0.1.6 (0.4.2, the last classic release; `docs/upgrade-0.1.6.md`
-§3):** two browser seams broke silently and are followed, not worked around,
-and the **required floor is now `DSH ≥ 0.1.6-alpha.2`** — enforced by
+**Amended for 0.1.6 (0.4.2, the last classic release):** two browser seams
+broke silently and are followed, not worked around, and the floor rose to
+`DSH ≥ 0.1.6-alpha.2` (Decision 25 raises it again) — enforced by
 `install.sh`, documented in both READMEs and the preset header, and pinned by
 `test_repo_consistency.py`. The floor is above every row's own requirement
 because the two seams below are browser-side: on 0.1.5 the preset still mounts
@@ -704,26 +703,22 @@ freeze-and-hash; a reused teammate receives only new hash-bound briefs),
 view plus a move pill) and 23 (role identity moves from the tool name to the
 teammate name; the hub-and-spoke map is now what the guards enforce).
 
-**Enforcement-by-scope's composition half shipped under issue #9**
-(`docs/upgrade-0.1.6.md` §3.9): `dsh/team.js` applies each teammate's
+**Enforcement-by-scope's composition half shipped under issue #9**: `dsh/team.js` applies each teammate's
 persona and global tool-tier budget by name, and registers the
 orchestrator's "RigorQuant team guard: armed" line as a runtime context
 (not a section — the harness's own `CONTEXT_ORDERS` family, distinct from
 a persona slot).
-**Topology-by-guard shipped under issue #10** (`docs/upgrade-0.1.6.md`
-§3.10): a `tools.guard` per composed member enforces what `tools.restrict`
+**Topology-by-guard shipped under issue #10**: a `tools.guard` per composed member enforces what `tools.restrict`
 cannot mask on the scoped Team tools — hub-and-spoke messaging, roster/board
 blindness, own-task-only board access, the bash network-verb denial for
 web-denied roles, and the orchestrator's `spawn_teammate` name/fork refusal.
-**A Lead-only composition gap, found live and fixed** (`docs/upgrade-0.1.6.md`
-§3.11): a session composed as `rigorquant` only *after* its own
+**A Lead-only composition gap, found live and fixed**: a session composed as `rigorquant` only *after* its own
 `agent/created` already ran (the ordinary "New Session, then pick a preset"
 UI flow) left the Lead's guard-armed context and `spawn_teammate` guard
 uninstalled for the session's entire life — teammates are unaffected, since
 a teammate's preset is already settled at spawn time. `dsh/team.js` now
 also re-triggers composition on the harness's `agent-preset/selected` event.
-**Router role-resolution by membership shipped under issue #11**
-(`docs/upgrade-0.1.6.md` §3.12): `dsh/index.js` resolves a routed agent's
+**Router role-resolution by membership shipped under issue #11**: `dsh/index.js` resolves a routed agent's
 role the same way `dsh/team.js` resolves composition — through
 `agentTeams.tryMembership(agent)`, the Lead as `root`, every other member
 by its name — and carries the shipped tier matrix itself, since no native
@@ -733,8 +728,8 @@ synchronous session-event reads are gone from the router; the classic
 per-role delegation rows still use the persona tag until a later issue
 removes them (`dsh/activity.js`, the tag's other reader, is deleted under
 issue #13).
-**The installer enables Agent Teams under issue #12** (`docs/upgrade-0.1.6.md`
-§3.13): a full install adds whichever of the two optional bundles are
+**The installer enables Agent Teams under issue #12** (Decision 25 cuts
+it to one bundle): a full install adds whichever of the two optional bundles are
 missing from the profile's `dsh.profile.bundles` and appends the `maxMembers:
 64` cap override into that profile's `cordis.patch.yml` under a
 `dsh-rigorquant` marker that also records which bundles it enabled, printing
@@ -745,7 +740,7 @@ the path the whole step warns and is skipped, keeping CI's install smoke
 test green. The identical override row ships in this package's own bundle
 patch as a consistency pin, effective only when the Team layer precedes
 `dsh-rigorquant` in a profile's bundle order.
-**The browser goes native under issue #13** (`docs/upgrade-0.1.6.md` §3.14):
+**The browser goes native under issue #13**:
 the activity monitor host module (`dsh/activity.js`), its HTTP routes, its
 probe and its tests are deleted outright, along with the client bundle's
 floater/panel/geometry code — the deprecated synchronous session-event reads
@@ -798,7 +793,7 @@ documents for the two collisions `CONTEXT.md` lists under *Avoid* — a move
 named as a stage, a study named as a task, in English and Chinese — and pins
 both READMEs' team, install and deployment sections by heading.
 **Enforcement by scope has to follow the plugin out, found at release under
-issue #16** (`docs/upgrade-0.1.6.md` §3.15): every persona, context,
+issue #16**: every persona, context,
 restriction and guard `dsh/team.js` installs goes through the agent's own
 `agent.ctx`, so it belongs to the agent's scope, not the plugin's, and
 survives the plugin unloading. Toggling the `rq-team` row off in the Plugins
@@ -812,8 +807,10 @@ toggle disarms live agents and a reload recomposes them exactly once.
 
 Recorded as an ADR: `docs/adr/0002-declared-preset-on-dsh-0.1.7.md`.
 
-**Harness.** From 0.6.0 the harness range is `>=0.1.7-rc.2 <0.1.8`, enforced
-by `peerDependencies` and the installer's floor. There is no compatibility
+**Harness.** From 0.6.0 the harness range is `>=0.1.7-rc.2 <0.1.8`, and the
+**required floor is now `DSH ≥ 0.1.7-rc.2`**, enforced by `peerDependencies`
+and by `install.sh`, stated in both READMEs, and pinned by
+`test_repo_consistency.py`. There is no compatibility
 with 0.1.6, and 0.5.0 is the last release for alpha.2. The release is one
 cutover, installed together with the harness upgrade.
 
@@ -849,20 +846,29 @@ Amends:
 ## Repo map
 
 ```
+package.json                dsh.bundle manifest; peerDependencies pin the harness
+                            range (>=0.1.7-rc.2 <0.1.8)
 agent-presets/rigorquant.patch.yml  the declared preset (persona + child rows)
 agent-presets/rigorquant/   the rigorquant skill and its sibling skills
   skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
-dsh/                        host halves: rq-model-router + rq-team (composition,
-                            per-call guard, and the rq_escalate lane in
-                            dsh/lane.js) + rq-lane-sync, dsh/personas/ (one
-                            role persona per file), and the client bundle
-                            (routing card)
-cordis.patch.yml            bundle patch: skill layer + router + team + boot-sync
+dsh/                        host halves: rq-model-router (routes as volatile
+                            profile config) + rq-team (composition, per-call
+                            guard, and the rq_escalate lane in dsh/lane.js) +
+                            rq-lane-sync, dsh/personas/ (one role persona per
+                            file), and the client bundle (routing card on
+                            configForms)
+cordis.patch.yml            bundle patch: skill layer + router + team + lane sync
 env/                        pinned uv compute lane (pyproject + lockfile)
-mcp/jacobian.md             escalation lane wiring
+mcp/jacobian.md             escalation lane wiring (mounted by rq_escalate)
 docs/architecture.md        this record
+docs/adr/                   ADR 0001 (Agent Teams), ADR 0002 (declared preset
+                            on DSH 0.1.7)
+docs/hard-lessons-…md       the run record the skill cites
+docs/showcase.html          the showcase page
 tests/                      the validator's suite; a forged study must FAIL
-install.sh                  installs the preset (or --skill-only) into $DSH_HOME
+install.sh                  installs the compute lane and the plugin, enables
+                            the one Team bundle, removes the retired web bundle,
+                            ports saved routes (or --skill-only: the skills)
 ```
 
 A study folder (`studies/<slug>/` in Mode B, the repo root in Mode A) lives in

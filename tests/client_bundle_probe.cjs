@@ -56,10 +56,6 @@ verdict.factoryIsFunction = typeof handoff.factory === 'function'
 // in "...current", like `currentSessionId`, does not match).
 verdict.currentFieldReads = (code.match(/\.current\b/g) ?? []).length
 verdict.retiredSettingsSlotReferences = (code.match(/settings\.plugin\.item/g) ?? []).length
-// DSH 0.1.7 removed the Team service's browser Remotes and the settings
-// scope service; a read of either is dead code that registers nothing.
-verdict.teamNamespaceReads = (code.match(/remote\.agentTeams/g) ?? []).length
-verdict.settingsScopeReads = (code.match(/ctx\.settingsScope|'settingsScope'/g) ?? []).length
 
 // The module table only answers platform seed words; anything else is a
 // guaranteed runtime throw in the browser, so record what was asked for.

@@ -285,8 +285,8 @@ async function runResumeScenario(mod) {
 
 /**
  * A session created under a non-rigorquant preset, later switched to
- * rigorquant via `AgentPresets.select()` — found live (docs/upgrade-0.1.6.md
- * §3.11): `agent/created` already ran (and skipped, composedPreset still
+ * rigorquant via `AgentPresets.select()` — found live (Decision 24):
+ * `agent/created` already ran (and skipped, composedPreset still
  * reporting the old preset) before the switch, so without a second trigger
  * the Lead never gets composed for the rest of its life. Simulates the
  * harness's own ordering: `recompose()` lands on `agent.ctx` BEFORE
@@ -373,7 +373,7 @@ function makeScopedAgent(id, preset) {
  * owns (its listeners and effects); every persona, context, restriction and
  * guard it registered went through `agent.ctx`, so they belong to the
  * agent's scope and outlive the plugin unless the plugin disposes them
- * itself. Found live (docs/upgrade-0.1.6.md §3.15): the Lead stayed armed
+ * itself. Found live (Decision 24): the Lead stayed armed
  * with rq-team off, and turning it back on could not take effect because the
  * backfill re-registered the still-live armed context by the same name.
  */

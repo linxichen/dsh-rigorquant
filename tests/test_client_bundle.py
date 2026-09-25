@@ -37,7 +37,7 @@ SERVICE_PROVIDERS = {
     # Sub-namespaces are gated: Cordis throws without an explicit inject entry.
     "remote.session": "@deepseek-ai/dsh-api-session-controller",
     "remote.settings": "@deepseek-ai/dsh-api-remotes",
-    # `configForms` replaced the `settingsScope` service on DSH 0.1.7.
+    # `configForms` replaced the settings scope service on DSH 0.1.7.
     "configForms": "@deepseek-ai/dsh-client-ui-settings",
 }
 # The card registers into the Plugins page's `plugins.bundle.config` ring,
@@ -140,7 +140,7 @@ def test_apply_mounts_the_card_ring(verdict):
     """Registering is necessary, not sufficient: apply must survive mount.
 
     The plugin contributes one thing, the routing card
-    (plugins.bundle.config). The move pill is gone (Decision 25): the Team
+    (plugins.bundle.config). Decision 25 removed everything else: the Team
     service has no browser Remotes left to read the board through.
     """
     assert "mountError" not in verdict, verdict.get("mountError")
@@ -171,18 +171,6 @@ def test_the_retired_settings_slot_is_gone(verdict):
     """
     assert RETIRED_RING not in verdict["mountedRings"]
     assert verdict["retiredSettingsSlotReferences"] == 0
-
-
-def test_nothing_reads_the_services_dsh_017_removed(verdict):
-    """The Team Remotes and the settings scope service are gone on rc.2.
-
-    `remote.agentTeams` (the move pill's board read) and `settingsScope` (the
-    card's old write path) no longer exist; a read of either registers
-    nothing and fails silently, so neither may come back.
-    """
-    assert verdict["teamNamespaceReads"] == 0
-    assert verdict["settingsScopeReads"] == 0
-    assert "settingsScope" not in verdict["inject"]
 
 
 def test_card_edits_the_router_rows_config_form(verdict):

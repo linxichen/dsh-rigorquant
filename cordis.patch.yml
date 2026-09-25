@@ -3,8 +3,9 @@
 #
 # `dsh plugin --profile <p> add dsh-rigorquant` (or the github: spec) makes
 # the `rigorquant` skill and the role-model router available to every session
-# of that profile. The full RigorQuant agent preset (persona + orchestration +
-# tools) installs separately with ./install.sh.
+# of that profile, and declares the `rigorquant` preset through
+# ./agent-presets/rigorquant.patch.yml. ./install.sh adds Agent Teams and
+# carries saved routes over.
 #
 # The skill directory is resolved through the PACKAGE, not through `baseUrl`.
 # A patch file's `!!js` runs against the boot root context, whose `baseUrl` is
@@ -51,9 +52,9 @@
     # declaration cannot serve is the uv lane, since node_modules cannot host
     # it. This host half therefore lands env/, mcp/ and docs/ into
     # $DSH_HOME/share/rigorquant/ at boot (idempotent byte-compare; derived
-    # state such as .venv never copied or pruned) and removes the
-    # $DSH_HOME/.agent-presets/rigorquant an older release landed, only when
-    # its .rq-sync.json names this package. Removal of the lane stays
+    # state such as .venv never copied or pruned) and removes the directory
+    # preset an older release landed, only when its .rq-sync.json names this
+    # package. Removal of the lane stays
     # explicit via ./install.sh --uninstall.
     - id: rq-lane-sync
       name: 'dsh-rigorquant/sync'

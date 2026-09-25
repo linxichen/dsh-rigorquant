@@ -12,7 +12,7 @@ mechanism **is** Agent Teams — team-only, no classic per-role delegation
 tools left in the preset — and the per-role composition Teams does not carry
 (persona, tool budget, model tier, hub-and-spoke topology) is re-established
 by a RigorQuant host plugin on every teammate's `agent/created`, keyed by
-the teammate's **name**. Upgrade study: `docs/upgrade-0.1.6.md`. Recorded as
+the teammate's **name**. The upgrade study it came from is retired (Decision 25) and stays readable at tag `v0.5.0`. Recorded as
 Decision 24 in `docs/architecture.md`.
 
 ## Why

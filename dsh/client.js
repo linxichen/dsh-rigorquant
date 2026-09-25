@@ -110,8 +110,8 @@ function createStore(initial) {
 // Cordis throws `cannot get property "remote.session" without inject` unless
 // each one is declared here. The routing card reads session.modelCatalog and
 // settings.describe, so declare both sub-namespaces (plus the raw `remote`).
-// `configForms` (@deepseek-ai/dsh-client-ui-settings) replaces the
-// `settingsScope` service DSH 0.1.7 removed.
+// `configForms` (@deepseek-ai/dsh-client-ui-settings) serves the router row's
+// config form.
 const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'configForms']
 
 const copy = {
