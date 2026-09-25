@@ -46,15 +46,16 @@
     - id: rq-model-router
       name: 'dsh-rigorquant'
 
-    # Self-installing distribution (docs/architecture.md, Decision 22). The
-    # bundle-patch plane cannot express an agent preset — the harness pins the
-    # agent-presets roots to its shipped root — and node_modules cannot host
-    # the uv lane. This host half therefore lands files at boot: the preset
-    # into $DSH_HOME/.agent-presets/rigorquant, env/mcp/docs into
-    # $DSH_HOME/share/rigorquant/. Idempotent byte-compare; derived state
-    # (.venv, __pycache__) never copied or pruned; a same-version target keeps
-    # local edits; removal stays explicit via ./install.sh --uninstall.
-    - id: rq-preset-sync
+    # Compute-lane sync (docs/architecture.md, Decisions 22 and 25). The
+    # preset is declared in ./agent-presets/rigorquant.patch.yml; what a
+    # declaration cannot serve is the uv lane, since node_modules cannot host
+    # it. This host half therefore lands env/, mcp/ and docs/ into
+    # $DSH_HOME/share/rigorquant/ at boot (idempotent byte-compare; derived
+    # state such as .venv never copied or pruned) and removes the
+    # $DSH_HOME/.agent-presets/rigorquant an older release landed, only when
+    # its .rq-sync.json names this package. Removal of the lane stays
+    # explicit via ./install.sh --uninstall.
+    - id: rq-lane-sync
       name: 'dsh-rigorquant/sync'
 
     # Team composition: role personas, tool-tier budgets, and the "RigorQuant

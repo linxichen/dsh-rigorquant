@@ -226,11 +226,11 @@ cd dsh-rigorquant
 ```
 
 **Plugin only** — the same everything, via the ecosystem's bundle path. The
-package declares a `dsh.bundle` manifest whose rows include a boot-sync half
-(`rq-preset-sync`): on the profile's next start it lands the agent preset into
-`$DSH_HOME/.agent-presets/rigorquant` and the compute lane into
+package declares a `dsh.bundle` manifest that declares the `rigorquant` preset
+itself, and one of its rows is a boot-sync half (`rq-lane-sync`): on the
+profile's next start it lands the compute lane into
 `$DSH_HOME/share/rigorquant/`, so `dsh plugin add` alone yields a working
-distribution (docs/architecture.md Decision 22):
+distribution (docs/architecture.md Decisions 22 and 25):
 
 ```sh
 dsh --version                 # must be >= 0.1.6-alpha.2
@@ -238,11 +238,11 @@ dsh plugin --profile web add dsh-rigorquant
 ```
 
 The sync is idempotent (a byte-identical tree is left untouched; derived state
-like `.venv` is never copied or pruned) and keeps same-version local edits to
-the installed preset — an upgrade replaces shipped files, exactly like
-re-running `./install.sh`. There is no uninstall hook in DSH's plugin CLI, so
-removal stays explicit (`./install.sh --uninstall`); if you remove only the
-plugin, the synced preset keeps working standalone and simply routes nothing.
+like `.venv` is never copied or pruned). It also removes the
+`$DSH_HOME/.agent-presets/rigorquant` copy that releases before 0.6.0 landed,
+but only when that copy's `.rq-sync.json` says this package put it there.
+There is no uninstall hook in DSH's plugin CLI, so removal of the lane stays
+explicit (`./install.sh --uninstall`).
 
 Start a new DSH session and pick the **RigorQuant** preset. Then:
 
@@ -293,9 +293,9 @@ anchor, and both land identical bytes (see [env/README.md](env/README.md)).
 The venv itself is **never installed**: it is derived state, provisioned
 lazily inside the anchor by the first `uv run --frozen --project <env_lane>`
 (subsequent runs are instant; `--frozen` honors the committed lockfile). The
-jacobian escalation lane ships **disabled** and **pinned** (`jacobian@0.12.0`):
-enable the `mcp-jacobian` row, and the framework asks for approval before any
-one-time provisioning (`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain
+jacobian escalation lane is **pinned** (`jacobian@0.12.0`) and mounted at
+runtime: the orchestrator calls `rq_escalate` when a claim needs it, and the
+framework asks for approval before any one-time provisioning (`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain
 via the skill's `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian.md).
 
 ## Role-routed models (rq-model-router)
@@ -330,7 +330,7 @@ Decision 16.
 ```
 package.json                dsh.bundle manifest (dsh plugin add support)
 cordis.patch.yml            bundle patch: skill layer + rq-model-router +
-                            rq-team + rq-preset-sync rows
+                            rq-team + rq-lane-sync rows
 dsh/                        host halves (role router, team composition and
                             per-call guard, boot-sync) + one persona file per
                             role, and the web client bundle (routing card)

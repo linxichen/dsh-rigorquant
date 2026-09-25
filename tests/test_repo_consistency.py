@@ -76,9 +76,9 @@ def test_package_files_all_exist():
 def test_the_package_and_lane_version_stamps_agree():
     """A release bumps both stamps; the 0.4.1 release commit did it by hand.
 
-    The lane stamp is what rq-preset-sync keys its replace-vs-keep decision
-    on, so a release that bumps one stamp and not the other ships a preset
-    the profiles keep stale (upgrade-0.1.6.md §3.7, finding 1).
+    rq-lane-sync stamps the landed lane with the package version, so a
+    release that bumps one stamp and not the other ships a lane whose own
+    version and ownership marker disagree about which release it is.
     """
     manifest = json.loads((REPO / "package.json").read_text())
     stamp = re.search(r'^version = "([^"]+)"',
@@ -107,19 +107,17 @@ def test_native_agent_options_floor_is_declared_and_enforced():
     `deepseek-flash` fallback both hold — on 0.1.5 this release's card renders
     nothing, and its fallback lane has no model to route to.
 
-    One floor, stated in six places: a reader who finds an older number in
-    any of them learns the wrong minimum. `dsh/sync.js` is in the list
-    because the bundle install path (`dsh plugin add`) runs it INSTEAD of
-    `install.sh` and so never reaches the runtime check — that path can only
-    state the floor, never enforce it.
+    One floor, stated in several places: a reader who finds an older number
+    in any of them learns the wrong minimum. The bundle install path
+    (`dsh plugin add`) is gated by `peerDependencies` instead
+    (test_the_package_requires_the_rc2_harness_line).
     """
     floor = "0.1.6-alpha.2"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
     assert "version_at_least" in install
     stale = "0.1.5-alpha.2"
-    for path in (REPO / "README.md", REPO / "README.zh-CN.md",
-                 REPO / "dsh/sync.js"):
+    for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
         text = path.read_text()
         assert floor in text, "%s omits the DSH floor" % path.name
         assert stale not in text, (
@@ -977,6 +975,47 @@ def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
             f"{role}.md must state its own role name up front")
 
 
+# One line, verbatim in every persona (issue #29). On rc.2, `spawn_teammate`
+# prefixes each teammate's first prompt with a reminder to call `list_agents`
+# and message other teammates (`tool-agent-team/src/index.ts:196-203` at
+# `dsh-v0.1.7-rc.2`), and rq-team's guard refuses both.
+TEAM_REMINDER_LINE = (
+    "The harness's team reminder does not apply to you: you are roster-blind "
+    "and message only `lead`, so never call `list_agents` or message another "
+    "teammate."
+)
+
+
+def test_every_persona_counters_the_harness_team_reminder():
+    """The persona overrides the harness's first-prompt Team reminder."""
+    for persona in sorted((REPO / "dsh" / "personas").glob("*.md")):
+        flat = " ".join(persona.read_text().split())
+        assert flat.count(TEAM_REMINDER_LINE) == 1, (
+            "%s does not state, once, that the harness team reminder does "
+            "not apply" % persona.name)
+
+
+def test_the_escalation_lane_is_mounted_at_runtime_and_checked_only_by_blind_roles():
+    """Decision 25 (issue #27): the orchestrator mounts jacobian with
+    `rq_escalate`; no document tells it to flip a preset row, and a blind role
+    may use a mounted lane only to check a derivation it already made."""
+    skill = SKILL_DIR / "SKILL.md"
+    escalation = SKILL_DIR / "references" / "escalation.md"
+    for path in (skill, escalation, REPO / "mcp" / "jacobian.md"):
+        text = path.read_text()
+        assert "rq_escalate" in text, "%s never names rq_escalate" % path.name
+        assert "mcp-jacobian" not in text, "%s still names the retired row" % path.name
+    flat = " ".join(escalation.read_text().split())
+    for rule in ("without asking the user", "escalation open:", "ASK the user",
+                 "call `rq_escalate` again"):
+        assert rule in flat, "escalation.md lost %r" % rule
+    assert "falsification lane" not in flat, "CONTEXT.md: that is the check battery"
+    check_only = "never to fetch a known result"
+    for role in ("offgrid", "doublechecker"):
+        persona = " ".join((REPO / "dsh" / "personas" / f"{role}.md").read_text().split())
+        assert check_only in persona, "%s.md lacks the check-only lane rule" % role
+
+
 def _shipped_route(slot):
     """The router's DEFAULT_<slot> route as (model, effort), read off dsh/index.js."""
     router = (REPO / "dsh/index.js").read_text()
@@ -1322,43 +1361,43 @@ def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
         "the rigorquant skill provider must not scan the default roots")
 
 
-def test_bundle_patch_mounts_the_preset_sync_half():
-    """Decision 22: the bundle self-installs the preset and the compute lane.
+def test_bundle_patch_mounts_the_lane_sync_half():
+    """Decisions 22 and 25: the bundle self-installs the compute lane.
 
-    The whole point of the rq-preset-sync row is that `dsh plugin add` alone
+    The whole point of the rq-lane-sync row is that `dsh plugin add` alone
     leaves a WORKING distribution at the next profile boot. If the row is
-    dropped from the patch, plugin-only installs silently regress to a router
-    with nothing to route.
+    dropped from the patch, plugin-only installs have no compute lane.
     """
-    import json as _json
-
     patch = (REPO / "cordis.patch.yml").read_text()
-    assert "rq-preset-sync" in patch, "cordis.patch.yml no longer mounts the boot-sync half"
+    assert "- id: rq-lane-sync" in patch, "cordis.patch.yml no longer mounts the boot-sync half"
+    assert "rq-preset-sync" not in patch, "the row kept its old name"
     assert "'dsh-rigorquant/sync'" in patch, (
         "the sync row must load this package's ./sync export")
-    manifest = _json.loads((REPO / "package.json").read_text())
+    manifest = json.loads((REPO / "package.json").read_text())
     export = manifest["exports"].get("./sync")
     assert export, "package.json no longer exports ./sync"
     assert (REPO / export).exists(), "exports./sync points at a missing file"
 
 
-def test_boot_sync_manages_the_preset_and_the_lane_and_never_derived_state():
-    """The engine must land every runtime tree and never touch derived state.
+def test_boot_sync_manages_the_lane_only_and_never_derived_state():
+    """The engine lands the lane trees, no preset, and never touches derived state.
 
     A venv is provisioned lazily inside the lane anchor by the first
     `uv run --frozen`; one prune pass that treats it as an extra would delete a
     provisioned environment mid-study. The behavioral side of this contract is
-    executed for real in tests/test_preset_sync.py; this pins the wiring.
+    executed for real in tests/test_lane_sync.py; this pins the wiring.
     """
     sync = (REPO / "dsh" / "sync.js").read_text()
-    for tree in ("agent-presets/rigorquant", "env", "mcp", "docs"):
-        assert f"'{tree}'" in sync, f"sync.js does not manage {tree}"
+    managed = sync[sync.index("const MANAGED_DIRS"):sync.index("const ORPHANED_PRESET")]
+    for tree in ("env", "mcp", "docs"):
+        assert f"['{tree}'" in managed, f"sync.js does not manage {tree}"
+    assert "agent-presets" not in managed, "sync.js still copies the preset"
     for derived in (".venv", "__pycache__"):
         assert f"'{derived}'" in sync, f"sync.js does not exclude {derived}"
-    assert "install.sh --uninstall" in sync or "--uninstall" in sync, (
+    assert "--uninstall" in sync, (
         "sync.js must document that removal stays explicit (no uninstall hook)")
-    # And the behavioral suite must exist and name the venv hazard.
-    behavioral = (REPO / "tests" / "test_preset_sync.py").read_text()
+    assert "CANNOT enforce" not in sync, "peerDependencies enforce the floor now"
+    behavioral = (REPO / "tests" / "test_lane_sync.py").read_text()
     assert ".venv" in behavioral, "no test executes the venv-survival contract"
 
 

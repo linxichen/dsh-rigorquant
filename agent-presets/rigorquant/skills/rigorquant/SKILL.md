@@ -452,14 +452,18 @@ membrane: [references/literature.md](references/literature.md).
 
 When a method's correctness hinges on an unproven claim (convexity of a set,
 convergence of a scheme, correctness of a sampler, uniqueness of a
-decomposition), settle it BEFORE implementing. The jacobian MCP lane
-(`mcp__rigorquant-jacobian__math_find` / `math_run`) is **disabled by default**:
-enable the `mcp-jacobian` row first. Provisioning is **approval-gated**, never
+decomposition), settle it BEFORE implementing. Call `rq_escalate({})` without
+asking whenever a claim meets the trigger: it mounts the jacobian MCP lane
+(`mcp__rigorquant-jacobian__*`: `math_find` / `math_run`) for you, and
+`rq_escalate({ teammate: "<name>" })` mounts it for one running teammate. Log
+`escalation open: <claim>` / `escalation closed: <claim> — <verdict>` in
+`journal.md`; after a restart, call `rq_escalate` again while an escalation is
+still open. Installing and provisioning are **approval-gated**, never
 automatic:
 
-- Lane tools absent → ask the user, then run
+- `rq_escalate` returns an error → ask the user, then run
   `npx -y jacobian@0.12.0 upgrade`, verify with
-  `npx -y jacobian@0.12.0 doctor --json`, retry.
+  `npx -y jacobian@0.12.0 doctor --json`, call `rq_escalate` again.
 - A lean call reports `TOOLCHAIN_RESOLUTION` or `MATHLIB_MANIFEST` → ask the
   user, then run `RQ_ALLOW_PROVISION=1 bash <this skill's
   dir>/scripts/provision-lean.sh` (idempotent; installs elan + pinned Lean

@@ -63,10 +63,16 @@
 // dispose-then-reinstall `maybeInstall` once the recompose has already
 // landed on `agent.ctx` (the harness composes before appending the event,
 // so the composed-preset read below is never stale at that point).
+//
+// The Lead's composition also carries the escalation lane's `rq_escalate`
+// tool (dsh/lane.js; Decision 25), registered in the Lead's own scope. The
+// teammate guard refuses it too, since the orchestrator alone decides who
+// gets the lane.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ESCALATE_TOOL, createLane, escalationTool } from './lane.js'
 
 const name = 'rq-team'
 const inject = ['agents', 'tools', 'systemPrompt']
@@ -189,6 +195,9 @@ function teammateGuard(agent, membership, role, teams) {
     if (ROSTER_BLIND_TOOLS.has(execution.name)) {
       return `rq-team: ${membership.name} is roster-blind — ${execution.name} is denied`
     }
+    if (execution.name === ESCALATE_TOOL) {
+      return `rq-team: only the orchestrator grants the escalation lane — ${ESCALATE_TOOL} is denied to ${membership.name}`
+    }
     if (OWN_TASK_TOOLS.has(execution.name)) {
       const taskId = args.task_id
       if (typeof taskId !== 'string') return undefined // malformed call: let the tool's own schema validation report it
@@ -280,6 +289,7 @@ function loadPersonas(ctx) {
 function apply(ctx, config = {}) {
   const presetId = typeof config.presetId === 'string' ? config.presetId : PRESET_ID
   const personas = loadPersonas(ctx)
+  const lane = createLane(ctx)
   let warnedAbsent = false
   const installed = new Map() // agent -> disposer
 
@@ -320,9 +330,13 @@ function apply(ctx, config = {}) {
     if (membership.role === 'lead') {
       const disposeContext = systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT })
       const disposeGuard = tools !== undefined ? tools.guard(leadGuard(agent, teams)) : () => {}
+      const disposeEscalate = tools !== undefined
+        ? tools.register(escalationTool(lane, agent, teams, ctx.get('agents')))
+        : () => {}
       installed.set(agent, () => {
         disposeContext()
         disposeGuard()
+        disposeEscalate()
       })
       return
     }

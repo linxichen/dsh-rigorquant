@@ -181,22 +181,20 @@ docs/adr/0001-rigorquant-on-agent-teams.md）。
 
 两种安装形态：
 
-**Bundle（一条命令，完整可用）**——仓库声明了 `dsh.bundle` manifest，其中的
-`rq-preset-sync` 行会在 profile 下次启动时，把 agent preset 落盘到
-`$DSH_HOME/.agent-presets/rigorquant`、把计算通道落盘到
-`$DSH_HOME/share/rigorquant/`，因此生态的 `dsh plugin add` 安装路径即可获得
-完整框架（设计记录：docs/architecture.md 决策 22）：
+**Bundle（一条命令，完整可用）**——仓库声明了 `dsh.bundle` manifest，它自己声明
+`rigorquant` preset，其中的 `rq-lane-sync` 行会在 profile 下次启动时，把计算通道
+落盘到 `$DSH_HOME/share/rigorquant/`，因此生态的 `dsh plugin add` 安装路径即可获得
+完整框架（设计记录：docs/architecture.md 决策 22 与 25）：
 
 ```sh
 dsh --version                 # 必须 >= 0.1.6-alpha.2
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 
-启动同步是幂等的（字节一致的目录不动；`.venv` 等派生状态既不复制也不清除），
-同版本下保留对已安装 preset 的本地修改——升级时替换随包文件，与重跑
-`./install.sh` 一致。DSH 的插件 CLI 没有卸载钩子，因此移除始终是显式操作
-（`./install.sh --uninstall`）；若只移除插件，已同步的 preset 仍可独立运行，
-只是不再有模型路由。
+启动同步是幂等的（字节一致的目录不动；`.venv` 等派生状态既不复制也不清除）。
+它还会删除 0.6.0 之前的版本落盘的 `$DSH_HOME/.agent-presets/rigorquant`，但仅当
+该目录的 `.rq-sync.json` 表明是本包放置的。DSH 的插件 CLI 没有卸载钩子，因此
+计算通道的移除始终是显式操作（`./install.sh --uninstall`）。
 
 **Preset（完整框架，显式安装）**——RigorQuant 智能体预设（persona + 编排 + 工具）
 及内置技能：
@@ -250,9 +248,9 @@ RigorQuant 也不会改变其中任何一件：
 boot-sync 行落盘——两者写入的字节一致，最后运行者持有该锚点（见
 [env/README.md](env/README.md)）。venv 本身**从不随包安装**：它是派生状态，
 由第一次 `uv run --frozen --project <env_lane>` 在锚点内**惰性创建**（后续
-调用即时；`--frozen` 严格遵守已提交的 lockfile）。jacobian 升级通道默认
-**关闭**且已**固定版本**（`jacobian@0.12.0`）：先启用 `mcp-jacobian` 行，
-框架在一次性配置前会**请求批准**（`npx -y jacobian@0.12.0 upgrade`，或通过
+调用即时；`--frozen` 严格遵守已提交的 lockfile）。jacobian 升级通道已**固定版本**
+（`jacobian@0.12.0`），并在运行时挂载：当某个论断需要时，编排者调用
+`rq_escalate`，框架在一次性配置前会**请求批准**（`npx -y jacobian@0.12.0 upgrade`，或通过
 技能内的 `scripts/provision-lean.sh` 安装 Lean 工具链）。详见
 [mcp/jacobian.md](mcp/jacobian.md)。
 
@@ -284,7 +282,7 @@ DSH ≥ 0.1.6-alpha.2（其配置卡片注册在插件页的 bundle 配置插槽
 ```
 package.json                dsh.bundle manifest（支持 dsh plugin add）
 cordis.patch.yml            bundle patch：技能层 + rq-model-router +
-                            rq-team + rq-preset-sync 行
+                            rq-team + rq-lane-sync 行
 dsh/                        宿主半（角色路由、团队组合与逐调用守卫、
                             启动同步）+ 每角色一个 persona 文件，与 web 客户端包
                             （路由卡片）

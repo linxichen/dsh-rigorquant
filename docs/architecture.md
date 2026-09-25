@@ -849,12 +849,14 @@ Amends:
 ## Repo map
 
 ```
-agent-presets/rigorquant/   the preset: composition + persona + rigorquant skill
+agent-presets/rigorquant.patch.yml  the declared preset (persona + child rows)
+agent-presets/rigorquant/   the rigorquant skill and its sibling skills
   skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
-dsh/                        host halves: rq-model-router + rq-team (composition
-                            and per-call guard) + rq-preset-sync, dsh/personas/
-                            (one role persona per file), and the client bundle
-                            (routing card + move pill)
+dsh/                        host halves: rq-model-router + rq-team (composition,
+                            per-call guard, and the rq_escalate lane in
+                            dsh/lane.js) + rq-lane-sync, dsh/personas/ (one
+                            role persona per file), and the client bundle
+                            (routing card)
 cordis.patch.yml            bundle patch: skill layer + router + team + boot-sync
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring
