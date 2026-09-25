@@ -1,0 +1,3 @@
+# Point-in-time upgrade studies are working notes, never part of the
+# package (Decision 25): the ADRs and docs/architecture.md carry the record.
+upgrade-*.md

@@ -1232,6 +1232,27 @@ def test_npm_ignore_excludes_python_bytecode():
         assert "__pycache__" in text and "*.pyc" in text
 
 
+def test_the_npm_package_ships_no_untracked_doc():
+    """package.json whitelists docs/, so npm packs whatever sits there.
+
+    0.6.0 went to npm with an untracked point-in-time upgrade study that
+    Decision 25 says is never committed. docs/.npmignore keeps upgrade
+    studies out of the artifact, and no untracked file under docs/ may ship.
+    """
+    ignore = REPO / "docs" / ".npmignore"
+    assert ignore.exists() and "upgrade-*.md" in ignore.read_text()
+    npm = shutil.which("npm")
+    if npm is None:
+        pytest.skip("npm is required to list the packed files")
+    out = subprocess.run([npm, "pack", "--dry-run", "--json", "--ignore-scripts"],
+                         cwd=REPO, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    packed = {f["path"] for f in json.loads(out.stdout)[0]["files"]}
+    tracked = set(tracked_files())
+    leaked = sorted(p for p in packed if p.startswith("docs/") and p not in tracked)
+    assert not leaked, "untracked docs would ship: %s" % leaked
+
+
 def test_no_document_calls_an_isolation_boundary_a_wall():
     """Decision 14: shipped text may not over-claim enforcement.
 

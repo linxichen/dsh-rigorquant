@@ -8,7 +8,22 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
-## [0.6.0] - Unreleased
+## [0.6.1] - Unreleased
+
+**Use 0.6.1, not 0.6.0.** A `dsh-rigorquant@0.6.0` reached npm on 2026-09-25
+from a working tree that had not been reviewed or tagged. Against it, 0.6.1:
+
+- restores the harness range `>=0.1.7-rc.2 <0.1.8` (0.6.0 declared
+  `^0.1.7-rc.2`, which admits an untested 0.1.8);
+- stops shipping the untracked 0.1.7 upgrade study (`docs/.npmignore`, and a
+  test that no untracked file under `docs/` is packed);
+- gives each study its own compute lane (issue #36): on rc.2 the sandbox
+  refuses the venv 0.6.0 builds in the shared lane under `$DSH_HOME`, and a
+  study's lockfile is now part of its record;
+- keeps a setting the harness saved inside the installer's marker block on
+  `--uninstall` (0.6.0 deleted it with the block).
+
+Everything below is the full change against 0.5.0.
 
 RigorQuant on DSH 0.1.7-rc.2: a declared preset, a router and card on
 profile-owned config, an escalation lane the orchestrator mounts at runtime,
