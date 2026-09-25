@@ -1,0 +1,317 @@
+# The `rigorquant` agent preset, declared (docs/adr/0002-declared-preset-on-dsh-0.1.7.md,
+# Decision 25). DSH 0.1.7 ignores `$DSH_HOME/.agent-presets`; a preset exists
+# because some bundle declares a `@deepseek-ai/dsh-agent-preset` row. This file
+# is that row, in the shape of web-app's `presets/standard.patch.yml`, and
+# package.json lists it after `cordis.patch.yml` in `dsh.bundle.patch`.
+#
+# The child list is 0.5.0's `agent.cordis.yml`, minus two rows:
+# - the child `skill-filesystem` row: the host `skill-filesystem-rigorquant`
+#   row in cordis.patch.yml already serves the skill to every agent;
+# - the `mcp-jacobian` row: on a declared preset a single child cannot be
+#   patched, so the escalation lane mounts at runtime through `rq_escalate`.
+#
+# Child `baseUrl` is the PROFILE root (`file://$DSH_HOME/profiles/<profile>/`),
+# not this package. No child may resolve a path from it.
+#
+# The package requires DSH `>=0.1.7-rc.2 <0.1.8` (package.json
+# `peerDependencies`); `@deepseek-ai/dsh-agent-preset` does not exist before
+# 0.1.7, so no older harness can load this row.
+- insert:
+    # An override by id (a patch keyed `preset-rigorquant` in the profile, or
+    # an edit saved from the Web preset editor) replaces this row's WHOLE
+    # `config`: id, name, description, order and every child. There is no
+    # per-child patch; an override must restate the full list.
+    - id: preset-rigorquant
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: rigorquant
+        name: RigorQuant
+        description: >-
+          Session-scoped unattended empirical/computational mathematics research
+          framework (econ/finance/portfolio/simulation): context-isolated
+          multi-agent exploration in the style of Jin's Crouzeix run and Tao's
+          collaborative projects, dual-track ground-truth derivation,
+          adversarial counterexample-only audit, a four-part pre-implementation
+          check battery, fixed-seed LLN conventions, and a jacobian/Lean
+          escalation lane for proof-critical claims.
+        order: 5
+        plugins:
+          # ── identity ────────────────────────────────────────────────
+
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              # DSH >= 0.1.3-alpha.2 splits the persona into a required `prefix`
+              # (rendered before first-party guidance) and an optional `suffix`
+              # (rendered after it). The single `text` key this preset used through
+              # 0.1.2 no longer exists and its absence rejects the whole mount.
+              prefix: >-
+                You are RigorQuant, the root orchestrator of an unattended mathematical
+                research framework for empirical and computational work: economics,
+                finance, portfolio construction and optimization, simulation, and
+                computational econ/finance. You are powered by the {{model}} model.
+
+                Your mission: carry a hard quantitative problem from statement to a method
+                whose mathematical validity is established on simplified/special cases
+                BEFORE numerical implementation, then implement it and proceed to the next
+                stage. The operating pattern follows Shanmu Jin's Crouzeix-conjecture run
+                (divergent multi-agent search, adversarial audit, counterexample-only
+                elimination, persistence) and Terence Tao's collaborative proof projects
+                (blueprint-style decomposition, automated checkers as the truth gate).
+
+                NON-NEGOTIABLE CONSTRAINTS:
+
+                1. A producer cannot certify its own output. Ground-truth derivations are
+                   produced independently, never by the agent that authored the method
+                   under test.
+                2. A route is eliminated ONLY by a concrete failing case (a
+                   counterexample), never by style, vibes, or "this feels wrong".
+                3. Every stochastic run records its seed. Partial progress does not count
+                   unless it resolves the sub-problem exactly.
+                4. Do not handwave a load-bearing unproven claim — settle it before
+                   implementing.
+
+                ISOLATION, stated precisely: context isolation between you and your
+                teammates is enforced by the harness (a fresh teammate never sees your
+                conversation) — that is the only wall. Everything else is composed per
+                teammate by the RigorQuant team plugin: role by name (a teammate named
+                `<role>-<n>` gets that role's persona and model), tool budget by scope
+                (blind roles lose web and skills, web-denied roles lose web), topology
+                by guard (a teammate may message only you, cannot list the roster or
+                the board, and touches only its own task; web-denied roles are refused
+                network commands in bash). It is still not a network wall: filesystem
+                scope and producer≠checker stay procedural, backed by the adversary.
+
+                TEAM, stated precisely: the Team policy creates teammates only on an
+                explicit request; a RigorQuant study is that explicit request, so
+                create the study's teammates without asking again. Spawn only while
+                your context carries the line "RigorQuant team guard: armed". If that
+                line is absent, do not spawn: the team plugin is not composing this
+                session, so report the missing plugin and stop.
+
+                UNATTENDED, stated precisely: the framework runs unattended WITHIN one
+                live session. Crossing a session boundary disarms the goal, and one human
+                turn ("continue") is required to rearm it: on that turn, before any
+                other study work, call `get_goal`, then `update_goal` with action
+                `resume` and its exact `goal_id` and `revision`. Rounds do not continue
+                autonomously across restarts; checkpoint state and resume explicitly.
+
+                When a tool result is spilled (a bounded preview plus a locator), read
+                the full result back by its locator; never re-run the tool to see it.
+
+                When a RigorQuant study begins, load the `rigorquant` skill and follow
+                its operating procedure (workspace layout, registry schema, tolerances,
+                escalation triggers, anti-patterns, lifecycle).
+              suffix: Your working directory is {{cwd}}.
+
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+
+          # ── shell ───────────────────────────────────────────────────
+
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+
+          # ── filesystem ──────────────────────────────────────────────
+
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+
+          # ── background jobs ─────────────────────────────────────────
+
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+
+          # ── skills ──────────────────────────────────────────────────
+
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          # ── goals ───────────────────────────────────────────────────
+
+          # The human-facing `/goal` command. The web-app bundle disables it at the host
+          # plane, so every preset must re-mount it; without this row an unattended run
+          # has no way to arm the goal whose round driver is the framework's loop.
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+
+          # ── plan mode ───────────────────────────────────────────────
+
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                        You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                        Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                        The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                        Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                        Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                        When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+          # ── compaction ──────────────────────────────────────────────
+
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+                config:
+                  # Compact at 60% of the routed model's context window instead of the
+                  # default 80%: earlier compaction shrinks the cached prefix that is
+                  # re-sent on every step, cutting per-step input (and cache-read)
+                  # tokens on long runs.
+                  thresholdRatio: 0.6
+
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  # Shipped at 8192/4096/1024; rigorquant writes heavy outputs to files
+                  # and re-reads them, so retaining 4 KiB of every tool result is enough
+                  # context per step while halving the surface growth on long runs.
+                  thresholdChars: 4096
+                  headChars: 2048
+                  tailChars: 1024
+
+          # ── delegation and workflows ────────────────────────────────
+
+          # Team-only (docs/architecture.md, Decision 24;
+          # docs/adr/0001-rigorquant-on-agent-teams.md). Teammates are created by the
+          # Agent Teams bundles' `spawn_teammate`, not by any row here: the seven
+          # per-role delegation rows, the subagent control and list rows, and the fork
+          # row are gone. The Team tools register `send_message`, `list_agents` and
+          # `interrupt_agent` under the legacy names, so the classic control rows would
+          # have mounted a second tool per name. Each teammate's persona, tool budget
+          # and hub-and-spoke guard are applied from its NAME (`<role>-<n>`) by the
+          # bundle's `dsh-rigorquant/team` row, and its model by the router — none of
+          # that lives in this composition any more. No other delegation tool is
+          # mounted, so depth-one delegation holds by construction: the rows left in
+          # this group are all disabled.
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              # Named external-agent instances (DSH >= 0.1.1-rc.1): install the
+              # provider bundle once per profile (`dsh plugin --profile <p> add
+              # @deepseek-ai/dsh-subagent-codex` / `...-claude-code`) and configure its
+              # named instances there (providerName / permissionMode / env /
+              # disposeGraceMs). Permission modes: Codex `never` (default) |
+              # `approve-for-me` | `dangerously-bypass-approvals-and-sandbox`; Claude
+              # Code `dontAsk` (default) | `acceptEdits` | `auto` | `plan` |
+              # `bypassPermissions`. The escalation lane prefers plan/never modes and
+              # reserves bypass modes for the approval-gated escalation flow
+              # (references/escalation.md). Enabling a row whose bundle is not installed
+              # fails children at spawn, not the preset mount, so rows stay disabled
+              # here; flip on per study.
+              - id: tool-subagent-codex
+                name: '@deepseek-ai/dsh-tool-subagent'
+                disabled: true
+                config:
+                  provider: codex
+                  toolName: subagent_codex
+                  backgroundMode: one-shot
+                  maxDepth: provider-managed
+
+              - id: tool-subagent-claude-code
+                name: '@deepseek-ai/dsh-tool-subagent'
+                disabled: true
+                config:
+                  provider: claude-code
+                  toolName: subagent_claude_code
+                  backgroundMode: one-shot
+                  maxDepth: provider-managed
+
+              # The workflow engine and its model-facing tool are DISABLED
+              # (feature/subagent-context): workflow `agent()` children carry no role
+              # tag, and the engine's start path expresses neither a persona nor a
+              # per-child toolFilter, so every workflow child ran as an untagged agent
+              # wearing the root persona with the full catalog (74 of 162 children in
+              # the 0.4.x study logs; ~23k-token headers). The framework's fan-out is
+              # the goal-round driver plus named teammates; a deployment
+              # that wants workflows should use another preset, not this one. While
+              # these rows are disabled no deny list may name `workflow`.
+              #
+              # The engine row follows the 0.1.6 rename: `workflow-worker-thread` no
+              # longer exists as a package. A disabled row is never imported, so the
+              # stale name mounted nothing either way — but it read as a typo and the
+              # harness probe reported it UNRESOLVED. Enabled it would be fatal:
+              # discovery marks a preset naming a missing package "Failed to load" and
+              # the picker hides it.
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                disabled: true
+                config:
+                  provider: spawn
+
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+                disabled: true
+
+              # Ralph is DISABLED for the same reason as workflow: ralph rounds spawn
+              # untagged children with no persona and no expressible per-child scope,
+              # and the framework's iteration loop is the goal-round driver. While this
+              # row is disabled no deny list may name `ralph`.
+              - id: tool-ralph
+                name: '@deepseek-ai/dsh-tool-ralph'
+                disabled: true
+                config:
+                  subagentProvider: spawn
+                  maxRounds: 64
+
+          # ── remaining model-facing rows ─────────────────────────────
+
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+
+          # Declaring the study's deliverables. NO bundle mounts this tool — only a
+          # preset does — so without this row a RigorQuant session has no `present` at
+          # all and the 0.1.5 deliverables flow (right-Sidebar preview, open in default
+          # app, reveal in file manager) has nothing to render. The skill's deliverables
+          # procedure ends with a `present` call for exactly this reason.
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'

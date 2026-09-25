@@ -18,7 +18,7 @@ and the pinned compute lane itself.
 
 import re
 
-from conftest import CORDIS, REPO, SKILL_DIR
+from conftest import REPO, SKILL_DIR, preset_children
 
 TEAM = REPO / "dsh/team.js"
 PERSONAS = REPO / "dsh/personas"
@@ -38,7 +38,7 @@ def _js_list(name):
 
 
 def test_fetch_is_enabled():
-    assert re.search(r"^    fetch: true\s*$", CORDIS.read_text(), re.MULTILINE), \
+    assert re.search(r"^    fetch: true\s*$", preset_children(), re.MULTILINE), \
         "tool-web fetch must be true so web_fetch exists for the lit roles"
 
 

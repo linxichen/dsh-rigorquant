@@ -272,8 +272,7 @@ in [references/protocol.md](references/protocol.md).
    sub-problem's success criterion is at least one claim, so every `attack`
    task has a `ground-truth` task to wait on and the layers never skip. Set each task's
    `write_scopes` to its role's scratch directory (`interim/explorer-reports/`,
-   `interim/gt-scripts/`, `audits/`) — advisory, not a lock. The move pill in
-   the session header reads the move from this layering. Freeze and hash
+   `interim/gt-scripts/`, `audits/`) — advisory, not a lock. Freeze and hash
    anything a later move will judge.
 2. **Fan out (explorers, method track, OPEN):** create 1–2 fresh
    `explorer-<n>` teammates per `explore` task (`offgrid-<n>` under the

@@ -37,18 +37,18 @@ SERVICE_PROVIDERS = {
     # Sub-namespaces are gated: Cordis throws without an explicit inject entry.
     "remote.session": "@deepseek-ai/dsh-api-session-controller",
     "remote.settings": "@deepseek-ai/dsh-api-remotes",
-    "settingsScope": "@deepseek-ai/dsh-client-ui-settings",
+    # `configForms` replaced the `settingsScope` service on DSH 0.1.7.
+    "configForms": "@deepseek-ai/dsh-client-ui-settings",
 }
 # The card registers into the Plugins page's `plugins.bundle.config` ring,
-# keyed by this bundle's package name; the move pill registers into the
-# per-session `conversation.session.header.utilities` ring declared by
-# ui-conversation (both additive list seats — a replacement would shadow the
-# shell). 0.1.6 retired `settings.plugin.item`: a card registered there
-# renders nowhere, silently.
-RINGS = ["plugins.bundle.config", "conversation.session.header.utilities"]
-CARDS = [PLUGIN_ID, "rigorquant-move"]
+# keyed by this bundle's package name. 0.1.6 retired `settings.plugin.item`:
+# a card registered there renders nowhere, silently.
+RINGS = ["plugins.bundle.config"]
+CARDS = [PLUGIN_ID]
 RETIRED_RING = "settings.plugin.item"
-RING_OWNERS = ["@deepseek-ai/dsh-client-ui-plugin-manager", "@deepseek-ai/dsh-client-ui-conversation"]
+RING_OWNERS = ["@deepseek-ai/dsh-client-ui-plugin-manager"]
+# The router row's entry id: `configForms` serves the row's config under it.
+ROUTER_ROW = "rq-model-router"
 
 
 def manifest():
@@ -136,12 +136,12 @@ def test_card_waits_for_session_remote_before_failing(verdict):
     assert verdict["delayedCatalogCalls"] >= 1
 
 
-def test_apply_mounts_both_rings(verdict):
+def test_apply_mounts_the_card_ring(verdict):
     """Registering is necessary, not sufficient: apply must survive mount.
 
-    The plugin contributes the routing card (plugins.bundle.config) AND the
-    move pill (conversation.session.header.utilities). Both are additive
-    list/keyed seats.
+    The plugin contributes one thing, the routing card
+    (plugins.bundle.config). The move pill is gone (Decision 25): the Team
+    service has no browser Remotes left to read the board through.
     """
     assert "mountError" not in verdict, verdict.get("mountError")
     assert verdict["mounted"]
@@ -173,78 +173,42 @@ def test_the_retired_settings_slot_is_gone(verdict):
     assert verdict["retiredSettingsSlotReferences"] == 0
 
 
-def test_move_pill_renders_null_without_a_team_view(verdict):
-    """No team view — nothing renders, and nothing throws.
+def test_nothing_reads_the_services_dsh_017_removed(verdict):
+    """The Team Remotes and the settings scope service are gone on rc.2.
 
-    The pill reads the Lead's roster and board through the Team namespace's
-    `view` request; a Lead with no team running answers a failed RemoteResult,
-    which is the pill's render-nothing state.
+    `remote.agentTeams` (the move pill's board read) and `settingsScope` (the
+    card's old write path) no longer exist; a read of either registers
+    nothing and fails silently, so neither may come back.
     """
-    assert verdict["pillRenderedAbsent"] is True
-    assert "pillRenderError" not in verdict, verdict.get("pillRenderError")
-    assert verdict["pillNullWithoutTeam"] is True
+    assert verdict["teamNamespaceReads"] == 0
+    assert verdict["settingsScopeReads"] == 0
+    assert "settingsScope" not in verdict["inject"]
 
 
-def test_move_pill_reads_the_team_view_through_the_team_namespace(verdict):
-    """The only team read the installed 0.1.6-alpha.2 browser half serves.
+def test_card_edits_the_router_rows_config_form(verdict):
+    """The card reads and writes the router row's own profile config.
 
-    The client Session store has no `projectionsBySession` at that tag, so a
-    projection-shaped read is silently `undefined` and the pill renders nothing
-    on every real session — while its tests still pass. The read must be the
-    namespace's `view(agentId)` request, addressed to the LEAD's session id.
+    `configForms.get(<entry id>)` serves one Host plugin entry's config; the
+    id must be the router row's id in the bundle patch, which is also the
+    router's plugin name.
     """
-    assert verdict["fictionalProjectionReads"] == 0, (
-        "dsh/client.js reads a client projection store that does not exist on "
-        "0.1.6-alpha.2; the read is silent and the pill never renders")
-    assert verdict["teamNamespaceReads"] >= 1
-    assert verdict["pillViewLeadIds"] == ["lab-lead"], verdict.get("pillViewLeadIds")
+    assert verdict["configFormIds"] == [ROUTER_ROW]
+    assert "- id: %s\n" % ROUTER_ROW in (REPO / "cordis.patch.yml").read_text()
+    assert "const name = '%s'" % ROUTER_ROW in (REPO / "dsh/index.js").read_text()
 
 
-def test_move_pill_registers_only_while_the_team_namespace_is_present(verdict):
-    """No Team bundle, no namespace, no registration — not a null branch.
+def test_a_refused_save_is_shown_and_keeps_the_draft(verdict):
+    """`set`/`unset` resolve `false` when the Host refuses a write.
 
-    `ctx.inject(['remote.agentTeams'], …)` is the optionality seam: in a profile
-    without the Team bundle the callback never runs, so the utilities ring is
-    never claimed. The card still mounts on its own services.
+    A refusal is not a rejection, so a save that only caught throws would
+    report success while nothing was stored. It must show the failure and
+    keep the staged edit for another try.
     """
-    assert "pillGateError" not in verdict, verdict.get("pillGateError")
-    assert verdict["pillGateDeps"] == [["remote.agentTeams"]], verdict.get("pillGateDeps")
-    assert verdict["pillGateRings"] == ["plugins.bundle.config"], verdict.get("pillGateRings")
-
-
-def test_move_pill_derives_the_shallowest_incomplete_move(verdict):
-    """The move is the first incomplete layer of the task DAG, not a heuristic.
-
-    The probe's board has a COMPLETED Fan-out task and a PENDING Ground-truth
-    task blocked on it (plus a dangling `blockedBy` edge to a task not in the
-    list, which must be ignored rather than crash): the move must read as
-    Ground-truth, the shallowest layer that still has work outstanding, never
-    the completed layer beneath it.
-    """
-    assert "pillRenderError" not in verdict, verdict.get("pillRenderError")
-    assert verdict["pillRendered"] is True
-    assert verdict["pillMoveText"] == "move.ground-truth", verdict.get("pillMoveText")
-
-
-def test_move_pill_shows_a_badge_only_for_running_teammates(verdict):
-    """A portrait per running role — never the Lead, never an idle teammate.
-
-    The probe's roster has one RUNNING teammate (doublechecker-1), one IDLE
-    teammate (explorer-1), and the Lead itself (role 'lead', always excluded).
-    Exactly one badge must appear, titled with the role label and the
-    teammate's own name.
-    """
-    assert verdict["pillBadgeTitles"] == ["DoubleChecker — doublechecker-1"], verdict.get("pillBadgeTitles")
-
-
-def test_move_pill_resolves_the_lead_session_from_a_teammate_header(verdict):
-    """Opening a teammate shows the same pill, not a blank one.
-
-    A teammate's own Session carries `subagent.address.parentSessionId`; the
-    pill must address the Team view request to THAT Lead, exactly the hop the
-    Team package's own header action makes before it loads the view.
-    """
-    assert verdict["pillFromTeammateRendered"] is True
+    refused = verdict["draft"]["refused"]
+    assert refused["ops"] == ["set:explorerPrimary"]
+    assert refused["failed"] == "write"
+    assert refused["stillDirty"] is True
+    assert refused["stored"] is False
 
 
 def test_nothing_reads_a_current_session_field(verdict):
@@ -392,30 +356,6 @@ def test_model_select_flags_an_override_its_provider_does_not_list(verdict):
     }
     assert verdict["unlistedProviderOption"] is None
     assert verdict["flaggedModelOptions"] == ["deepseek::v4-flash-dspark"]
-
-
-def test_settings_namespace_is_writable_by_the_host():
-    """dsh brands namespaces with /^[a-z][a-z0-9-]*$/ — kebab-case, no dots.
-
-    `ctx.settings.register` takes a raw string and accepts anything, and
-    `settings.describe` will happily list an illegal name, so the card looks
-    fine right up to the first Save: the wire path brands the namespace and
-    rejects every write with `settings-rejected`. A dotted namespace therefore
-    produces a card that can display but can never persist a choice.
-    """
-    pattern = re.compile(r"^[a-z][a-z0-9-]*$")
-    host = (REPO / "dsh/index.js").read_text()
-    ns = re.search(r"const NS = '([^']+)'", host)
-    assert ns, "dsh/index.js no longer declares its settings namespace"
-    assert pattern.match(ns.group(1)), (
-        "settings namespace %r is unwritable: dsh requires %s" % (ns.group(1), pattern.pattern))
-
-
-def test_card_key_equals_the_served_namespace():
-    """The keyed slot dispatches on namespace: the key must BE the namespace."""
-    host = re.search(r"const NS = '([^']+)'", (REPO / "dsh/index.js").read_text()).group(1)
-    card = re.search(r"const CARD_KEY = '([^']+)'", (REPO / "dsh/client.js").read_text()).group(1)
-    assert card == host, "card key %r != served namespace %r" % (card, host)
 
 
 def test_graph_edges_cover_every_service_the_card_injects():

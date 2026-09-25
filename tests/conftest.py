@@ -35,8 +35,22 @@ RQ_CHECK = Path(os.environ.get("RQ_CHECK_BIN", SKILL_DIR / "scripts/rq_check.py"
 # same file. Role budgets no longer live in the composition (Decision 24:
 # dsh/team.js applies them by teammate name), so there is no delegation deny
 # list left to parse.
+#
+# The child list lives inside the declared preset row (Decision 25), under
+# `config.plugins`. `preset_children()` cuts that list out and dedents it to
+# column 0, so the row helpers below read it as a top-level composition.
 
-CORDIS = REPO / "agent-presets/rigorquant/agent.cordis.yml"
+PRESET_PATCH = REPO / "agent-presets/rigorquant.patch.yml"
+
+
+def preset_children():
+    """The declared preset's child list, dedented to column 0."""
+    lines = PRESET_PATCH.read_text().split("\n")
+    start = next(i for i, line in enumerate(lines)
+                 if line.strip() == "plugins:") + 1
+    indent = min(len(line) - len(line.lstrip())
+                 for line in lines[start:] if line.strip())
+    return "\n".join(line[indent:] for line in lines[start:])
 
 
 def composition_rows(text):

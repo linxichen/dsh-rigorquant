@@ -31,15 +31,18 @@
         customSkillDirs:
           - !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl + 'package.json').resolve('dsh-rigorquant/package.json')), 'agent-presets', 'rigorquant', 'skills')"
 
-    # Role-routed models (see docs/architecture.md, Decision 16). The plugin
-    # serves the `rigorquant-models` settings namespace (the browser half
-    # renders its form on this bundle's page under Plugins) and overlays
-    # explicit per-role choices plus a fallback on terminal route failure. The
-    # router carries the shipped tier matrix itself (DoubleChecker and
-    # adversary on pro; every other role inherits the session model, root
-    # following the chatbox picker) and resolves the role from the Team
-    # membership name (Decision 24). Agents with no membership, or outside
-    # this preset, are never touched.
+    # Role-routed models (see docs/architecture.md, Decisions 16 and 25). Each
+    # role's primary and fallback are `.volatile()` fields of THIS row's
+    # config (`<role>Primary`, `<role>Fallback`), so the profile owns them
+    # and a saved route applies on the next request; the browser half edits
+    # them on this bundle's page under Plugins. The router overlays those
+    # choices plus a fallback on terminal route failure. It carries the
+    # shipped tier matrix itself (DoubleChecker and adversary on pro; every
+    # other role inherits the session model, root following the chatbox
+    # picker), moves that matrix to `deepseek-account` when only the account
+    # route is routable, and resolves the role from the Team membership name
+    # (Decision 24). Agents with no membership, or outside this preset, are
+    # never touched.
     - id: rq-model-router
       name: 'dsh-rigorquant'
 

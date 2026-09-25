@@ -13,11 +13,14 @@
 // - the orchestrator (the Lead) inherits absent an override, same as any
 //   other unrouted role;
 // - an agent with no membership, or whose live composition is not this
-//   preset, is never touched.
+//   preset, is never touched;
+// - routes live on the row's volatile Config (Decision 25): a saved route is
+//   read per request through its reference, and the shipped matrix follows
+//   the model catalog — API-key only stays on `deepseek-official`, account
+//   only moves to `deepseek-account`, neither takes the #22 degradation.
 const fs = require('node:fs')
 const vm = require('node:vm')
 
-const NS = 'rigorquant-models'
 // The shipped tier matrix as the probe expects it. The router's own constants
 // are compared against these below, so a retarget of the fallback cannot pass
 // the probe by editing one side.
@@ -55,6 +58,7 @@ function loadHostModule(modulePath) {
     required() { return this },
     default() { return this },
     min() { return this },
+    volatile() { return this },
   }
   const schemaStub = {
     object() { return schema },
@@ -82,23 +86,18 @@ function loadHostModule(modulePath) {
 async function main() {
   const [, , modulePath] = process.argv
   const mod = loadHostModule(modulePath)
-  // The resolved section's base is `Config.defaults`, which schemastery fills
-  // from the router's DEFAULT_* constants; the schema stub above discards that
-  // default, so the probe seeds the base from the same exported constants.
   const { DEFAULT_PRIMARY, DEFAULT_FALLBACK } = mod
   equal(DEFAULT_PRIMARY, SHIPPED_PRIMARY, 'shipped primary')
   equal(DEFAULT_FALLBACK, SHIPPED_FALLBACK, 'shipped fallback')
   const listeners = new Map()
-  const base = {
-    doublecheckerPrimary: clone(DEFAULT_PRIMARY),
-    doublecheckerFallback: clone(DEFAULT_FALLBACK),
-    adversaryPrimary: clone(DEFAULT_PRIMARY),
-    adversaryFallback: clone(DEFAULT_FALLBACK),
-  }
-  // The resolved settings section: base merged with whatever the "user" layer
-  // currently holds — `ctx.settings.get()` always resolves live, so the
-  // router needs no separate document-updated listener to see a change.
-  let user = {}
+  // The routes the user saved on the router row. Each `<role><Slot>` field
+  // is `.volatile()`, so the router holds a stable reference and reads it per
+  // request; a live profile edit is `saved = {...}` here. An absent field is
+  // a reference whose `get()` answers `undefined`.
+  let saved = {}
+  const ROUTE_KEYS = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
+    .flatMap((role) => [`${role}Primary`, `${role}Fallback`])
+  const routeRefs = Object.fromEntries(ROUTE_KEYS.map((key) => [key, { get: () => saved[key] }]))
   // Every log line, in order; `warnings` holds the warn-level subset, so a
   // scenario can pin that a degrade or give-up is a warning, not chatter.
   const logs = []
@@ -117,12 +116,32 @@ async function main() {
   // the router must fail open, leaving the request untouched.
   const effortSurfaces = {
     'deepseek-official::deepseek-v4-pro': ['off', 'low', 'medium', 'high'],
-    // DeepSeek-V41-Flash (the 0.1.6 default catalog): no `medium` tier.
+    // DeepSeek-V41-Flash (the default catalog): no `medium` tier.
     'deepseek-official::deepseek-flash': ['off', 'low', 'high', 'max'],
+    // The account route declares the same catalog models.
+    'deepseek-account::deepseek-v4-pro': ['off', 'low', 'medium', 'high'],
+    'deepseek-account::deepseek-flash': ['off', 'low', 'high', 'max'],
     'zai::glm-5.3-flash': [],
     'stub-provider::stub-model': ['low'],
   }
+  // The model catalog as rc.2 builds it: every registered provider, and the
+  // models each lists. The API-key route lists its catalog with or without a
+  // key; the account route lists nothing until an account is signed in.
+  // `catalog` is the scenario: which providers list models, and whether the
+  // official route's `apiKeyEnv` reference is configured.
+  const CATALOG_MODELS = ['deepseek-flash', 'deepseek-v4-pro']
+  let catalog = { officialModels: true, officialKey: true, accountModels: false }
   const llm = {
+    listProviders: () => [{ id: 'deepseek-official' }, { id: 'deepseek-account' }],
+    listModels: async (provider) => {
+      const listed = provider === 'deepseek-official' ? catalog.officialModels
+        : provider === 'deepseek-account' ? catalog.accountModels : false
+      return listed ? CATALOG_MODELS.map((id) => ({ id, name: id })) : []
+    },
+    listConfigurableProviders: () => [
+      { provider: 'deepseek-official', settingsNs: 'llm-deepseek', settingsPath: [] },
+      { provider: 'deepseek-account', settingsNs: 'llm-deepseek-account', settingsPath: [] },
+    ],
     resolveModelInfo: async (provider, model) => {
       const key = `${provider}::${model}`
       if (!(key in effortSurfaces)) throw new Error(`NO_ADAPTER: ${key}`)
@@ -130,11 +149,14 @@ async function main() {
     },
   }
 
+  const settings = {
+    describe: () => [{ ns: 'llm-deepseek', value: { apiKeyEnv: 'DEEPSEEK_API_KEY' } }],
+  }
+  const credentials = {
+    describe: async (ref) => ({ configured: ref === 'DEEPSEEK_API_KEY' && catalog.officialKey }),
+  }
+
   const ctx = {
-    settings: {
-      register: () => {},
-      get: () => ({ ...base, ...user }),
-    },
     logger: {
       info: (message) => logs.push(message),
       warn: (message) => {
@@ -149,6 +171,8 @@ async function main() {
     },
     get: (serviceName) => {
       if (serviceName === 'llm') return llm
+      if (serviceName === 'settings') return settings
+      if (serviceName === 'credentials') return credentials
       if (serviceName === 'agentTeams') return teamsService
       if (serviceName === 'agentPresets') return agentPresetsService
       return undefined
@@ -176,7 +200,7 @@ async function main() {
   mod.apply(ctx, {
     presetId: 'rigorquant',
     degradeTtlMs: 600000,
-    defaults: base,
+    ...routeRefs,
   })
 
   const doublechecker = makeAgent('doublechecker-1', { role: 'teammate', name: 'doublechecker-1' })
@@ -231,7 +255,7 @@ async function main() {
   )
 
   // ---- A user override wins over the shipped matrix.
-  user = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model' } }
+  saved = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model' } }
   equal(
     await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     { provider: 'custom-provider', model: 'custom-model' },
@@ -241,7 +265,7 @@ async function main() {
   // ---- Clearing the override (the card's "reset") returns to the SHIPPED
   // default, not to a bare "native" absence — there is no native route left
   // to fall back to under Agent Teams.
-  user = {}
+  saved = {}
   equal(
     await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     DEFAULT_PRIMARY,
@@ -299,7 +323,7 @@ async function main() {
   // override but loses the effort; the inherited route's effort was already
   // cleared by applyChoice.
   const docAdversary = makeAgent('doc-adversary-1', { role: 'teammate', name: 'doc-adversary-1' })
-  user = { 'doc-adversaryPrimary': { provider: 'zai', model: 'glm-5.3-flash', reasoningEffort: 'high' } }
+  saved = { 'doc-adversaryPrimary': { provider: 'zai', model: 'glm-5.3-flash', reasoningEffort: 'high' } }
   equal(
     await waterfall('agent/request', { agent: docAdversary }, { provider: 'p', model: 'm', reasoningEffort: 'medium' }),
     { provider: 'zai', model: 'glm-5.3-flash' },
@@ -322,7 +346,7 @@ async function main() {
   })
 
   // (c) An effort the model's surface lists is never touched.
-  user = { doublecheckerPrimary: { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' } }
+  saved = { doublecheckerPrimary: { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' } }
   equal(
     await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' },
@@ -331,7 +355,7 @@ async function main() {
 
   // (d) An unresolvable route fails open: the effort rides untouched, and the
   // request path reports the route exactly as it would without the router.
-  user = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model', reasoningEffort: 'high' } }
+  saved = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model', reasoningEffort: 'high' } }
   equal(
     await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     { provider: 'custom-provider', model: 'custom-model', reasoningEffort: 'high' },
@@ -341,7 +365,7 @@ async function main() {
   // (e) A routed role's inherited (passthrough) route is sanitized too: an
   // effort the route does not list drops even without any stored choice.
   const offgrid = makeAgent('offgrid-1', { role: 'teammate', name: 'offgrid-1' })
-  user = {}
+  saved = {}
   equal(
     await waterfall('agent/request', { agent: offgrid }, { provider: 'stub-provider', model: 'stub-model', reasoningEffort: 'max' }),
     { provider: 'stub-provider', model: 'stub-model' },
@@ -353,14 +377,14 @@ async function main() {
   // before any provider I/O; the LLM service turns the throw into a terminal
   // error finish carrying a code and NO status. It must take the same
   // one-shot fallback as NO_ADAPTER, with one warning naming the role,
-  // the route, and the settings key it came from.
+  // the route, and the config key it came from.
   const unknownModel = (provider, model) => ({
     code: 'UNKNOWN_MODEL',
     message: `pi-ai provider "${provider}" has no configured model "${model}"`,
   })
   const phantom = { provider: 'linxicloud', model: 'deepseek-v4-flash-dspark' }
   const doublechecker2 = makeAgent('doublechecker-2', { role: 'teammate', name: 'doublechecker-2' })
-  user = { doublecheckerPrimary: clone(phantom) }
+  saved = { doublecheckerPrimary: clone(phantom) }
   equal(
     await waterfall('agent/request', { agent: doublechecker2 }, placeholderRoute),
     phantom,
@@ -410,7 +434,7 @@ async function main() {
   // router still gives up out loud, once per teammate, instead of leaving
   // the cause inside the teammate's compressed session log.
   const explorer2 = makeAgent('explorer-2', { role: 'teammate', name: 'explorer-2' })
-  user = { explorerPrimary: clone(phantom) }
+  saved = { explorerPrimary: clone(phantom) }
   equal(
     await waterfall('agent/request', { agent: explorer2 }, placeholderRoute),
     phantom,
@@ -435,7 +459,7 @@ async function main() {
   // A transient failure on the same route is not route-fatal: no degrade,
   // no warning (the host's own retry policy owns it).
   const explorer3 = makeAgent('explorer-3', { role: 'teammate', name: 'explorer-3' })
-  user = { explorerPrimary: clone(phantom), explorerFallback: clone(DEFAULT_FALLBACK) }
+  saved = { explorerPrimary: clone(phantom), explorerFallback: clone(DEFAULT_FALLBACK) }
   await waterfall('agent/request', { agent: explorer3 }, placeholderRoute)
   warned = warnings.length
   equal(
@@ -449,7 +473,7 @@ async function main() {
 
   // An HTTP 4xx on the primary still degrades (a string status included).
   const adversary4xx = makeAgent('adversary-2', { role: 'teammate', name: 'adversary-2' })
-  user = {}
+  saved = {}
   await waterfall('agent/request', { agent: adversary4xx }, placeholderRoute)
   equal(
     await waterfall('agent/request-error', {
@@ -495,7 +519,7 @@ async function main() {
   // The unrelated-picker guard holds for UNKNOWN_MODEL too: a failure on a
   // provider the router did not route to is left alone, even for a role
   // whose primary and fallback are both set.
-  user = { explorerPrimary: clone(phantom), explorerFallback: clone(DEFAULT_FALLBACK) }
+  saved = { explorerPrimary: clone(phantom), explorerFallback: clone(DEFAULT_FALLBACK) }
   equal(
     await waterfall('agent/request-error', {
       agent: explorer3, provider: 'picker-provider', failure: unknownModel('picker-provider', 'picker-model'),
@@ -504,6 +528,127 @@ async function main() {
     'an UNKNOWN_MODEL on an unrelated route is left alone',
   )
   assert(warnings.length === warned, 'an unrelated route warns nothing')
+
+  // ---- The three catalogs (issue #25). rc.2 splits DeepSeek into
+  // `deepseek-official` (API key) and `deepseek-account` (account sign-in),
+  // with the same model ids. Every scenario above ran on the API-key catalog.
+  const onAccount = (route) => ({ ...route, provider: 'deepseek-account' })
+  saved = {}
+
+  // (1) API-key only: the shipped matrix stays on the official route.
+  catalog = { officialModels: true, officialKey: true, accountModels: false }
+  const keyOnly = makeAgent('doublechecker-10', { role: 'teammate', name: 'doublechecker-10' })
+  equal(
+    await waterfall('agent/request', { agent: keyOnly }, placeholderRoute),
+    DEFAULT_PRIMARY,
+    'API-key only: the shipped primary stays on deepseek-official',
+  )
+
+  // (2) Account only. The official route still lists its catalog (rc.2
+  // advertises it with or without a key), but no key is configured; the
+  // account route lists models. The shipped matrix moves to the same ids on
+  // `deepseek-account`, primary and fallback alike.
+  catalog = { officialModels: true, officialKey: false, accountModels: true }
+  const accountOnly = makeAgent('adversary-10', { role: 'teammate', name: 'adversary-10' })
+  equal(
+    await waterfall('agent/request', { agent: accountOnly }, placeholderRoute),
+    onAccount(DEFAULT_PRIMARY),
+    'account only: the shipped primary moves to deepseek-account',
+  )
+  equal(
+    await waterfall('agent/request-error', {
+      agent: accountOnly, provider: 'deepseek-account', failure: { status: 429, message: 'quota' },
+    }, undefined),
+    { kind: 'retry' },
+    'account only: a terminal primary failure degrades',
+  )
+  equal(
+    await waterfall('agent/request', { agent: accountOnly }, placeholderRoute),
+    onAccount(DEFAULT_FALLBACK),
+    'account only: the shipped fallback moves to deepseek-account too',
+  )
+  assert(warnings[warnings.length - 1].includes('deepseek-account/deepseek-v4-pro (config key adversaryPrimary, shipped default)'),
+    'the account degrade names the moved route as the shipped default')
+  // The model catalog's own rule holds too: an official route that lists
+  // nothing at all is not routable, key or no key.
+  catalog = { officialModels: false, officialKey: true, accountModels: true }
+  equal(
+    await waterfall('agent/request', { agent: keyOnly }, placeholderRoute),
+    onAccount(DEFAULT_PRIMARY),
+    'an official route with no models is not routable',
+  )
+  // A route the user saved always wins, even one on the unroutable official
+  // route: only the shipped matrix moves.
+  catalog = { officialModels: true, officialKey: false, accountModels: true }
+  saved = { doublecheckerPrimary: clone(DEFAULT_PRIMARY) }
+  equal(
+    await waterfall('agent/request', { agent: keyOnly }, placeholderRoute),
+    DEFAULT_PRIMARY,
+    'account only: a saved official route is never moved',
+  )
+  saved = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model' } }
+  equal(
+    await waterfall('agent/request', { agent: keyOnly }, placeholderRoute),
+    { provider: 'custom-provider', model: 'custom-model' },
+    'account only: a saved route on another provider wins',
+  )
+  // A role outside the shipped matrix still inherits.
+  saved = {}
+  const accountExplorer = makeAgent('explorer-10', { role: 'teammate', name: 'explorer-10' })
+  equal(
+    await waterfall('agent/request', { agent: accountExplorer }, inheritedRoute),
+    inheritedRoute,
+    'account only: an unrouted role still inherits',
+  )
+
+  // (3) Neither: no key and no account. The shipped matrix stays on the
+  // official route, whose unresolvable-route failure takes the #22 lane:
+  // one degrade to the fallback, the fallback fails too, one give-up
+  // warning, no retry loop.
+  catalog = { officialModels: true, officialKey: false, accountModels: false }
+  const neither = makeAgent('doublechecker-11', { role: 'teammate', name: 'doublechecker-11' })
+  equal(
+    await waterfall('agent/request', { agent: neither }, placeholderRoute),
+    DEFAULT_PRIMARY,
+    'neither: the shipped primary stays on deepseek-official',
+  )
+  warned = warnings.length
+  equal(
+    await waterfall('agent/request-error', {
+      agent: neither, provider: DEFAULT_PRIMARY.provider,
+      failure: unknownModel(DEFAULT_PRIMARY.provider, DEFAULT_PRIMARY.model),
+    }, undefined),
+    { kind: 'retry' },
+    'neither: the primary degrades',
+  )
+  equal(
+    await waterfall('agent/request', { agent: neither }, placeholderRoute),
+    DEFAULT_FALLBACK,
+    'neither: the retry routes to the official fallback',
+  )
+  equal(
+    await waterfall('agent/request-error', {
+      agent: neither, provider: DEFAULT_FALLBACK.provider,
+      failure: unknownModel(DEFAULT_FALLBACK.provider, DEFAULT_FALLBACK.model),
+    }, undefined),
+    undefined,
+    'neither: the failing fallback is not retried',
+  )
+  assert(warnings.length === warned + 2, 'neither: one degrade warning and one give-up warning')
+  assert(warnings[warnings.length - 1].includes('doublecheckerFallback, shipped default')
+    && warnings[warnings.length - 1].includes('also failed'), 'neither: the give-up names the fallback')
+
+  // A harness whose credentials cannot be read keeps the shipped matrix on
+  // the official route rather than guessing.
+  catalog = { officialModels: true, officialKey: false, accountModels: true }
+  const noCredentials = ctx.get
+  ctx.get = (serviceName) => (serviceName === 'credentials' ? undefined : noCredentials(serviceName))
+  equal(
+    await waterfall('agent/request', { agent: keyOnly }, placeholderRoute),
+    DEFAULT_PRIMARY,
+    'no credentials service: the shipped matrix stays on deepseek-official',
+  )
+  ctx.get = noCredentials
 
   process.stdout.write(JSON.stringify({ ok: true, logs, warnings }))
 }

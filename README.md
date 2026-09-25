@@ -128,14 +128,6 @@ dsh-rigorquant** card, never off the roster. Each teammate is a row there:
 an audit while it runs (steering it is the ordinary conversation, and it
 breaks that teammate's blank context — documented, not prevented).
 
-RigorQuant adds one small thing to that surface: a **move pill** in the
-session header, beside the team action, showing which move the current round
-is on — Promise, Fan out, Ground-truth, Attack, Certify — derived from the
-task board's blocking edges (the shallowest layer with work left), plus a
-compact badge with a running teammate's role initials (hover for its name). It
-is display only: nothing clickable, no tool, route or model changed, and on a
-profile where the Team bundle is absent it renders nothing at all.
-
 The topology is **hub-and-spoke**, and the guards enforce it rather than
 asking: a teammate's message reaches the orchestrator or nowhere, a teammate
 cannot list the roster or the whole board, and it may read or update only a
@@ -341,10 +333,11 @@ cordis.patch.yml            bundle patch: skill layer + rq-model-router +
                             rq-team + rq-preset-sync rows
 dsh/                        host halves (role router, team composition and
                             per-call guard, boot-sync) + one persona file per
-                            role, and the web client bundle (routing card +
-                            move pill)
-agent-presets/rigorquant/   preset composition + persona + bundled skills
-  skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
+                            role, and the web client bundle (routing card)
+agent-presets/
+  rigorquant.patch.yml      the declared `rigorquant` preset (persona + child rows)
+  rigorquant/skills/        bundled skills
+    rigorquant/             SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)
   .../schemas/              study.json + registry.json JSON Schemas, which the
                             validator loads — so schema and checker cannot drift

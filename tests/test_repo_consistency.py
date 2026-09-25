@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from conftest import CORDIS, REPO, SKILL_DIR, composition_rows, is_disabled, top_level_rows
+from conftest import PRESET_PATCH, REPO, SKILL_DIR, composition_rows, is_disabled, preset_children, top_level_rows
 
 SKILL_SCRIPTS = ("rq_check.py", "provision-lean.sh")
 ROUTER_PROBE = REPO / "tests/router_probe.cjs"
@@ -119,7 +119,6 @@ def test_native_agent_options_floor_is_declared_and_enforced():
     assert "version_at_least" in install
     stale = "0.1.5-alpha.2"
     for path in (REPO / "README.md", REPO / "README.zh-CN.md",
-                 REPO / "agent-presets/rigorquant/agent.cordis.yml",
                  REPO / "dsh/sync.js"):
         text = path.read_text()
         assert floor in text, "%s omits the DSH floor" % path.name
@@ -143,7 +142,7 @@ def test_preset_persona_row_uses_the_prefix_suffix_split():
     entire mount down (not just the persona) — and discovery's health check only
     resolves module names, so the picker still shows it as healthy.
     """
-    composition = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    composition = preset_children()
     assert "name: '@deepseek-ai/dsh-persona'" in composition
     assert "    prefix: >-" in composition
     assert "text: >-" not in composition
@@ -210,7 +209,7 @@ def test_installer_accepts_the_minimum_dsh_version(tmp_path):
         check=True,
     )
     assert "Installed preset" in result.stdout
-    assert (dsh_home / ".agent-presets/rigorquant/agent.cordis.yml").is_file()
+    assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file()
 
 
 # ── the Agent Teams bundles: enabling, the cap override, uninstall ─────────
@@ -253,7 +252,7 @@ def test_architecture_record_matches_the_preset_composition():
     by construction because no teammate can create teammates, and Decision 8
     must carry that amendment rather than a depth the preset no longer sets.
     """
-    preset = CORDIS.read_text()
+    preset = preset_children()
     numeric = [row_id for row_id, body in composition_rows(preset)
                if re.search(r"^\s*maxDepth:\s*\d", body, re.MULTILINE)
                and not is_disabled(body)]
@@ -293,7 +292,7 @@ def test_the_disabled_workflow_row_names_a_package_that_exists():
     enabled and unresolvable it would be fatal, because discovery marks the
     whole preset "Failed to load" and the picker hides it.
     """
-    composition = CORDIS.read_text()
+    composition = preset_children()
     rows = dict(composition_rows(composition))
     assert "workflow-worker-thread" not in rows, (
         "the retired engine still has a row")
@@ -319,7 +318,7 @@ def test_disabled_external_agent_rows_track_the_shipped_background_mode():
     exactly why a copy left on the old key drifts unnoticed until someone
     enables the row.
     """
-    rows = dict(composition_rows(CORDIS.read_text()))
+    rows = dict(composition_rows(preset_children()))
     for row_id in ("tool-subagent-codex", "tool-subagent-claude-code"):
         body = rows[row_id]
         assert "backgroundMode: one-shot" in body, (
@@ -336,7 +335,7 @@ def test_no_delegation_row_offers_caller_selectable_models():
     per call would override the role's routed tier and the DoubleChecker
     could silently run on flash.
     """
-    assert "modelSelectionSettings" not in CORDIS.read_text()
+    assert "modelSelectionSettings" not in preset_children()
 
 
 def test_the_procedure_states_the_live_children_pool_rule():
@@ -452,7 +451,7 @@ def test_the_preset_carries_no_classic_delegation_rows():
     name; and any enabled spawn row is a second, unguarded way to create a
     child. With none left, depth-one delegation holds by construction.
     """
-    preset = CORDIS.read_text()
+    preset = preset_children()
     rows = dict(composition_rows(preset))
     present = sorted(r for r in CLASSIC_ROWS if r in rows)
     assert not present, "classic delegation rows still in the preset: %s" % present
@@ -468,23 +467,75 @@ def test_the_preset_carries_no_classic_delegation_rows():
         assert gone not in preset, "the preset still carries %r" % gone
 
 
-def test_the_kept_delegation_rows_stay_disabled_and_the_checker_lane_pinned():
-    """What the classic cut keeps: external agents off, the checker lane off
-    and pinned, and `present` on."""
-    preset = CORDIS.read_text()
+def test_the_kept_delegation_rows_stay_disabled_and_present_stays_on():
+    """What the classic cut keeps: external agents off and `present` on."""
+    preset = preset_children()
     rows = dict(composition_rows(preset))
     top = top_level_rows(preset)
     rows.update(top)
-    for row_id in ("tool-subagent-codex", "tool-subagent-claude-code", "mcp-jacobian"):
+    for row_id in ("tool-subagent-codex", "tool-subagent-claude-code"):
         assert row_id in rows, "the preset lost %s" % row_id
         assert is_disabled(rows[row_id]), "%s must stay disabled" % row_id
-    assert "jacobian@0.12.0" in rows["mcp-jacobian"], "the checker lane lost its pin"
     assert "present" in top, "the `present` row left the preset"
     assert not is_disabled(top["present"]), "the `present` row must stay on"
 
 
+def test_the_preset_is_declared_in_its_own_bundle_patch():
+    """Decision 25: on DSH 0.1.7 a preset exists because a bundle declares it.
+
+    The harness ignores `$DSH_HOME/.agent-presets`, so the directory preset is
+    deleted, not kept alongside, and the declaration rides the bundle's
+    patch list after `cordis.patch.yml`. The skill files stay where the host
+    `skill-filesystem-rigorquant` row serves them from.
+    """
+    pkg = json.loads((REPO / "package.json").read_text())
+    assert pkg["dsh"]["bundle"]["patch"] == [
+        "./cordis.patch.yml", "./agent-presets/rigorquant.patch.yml"]
+    patch = PRESET_PATCH.read_text()
+    head = patch[:patch.index("        plugins:")]
+    assert re.search(r"^- insert:\n", head, re.MULTILINE)
+    assert "      name: '@deepseek-ai/dsh-agent-preset'" in head
+    assert "        id: rigorquant\n" in head
+    assert re.search(r"^        order: \d+$", head, re.MULTILINE)
+    assert "replaces this row's WHOLE\n    # `config`" in head, (
+        "the preset row lost its override-by-id warning")
+    for gone in ("agent.cordis.yml", "preset.yml"):
+        assert not (REPO / "agent-presets/rigorquant" / gone).exists(), (
+            "the directory preset's %s is back" % gone)
+    assert (SKILL_DIR / "SKILL.md").is_file()
+
+
+def test_the_declared_child_list_drops_the_skill_root_and_the_jacobian_row():
+    """The host row serves the skill; the escalation lane mounts at runtime.
+
+    A child `skill-filesystem` row would register a second provider for the
+    same skills, and on a declared preset child `baseUrl` is the profile
+    root, so a path resolved from it points nowhere. `mcp-jacobian` cannot be
+    flipped per study once the preset is declared (ADR 0002).
+    """
+    children = preset_children()
+    ids = set(dict(composition_rows(children))) | set(top_level_rows(children))
+    for gone in ("skill-filesystem", "mcp-jacobian"):
+        assert gone not in ids, "the declared preset still has a %s row" % gone
+    assert "dsh-mcp-client" not in children
+    assert "tool-skill" in ids, "the skill tool left the preset"
+    assert "baseUrl" not in children, (
+        "a child resolves a path from baseUrl, which is the profile root here")
+
+
+def test_the_package_requires_the_rc2_harness_line():
+    """The bundle refuses harness versions outside the tested line.
+
+    The compatibility gate matches `peerDependencies` with
+    `includePrerelease`, so the rc floor itself satisfies the range and 0.1.8
+    does not.
+    """
+    pkg = json.loads((REPO / "package.json").read_text())
+    assert pkg["peerDependencies"] == {"@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.1.8"}
+
+
 def _persona_prefix():
-    preset = CORDIS.read_text()
+    preset = preset_children()
     m = re.search(r"prefix: >-\n(.*?)\n    suffix:", preset, re.DOTALL)
     assert m, "the persona row lost its prefix"
     return " ".join(m.group(1).split())
@@ -594,7 +645,7 @@ def test_resuming_rearms_the_goal_by_its_tool_calls():
     a cold resume the orchestrator worked on while the goal stayed inactive,
     because the text said a human turn re-arms it without saying who calls
     what. The persona and the skill both name the calls."""
-    persona = " ".join((REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text().split())
+    persona = " ".join(preset_children().split())
     skill = " ".join((SKILL_DIR / "SKILL.md").read_text().split())
     for name, text in (("persona", persona), ("SKILL.md", skill)):
         assert "`get_goal`, then `update_goal` with action `resume`" in text, (
@@ -704,20 +755,21 @@ def test_both_readmes_describe_the_team_through_the_native_surface():
 
     Issue #13 retired the custom activity panel for the harness's own team
     view, so the section that used to describe the `rq-activity` host half and
-    its `shell.overlay` floater must describe the four native things a
-    researcher looks at -- the roster and the task board in the session
-    header, a teammate opened as an ordinary conversation, and the move pill
-    -- and must keep the hub-and-spoke figure as the picture of the topology
-    the per-call guards enforce. The retired implementation may not be named:
+    its `shell.overlay` floater must describe the native things a researcher
+    looks at -- the roster and the task board in the session header, and a
+    teammate opened as an ordinary conversation -- and must keep the
+    hub-and-spoke figure as the picture of the topology the per-call guards
+    enforce. (The move pill this section also described was deleted with
+    Decision 25.) The retired implementation may not be named:
     not the host half, not the overlay slot, not the floater/悬浮件. The
     upstream *design* may still be credited -- the figure is adapted from it.
     """
     for name, heading, words in (
         ("README.md", "The team, live",
-         ("roster", "task board", "move pill", "session header", "hub-and-spoke",
+         ("roster", "task board", "session header", "hub-and-spoke",
           "enforce", "docs/figs/agent-team-activity.svg")),
         ("README.zh-CN.md", "团队实时视图",
-         ("花名册", "任务看板", "胶囊", "会话头部", "枢纽", "强制",
+         ("花名册", "任务看板", "会话头部", "枢纽", "强制",
           "docs/figs/agent-team-activity.svg")),
     ):
         body = _pin_section_words(name, heading, words, level=3)
@@ -868,6 +920,26 @@ def test_router_native_defaults_overrides_and_fallback_round_trip():
                for line in warnings), "the probe no longer covers the failing-fallback give-up"
     assert any("explorerPrimary" in line and "no fallback" in line for line in warnings), (
         "the probe no longer covers the no-fallback give-up")
+    # Issue #25: account-only users get the shipped matrix on
+    # `deepseek-account`, so a degrade there names the moved route.
+    assert any("deepseek-account/deepseek-v4-pro (config key adversaryPrimary, shipped default)" in line
+               for line in warnings), "the probe no longer covers the account-only catalog"
+
+
+def test_router_routes_live_on_its_own_volatile_config():
+    """Decision 25: `ctx.settings.register` is gone on DSH 0.1.7.
+
+    The router threw `TypeError: ctx.settings.register is not a function` at
+    mount on rc.2. Its routes are now `.volatile()` fields of the router
+    row's own config, which the profile owns; nothing may reach for the
+    retired `rigorquant-models` namespace again.
+    """
+    router = (REPO / "dsh/index.js").read_text()
+    for gone in ("settings.register", "rigorquant-models", "settings.get(",
+                 "SettingsSchema", "const NS"):
+        assert gone not in router, "dsh/index.js still names %r" % gone
+    assert "choiceSchema.default(void 0).volatile()" in router
+    assert "ROUTE_KEYS = ROLES.flatMap((role) => [`${role}Primary`, `${role}Fallback`])" in router
 
 
 def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
@@ -903,28 +975,6 @@ def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
         text = (persona_dir / f"{role}.md").read_text()
         assert text.lstrip().startswith(f"# Role: {role}"), (
             f"{role}.md must state its own role name up front")
-
-
-def test_move_pill_role_badges_pin_the_same_seven_roles():
-    """dsh/client.js's ROLE_BADGE is a fourth, browser-side copy of the same
-    role set (the client bundle is standalone and cannot `require` the
-    host-side dsh/team.js). A role dropped or added there without a matching
-    update here would silently mislabel or drop a running teammate's badge
-    on the move pill.
-    """
-    team = (REPO / "dsh" / "team.js").read_text()
-    team_match = re.search(r"export const TEAMMATE_ROLES = \[([^\]]*)\]", team)
-    assert team_match, "dsh/team.js no longer exports TEAMMATE_ROLES"
-    team_roles = set(re.findall(r"'([a-z-]+)'", team_match.group(1)))
-
-    client = (REPO / "dsh" / "client.js").read_text()
-    badge_match = re.search(r"const ROLE_BADGE = \{(.*?)\n\}", client, re.DOTALL)
-    assert badge_match, "dsh/client.js no longer declares ROLE_BADGE"
-    badge_roles = set(re.findall(r"^\s*'?([a-z-]+)'?:\s*\[", badge_match.group(1), re.MULTILINE))
-
-    assert badge_roles == team_roles, (
-        "role drift: dsh/client.js's ROLE_BADGE=%s vs dsh/team.js's TEAMMATE_ROLES=%s"
-        % (sorted(badge_roles), sorted(team_roles)))
 
 
 def _shipped_route(slot):
@@ -1004,13 +1054,11 @@ def test_every_role_has_a_description_and_frequency_in_both_locales():
     assert match, "dsh/index.js no longer exports its ROLES list"
     roles = re.findall(r"'([a-z-]+)'", match.group(1))
     client = (REPO / "dsh" / "client.js").read_text()
-    # Both locale sections of every copy block live inside the factory
-    # closure: first the settings card (the one that carries role copy), then
-    # the move pill. Each must be bilingual — a monolingual block is a
-    # language that silently falls back to the other's strings.
+    # The card's copy block lives inside the factory closure and must be
+    # bilingual — a monolingual block is a language that silently falls back
+    # to the other's strings.
     sections = re.findall(r"^\s{2}(en|zh): \{", client, re.MULTILINE)
-    assert sections[:2] == ["en", "zh"], "the card copy sections moved; update this test"
-    assert sections[2:] == ["en", "zh"], "the move-pill copy is not bilingual"
+    assert sections == ["en", "zh"], "the card copy sections moved; update this test"
     vocabulary = {"en": {"Frequent", "Common", "Rare"}, "zh": {"频繁", "常见", "少见"}}
     for role in roles:
         for locale in ("en", "zh"):
@@ -1120,7 +1168,7 @@ def test_no_document_calls_an_isolation_boundary_a_wall():
     claims = ("bit-level isolation", "fully isolated", "sandboxed lane",
               "cannot reach the network")
     offenders = []
-    for doc in docs() + [REPO / "agent-presets/rigorquant/agent.cordis.yml"]:
+    for doc in docs() + [PRESET_PATCH]:
         # Paragraph scope: the denial routinely sits a line away from the word.
         for block in re.split(r"\n\s*\n", doc.read_text()):
             low = block.lower()

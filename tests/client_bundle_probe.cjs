@@ -21,9 +21,8 @@ sandbox.globalThis = sandbox
 const collectedLogs = []
 sandbox.console = { ...console, log: (...args) => { collectedLogs.push(args.map(String).join(' ')) } }
 // The card's lazy catalog retry uses window.setTimeout; the VM window is the
-// sandbox itself, so surface the host timers. The move pill re-reads its team
-// view on an interval, so the interval pair is surfaced too (the browser has
-// both).
+// sandbox itself, so surface the host timers (the interval pair too; the
+// browser has both).
 sandbox.setTimeout = setTimeout
 sandbox.clearTimeout = clearTimeout
 sandbox.setInterval = setInterval
@@ -57,16 +56,10 @@ verdict.factoryIsFunction = typeof handoff.factory === 'function'
 // in "...current", like `currentSessionId`, does not match).
 verdict.currentFieldReads = (code.match(/\.current\b/g) ?? []).length
 verdict.retiredSettingsSlotReferences = (code.match(/settings\.plugin\.item/g) ?? []).length
-// The pill must read its team view through the Team namespace's `view` RPC.
-// A projection-shaped read is dead code on the installed 0.1.6-alpha.2: that
-// client store does not exist there — `git grep projectionsBySession` over the
-// harness is empty — so the read is silently undefined and the pill renders
-// nothing on every real session, forever. The probe's behavioural scenarios
-// above are what prove the replacement works; this pin is on the READ EXPRESSION
-// (comments explaining the retired API are prose, not a read), so the fictional
-// call cannot come back behind a feature check.
-verdict.fictionalProjectionReads = (code.match(/useSessions\s*\(|state\.projectionsBySession/g) ?? []).length
+// DSH 0.1.7 removed the Team service's browser Remotes and the settings
+// scope service; a read of either is dead code that registers nothing.
 verdict.teamNamespaceReads = (code.match(/remote\.agentTeams/g) ?? []).length
+verdict.settingsScopeReads = (code.match(/ctx\.settingsScope|'settingsScope'/g) ?? []).length
 
 // The module table only answers platform seed words; anything else is a
 // guaranteed runtime throw in the browser, so record what was asked for.
@@ -89,51 +82,13 @@ let modelCatalogCalls = 0
 // Mutable persisted user layer: the ops the card emits land here, so a
 // follow-up edit sees the same layering the real seam would show it.
 const userLayer = {}
-// The move pill reads the Lead's live team view through the Team package's own
-// browser seam: the `remote.agentTeams` namespace, whose `view(agentId)`
-// answers `RemoteResult<TeamView>`
-// (agent-team `lib/typert.remote-client.d.ts`; the same call
-// `client-ui-agent-team`'s own header action makes). That is the ONLY read
-// that works on the installed 0.1.6-alpha.2: the client Session store has no
-// `projectionsBySession` there — `git grep projectionsBySession` over the
-// installed harness is empty — so a projection-shaped read is silently
-// undefined forever, and the pill renders nothing on every real session.
-// `remote.agentTeams` is INJECTED, never read off the root context: with the
-// Team bundle unmounted the namespace does not exist, the `ctx.inject` gate
-// never fires, and the pill never registers at all — "renders nothing when
-// the namespace is absent" as a registration gate, not a null branch.
-//
-// Two fake sessions cover the header's two shapes: 'lab-lead' (a Team Lead, no
-// parent) and 'lab-teammate' (a teammate whose own header must resolve back to
-// the same Lead's board via `subagent.address.parentSessionId`). `teamViews` is
-// the mutable per-Lead source a scenario flips between "no team running"
-// (the namespace answers a failed RemoteResult) and a populated TeamView.
-const sessionSnapshots = {
-  'lab-lead': { subagent: undefined },
-  'lab-teammate': { subagent: { address: { parentSessionId: 'lab-lead' } } },
-}
-let teamViews = {}
-const teamViewLeadIds = []
-const teamNamespace = {
-  view: async (leadSessionId) => {
-    teamViewLeadIds.push(leadSessionId)
-    return teamViews[leadSessionId] === undefined
-      ? { ok: false, error: { code: 'team/not-found' } }
-      : { ok: true, value: teamViews[leadSessionId] }
-  },
-}
-/** Session-scoped standard props for one session, layered onto whatever the
- *  registration's own `inject()` face contributes (propsOf below). */
-const sessionPropsFor = (sessionId) => ({
-  sessionId,
-  useSession: (selector) => selector(sessionSnapshots[sessionId]),
-})
+/** Entry ids the card asked `configForms` for. */
+const configFormIds = []
+/** When set, the ConfigForm stub refuses every write the way the Host does. */
+let refuseWrites = false
 // Minimal React: enough to run renders of a function component and record the
-// element tree. The card needs createElement plus a snapshot hook; the pill
-// additionally loads its team view asynchronously, so state and effects are
-// REAL here — `mount` below renders, runs the effects a render scheduled,
-// settles their promises, and renders again until the tree stops moving, which
-// is the loop React itself drives. Hook slots are positional per component.
+// element tree. The card needs createElement plus a snapshot hook; effects are
+// recorded, never run. Hook slots are positional per component.
 const hookSlots = []
 let hookCursor = 0
 let hookDirty = false
@@ -244,33 +199,6 @@ const settle = async (done, steps = 100, stepMs = 10) => {
   }
   return done()
 }
-/** Render one function component the way React mounts it: render, run the
- *  effects that render scheduled, let their promises settle, re-render while
- *  anything changed, and hand back the final tree plus the cleanups an unmount
- *  would run (the pill re-reads its team view on a timer, so its interval MUST
- *  be cleared or this process never exits). */
-const mount = async (component, props, budget = 12) => {
-  hookSlots.length = 0
-  hookCursor = 0
-  hookDirty = false
-  let tree = null
-  const cleanups = []
-  for (let pass = 0; pass < budget; pass += 1) {
-    hookCursor = 0
-    hookDirty = false
-    tree = component(props)
-    const due = hookSlots.filter((slot) => typeof slot.effect === 'function')
-    if (due.length === 0 && !hookDirty) break
-    for (const slot of due) {
-      const effect = slot.effect
-      slot.effect = undefined
-      const cleanup = effect()
-      if (typeof cleanup === 'function') cleanups.push(cleanup)
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  }
-  return { tree, cleanups }
-}
 const reqStub = (spec) => {
   required.push(spec)
   if (!PLATFORM.has(spec)) throw new Error(`module table cannot answer "${spec}"`)
@@ -315,13 +243,9 @@ if (verdict.applyIsFunction) {
     settings: {
       describe: async () => ({
         ok: true,
-        value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] },
+        value: { namespaces: [{ ns: 'rq-model-router', schema: { uid: 1, refs: {} } }] },
       }),
     },
-    // The namespace the move pill reads its roster and board through. It is
-    // reached only from inside `ctx.inject(['remote.agentTeams'], …)`, never
-    // from the root context (the gate below enforces that).
-    agentTeams: teamNamespace,
   }
   /** One remote face, gated on the namespaces its scope actually injected. */
   const makeRemote = (allowed) => new Proxy(remoteNamespaces, {
@@ -336,13 +260,10 @@ if (verdict.applyIsFunction) {
     },
   })
   const remote = makeRemote(declaredRemote)
-  // Services this scope's context provides. `remote.agentTeams` is one of them
-  // here — this composition has the Team bundle — but it is reached only from
-  // inside the scope that injects it, never off the root context.
+  // Services this scope's context provides.
   const injectDeps = []
   const provides = (name) => [
-    'slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'settingsScope',
-    'remote.agentTeams',
+    'slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'configForms',
   ].includes(name)
   const ctx = {
     // `ctx.effect` runs the body at once and keeps what it returns as the
@@ -359,18 +280,34 @@ if (verdict.applyIsFunction) {
     remote,
     get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
     locale: { register: () => {}, bind: () => (key) => key },
-    settingsScope: {
-      bind: () => ({
-        getSnapshot: () => ({
-          status: 'ready', writable: true, mode: 'host', revision: 1,
-          value: { doublecheckerPrimary: { provider: 'deepseek', model: 'v4-pro' } },
-          base: { doublecheckerPrimary: { provider: 'deepseek', model: 'v4-pro' } },
-          user: userLayer,
-        }),
-        subscribe: () => () => {},
-        set: async (field, value) => { ops.push({ op: 'set', field, value }); userLayer[field] = value },
-        unset: async (field) => { ops.push({ op: 'unset', field }); delete userLayer[field] },
-      }),
+    // The router row's ConfigForm (@deepseek-ai/dsh-client-ui-settings):
+    // `set`/`unset` resolve `true` when the Host accepts the write and `false`
+    // when it refuses it, leaving the stored layer unchanged.
+    configForms: {
+      get: (entryId) => {
+        configFormIds.push(entryId)
+        return {
+          getSnapshot: () => ({
+            status: 'ready', writable: true, mode: 'host', revision: 1,
+            value: { doublecheckerPrimary: { provider: 'deepseek', model: 'v4-pro' } },
+            base: { doublecheckerPrimary: { provider: 'deepseek', model: 'v4-pro' } },
+            user: userLayer,
+          }),
+          subscribe: () => () => {},
+          set: async (field, value) => {
+            ops.push({ op: 'set', field, value })
+            if (refuseWrites) return false
+            userLayer[field] = value
+            return true
+          },
+          unset: async (field) => {
+            ops.push({ op: 'unset', field })
+            if (refuseWrites) return false
+            delete userLayer[field]
+            return true
+          },
+        }
+      },
     },
     slots: {
       inject: (ring, fn) => { rings.push(ring); return fn() },
@@ -393,7 +330,7 @@ if (verdict.applyIsFunction) {
     // The Plugins page finds a bundle's form by the slot name and the KEY:
     // `plugins.bundle.config` keyed by the bundle's package name, which is
     // also the id the bundle registered with the loader.
-    const card = registrations.find((reg) => reg.descriptor.name !== 'conversation.session.header.utilities')
+    const card = registrations.find((reg) => reg.descriptor.name === 'plugins.bundle.config')
     verdict.cardSlot = card?.descriptor.name ?? null
     verdict.cardKey = card?.descriptor.key ?? null
   } catch (error) {
@@ -439,11 +376,6 @@ if (verdict.applyIsFunction) {
       verdict.renderError = `${error.name}: ${error.message}`
     }
   }
-
-  // The move pill is the second registration
-  // (conversation.session.header.utilities, scope 'session'); its behaviours
-  // are exercised by the async scenario below, which drives the real
-  // `remote.agentTeams.view` face the way the browser does.
 }
 
 // Drive the draft model through the same face the card uses. This is the
@@ -485,6 +417,22 @@ async function exerciseDraft() {
   await face.save()
   verdict.draft.resetOps = ops.map((entry) => `${entry.op}:${entry.field}`)
   verdict.draft.afterReset = read().fields[FIELD].overridden
+
+  // A write the Host refuses resolves `false`, not a rejection. It is a
+  // failed save: the failure shows, the staged edit stays staged, and
+  // nothing lands in the stored layer.
+  ops.length = 0
+  refuseWrites = true
+  face.stage(FIELD, CHOICE)
+  await face.save()
+  refuseWrites = false
+  verdict.draft.refused = {
+    ops: ops.map((entry) => `${entry.op}:${entry.field}`),
+    failed: read().failed ?? null,
+    stillDirty: read().fields[FIELD].dirty,
+    stored: FIELD in userLayer,
+  }
+  face.discard()
 }
 
 // Immediate-boot regression: the card must WAIT for the session Remote to be
@@ -502,7 +450,7 @@ async function exerciseDelayedCatalog() {
   const delayedRegs = []
   const delayedNamespaces = {
     get session() { return sessionRemote },
-    settings: { describe: async () => ({ ok: true, value: { namespaces: [{ ns: 'rigorquant-models', schema: { uid: 1, refs: {} } }] } }) },
+    settings: { describe: async () => ({ ok: true, value: { namespaces: [{ ns: 'rq-model-router', schema: { uid: 1, refs: {} } }] } }) },
   }
   const delayedRemote = new Proxy(delayedNamespaces, {
     get(target, prop) {
@@ -518,12 +466,12 @@ async function exerciseDelayedCatalog() {
   const delayedCtx = {
     remote: delayedRemote,
     locale: { register: () => {}, bind: () => (key) => key },
-    settingsScope: {
-      bind: () => ({
+    configForms: {
+      get: () => ({
         getSnapshot: () => ({ status: 'ready', writable: true, mode: 'host', revision: 1, value: {}, base: {}, user: {} }),
         subscribe: () => () => {},
-        set: async () => {},
-        unset: async () => {},
+        set: async () => true,
+        unset: async () => true,
       }),
     },
     slots: {
@@ -531,8 +479,6 @@ async function exerciseDelayedCatalog() {
       register: (descriptor, component) => { delayedRegs.push({ descriptor, component }); return descriptor },
     },
     effect: (fn) => fn(),
-    // This scenario is about the card's catalog retry; the Team namespace is
-    // not in its composition, so the pill's injected callback never runs.
     inject: () => undefined,
     // Serve the settingsSchema service so the card never falls back to the
     // legacy schema-form module require (which would perturb `required`).
@@ -642,139 +588,6 @@ async function exerciseEffortDropdown() {
   face.discard()
 }
 
-// The move pill in full. It reads the Lead's roster and board through the
-// injected `remote.agentTeams.view` namespace — the only team read the
-// installed 0.1.6-alpha.2 browser half serves — resolving a teammate's own
-// header back to its Lead, and rendering nothing while there is no team.
-async function exerciseMovePill() {
-  // Registration is already evidenced by `mountedRings`/`cards` (asserted by
-  // the ring test); this scenario owns behaviour only.
-  const pill = registrations.find((reg) => reg.descriptor.id === 'rigorquant-move')
-  if (pill === undefined) return
-  const props = propsOf(pill.descriptor.inject())
-  const mountPill = async (sessionId) => {
-    const mounted = await mount(pill.component, { ...props, ...sessionPropsFor(sessionId) })
-    // The pill re-reads on an interval; unmount, or this process never exits.
-    mounted.cleanups.forEach((cleanup) => cleanup())
-    return mounted.tree
-  }
-  const titlesOf = (node, found = []) => {
-    if (node === null || typeof node !== 'object') return found
-    if (typeof node.props?.title === 'string') found.push(node.props.title)
-    for (const child of node.children ?? []) titlesOf(child, found)
-    return found
-  }
-
-  try {
-    // No team running: the namespace answers a failed RemoteResult (a Lead with
-    // no team has no view). Nothing renders and nothing throws.
-    teamViews = {}
-    verdict.pillNullWithoutTeam = (await mountPill('lab-lead')) === null
-    verdict.pillRenderedAbsent = true
-
-    // A completed Fan-out task and a still-pending Ground-truth task blocked on
-    // it: the move must read as the SHALLOWEST incomplete layer (Ground-truth),
-    // never the completed one. `blockedBy` also names an id absent from the
-    // board (a stale edge to a task another round already dropped) to prove a
-    // dangling edge is ignored rather than crashing. One RUNNING teammate
-    // (doublechecker-1) must produce a badge; an idle one (explorer-1) and the
-    // Lead row must not.
-    teamViewLeadIds.length = 0
-    teamViews = {
-      'lab-lead': {
-        members: [
-          { id: 'lab-lead', name: 'root', role: 'lead', status: 'running', diagnostics: [] },
-          { id: 'lab-explorer-1', name: 'explorer-1', role: 'teammate', status: 'idle', diagnostics: [] },
-          { id: 'lab-dc-1', name: 'doublechecker-1', role: 'teammate', status: 'running', diagnostics: [] },
-        ],
-        tasks: [
-          {
-            id: 'task-1', revision: 1, subject: 'explore', description: '', status: 'completed',
-            blockedBy: [], writeScopes: [], ready: true, writeScopeWarnings: [],
-          },
-          {
-            id: 'task-2', revision: 1, subject: 'verify', description: '', status: 'pending',
-            blockedBy: ['task-1', 'task-9'], writeScopes: [], ready: false, writeScopeWarnings: [],
-          },
-        ],
-      },
-    }
-    const tree = await mountPill('lab-lead')
-    verdict.pillRendered = tree !== null && typeof tree === 'object'
-    verdict.pillMoveText = tree?.children?.[0]?.children?.[0] ?? null
-    verdict.pillBadgeTitles = titlesOf(tree)
-    // A teammate's OWN header must resolve the same Lead's board through
-    // `subagent.address.parentSessionId` — opening a teammate shows the same
-    // pill, not a blank one. The view source is keyed by Lead alone, so a
-    // failed resolution would render nothing instead of the board.
-    verdict.pillFromTeammateRendered = (await mountPill('lab-teammate')) !== null
-    verdict.pillViewLeadIds = [...new Set(teamViewLeadIds)]
-  } catch (error) {
-    verdict.pillRendered = false
-    verdict.pillRenderError = `${error.name}: ${error.message}`
-  }
-  teamViews = {}
-}
-
-// The Team namespace is OPTIONAL. With the Team bundle unmounted there is no
-// team to read, so the pill must not register at all — the `ctx.inject` gate,
-// not a null branch inside the component. A second, Team-less context proves
-// it: the card still mounts on its own services, and no
-// conversation.session.header.utilities ring is ever claimed.
-async function exercisePillGate() {
-  if (pluginSurface === null) return
-  const gateRings = []
-  const gateDeps = []
-  const teamlessNamespaces = {
-    session: {
-      modelCatalog: async () => ({
-        ok: true,
-        value: { groups: [], failures: [], routableProviders: [], default: { provider: 'deepseek', model: 'v4-pro' } },
-      }),
-    },
-    settings: { describe: async () => ({ ok: true, value: { namespaces: [] } }) },
-  }
-  const gateRemote = new Proxy(teamlessNamespaces, {
-    get(target, prop) {
-      if (typeof prop === 'string' && prop in target) {
-        if (!(verdict.inject ?? []).includes(`remote.${prop}`)) {
-          throw new Error(`cannot get property "remote.${prop}" without inject`)
-        }
-        return target[prop]
-      }
-      return Reflect.get(target, prop)
-    },
-  })
-  const gateCtx = {
-    remote: gateRemote,
-    locale: { register: () => {}, bind: () => (key) => key },
-    settingsScope: {
-      bind: () => ({
-        getSnapshot: () => ({ status: 'ready', writable: true, mode: 'host', revision: 1, value: {}, base: {}, user: {} }),
-        subscribe: () => () => {},
-        set: async () => {},
-        unset: async () => {},
-      }),
-    },
-    slots: {
-      inject: (ring, fn) => { gateRings.push(ring); return fn() },
-      register: (descriptor) => descriptor,
-    },
-    effect: (fn) => fn(),
-    get: (name) => (name === 'settingsSchema' ? settingsSchemaService : undefined),
-    // The gate itself: no Team bundle in this composition, so an injected
-    // callback that asks for `remote.agentTeams` never runs.
-    inject: (deps, fn) => {
-      gateDeps.push(deps)
-      if (deps.includes('remote.agentTeams')) return undefined
-      return fn(gateCtx)
-    },
-  }
-  pluginSurface.apply(gateCtx)
-  verdict.pillGateDeps = gateDeps
-  verdict.pillGateRings = gateRings
-}
-
 // A fiber unload runs every effect disposer collected during mount: `ctx.effect`
 // keeps what the body RETURNS as the disposer. Nothing this bundle registers
 // mounts a DOM side effect any more (the retired activity floater's
@@ -790,17 +603,14 @@ function exerciseDisposal() {
 
 Promise.resolve().then(() => exerciseEffortDropdown()).catch((error) => {
   verdict.effortDropdownError = `${error.name}: ${error.message}`
-}).then(() => exerciseMovePill()).catch((error) => {
-  verdict.pillRenderError = `${error.name}: ${error.message}`
 }).then(() => exerciseDraft()).catch((error) => {
   verdict.draftError = `${error.name}: ${error.message}`
 }).then(() => exerciseDisposal()).catch((error) => {
   verdict.disposeError = `${error.name}: ${error.message}`
 }).then(() => exerciseDelayedCatalog()).catch((error) => {
   verdict.delayedCatalogError = `${error.name}: ${error.message}`
-}).then(() => exercisePillGate()).catch((error) => {
-  verdict.pillGateError = `${error.name}: ${error.message}`
 }).finally(() => {
   verdict.modelCatalogCalls = modelCatalogCalls
+  verdict.configFormIds = [...new Set(configFormIds)]
   process.stdout.write(JSON.stringify(verdict))
 })

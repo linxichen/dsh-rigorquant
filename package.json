@@ -38,7 +38,10 @@
   },
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": [
+        "./cordis.patch.yml",
+        "./agent-presets/rigorquant.patch.yml"
+      ]
     },
     "client": {
       "inject": [
@@ -47,8 +50,7 @@
         "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-plugin-manager",
-        "@deepseek-ai/dsh-client-ui-conversation"
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
       ],
       "platform": "web",
       "immediately": true
@@ -56,5 +58,8 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.1.8"
   }
 }

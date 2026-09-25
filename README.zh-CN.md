@@ -115,13 +115,6 @@ RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到
 会话，于是你可以在它运行的同时读它的推导或审计（直接对话就是普通会话，会打断
 该队友的空白上下文——这一点会被记录，但不被阻止）。
 
-RigorQuant 只在这套界面上加了一样小东西：会话头部紧挨团队动作的
-**move 胶囊（pill）**，标出当前轮所处的 move——Promise、Fan out、
-Ground-truth、Attack、Certify——由任务看板的阻塞边推出（还有活要干的最浅一
-层），并为每位运行中的队友点一枚小徽章（角色缩写，悬停显示名字）。它只做展示：
-没有任何可点之处，不改动工具、路由或模型；在未挂载 Team bundle 的 profile 上
-它什么都不渲染。
-
 拓扑是**枢纽-辐条（hub-and-spoke）**，而且由守卫**强制**成事实而非约定：
 队友的消息要么到编排者、要么发不出去；队友无法列出花名册或整个看板；只能读取或
 更新没有被其他队友占有的任务（也就是它简报指定的那一条，由它 claim）。下图就是
@@ -294,9 +287,11 @@ cordis.patch.yml            bundle patch：技能层 + rq-model-router +
                             rq-team + rq-preset-sync 行
 dsh/                        宿主半（角色路由、团队组合与逐调用守卫、
                             启动同步）+ 每角色一个 persona 文件，与 web 客户端包
-                            （路由卡片 + move 胶囊）
-agent-presets/rigorquant/   preset 组合 + persona + 内置技能
-  skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
+                            （路由卡片）
+agent-presets/
+  rigorquant.patch.yml      声明式 `rigorquant` preset（persona + 子行）
+  rigorquant/skills/        内置技能
+    rigorquant/             SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   元校验器（唯一正式副本）
   .../schemas/              study.json 与 registry.json 的 JSON Schema；
                             校验器直接加载它们，因此二者不会漂移
