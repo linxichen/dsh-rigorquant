@@ -511,8 +511,22 @@ const content = readFileSync(patchFile, 'utf8')
 const begin = content.indexOf(markBegin)
 const end = begin === -1 ? -1 : content.indexOf(markEnd, begin)
 if (begin === -1 || end === -1) process.exit(0)
-const enabledMatch = content.slice(begin, end).match(/^# rq-enabled-bundles:\s*(.*)$/m)
-let rest = content.slice(0, begin) + content.slice(end + markEnd.length)
+const block = content.slice(begin, end)
+const enabledMatch = block.match(/^# rq-enabled-bundles:\s*(.*)$/m)
+// Only the lines this installer wrote go: the markers, the record, and the
+// `agent-team` row. The END marker is a trailing comment, so a row the
+// ConfigEditor of the harness saved later sits between the markers and must
+// stay.
+const kept = []
+let inOurRow = false
+for (const line of block.split('\n')) {
+  if (line.startsWith(markBegin) || /^# rq-enabled-bundles:/.test(line)) continue
+  if (/^- id: agent-team\s*$/.test(line)) { inOurRow = true; continue }
+  if (inOurRow && /^\s+\S/.test(line)) continue
+  inOurRow = false
+  kept.push(line)
+}
+let rest = content.slice(0, begin) + kept.join('\n') + content.slice(end + markEnd.length)
 rest = rest.replace(/\n{3,}/g, '\n\n')
 // Removing the only block sequence entry can leave a file of nothing but
 // comments, which is not valid YAML on its own; restore the placeholder the

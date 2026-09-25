@@ -77,6 +77,11 @@ back on in General Settings. An operator who booted 0.1.7 first re-runs
   the profile directory, and a router row that already carries a route, or a
   registry row that already carries a default, is left alone.
   YAML is read with the `yaml` package the dsh CLI ships.
+- **`--uninstall` removes only the lines the installer wrote** in its marked
+  block of the profile patch. The END marker is a trailing comment, so a row
+  the harness saves later lands between the markers (seen live on rc.2:
+  dismissing the first-run notice saved `ui-settings-general` there), and
+  removing the whole span deleted it.
 - **Both READMEs describe installing and running on rc.2** (issue #32): the
   operator sequence, Coding Tools as the picker's gate, 0.5.0 as the last
   release for the 0.1.6 alpha, finishing or archiving studies first,

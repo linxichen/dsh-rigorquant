@@ -514,6 +514,30 @@ def test_uninstall_removes_the_marker_and_disables_the_bundle_it_enabled(tmp_pat
     assert _team_bundle_calls(log_path, "remove") == ["remove rq-team %s" % TEAM_BUNDLE]
 
 
+def test_uninstall_keeps_a_row_the_harness_saved_inside_the_block(tmp_path):
+    """The END marker is a trailing comment, so a row the harness's
+    ConfigEditor appends later lands between the markers (seen live on rc.2:
+    dismissing the first-run notice saved `ui-settings-general` there).
+    --uninstall removes only the lines it wrote."""
+    env, dsh_home, _ = _stub_dsh_env(tmp_path)
+    assert _install(env, "rq-team").returncode == 0
+    patch_path = dsh_home / "profiles" / "rq-team" / "cordis.patch.yml"
+    text = patch_path.read_text()
+    saved = ("- id: ui-settings-general\n"
+             "  name: \"@deepseek-ai/dsh-client-ui-settings-general\"\n"
+             "  config:\n"
+             "    noticeSeen: true\n")
+    end = text.index("# <<< dsh-rigorquant END")
+    patch_path.write_text(text[:end] + saved + text[end:])
+
+    result = _install(env, "rq-team", "--uninstall")
+    assert result.returncode == 0, result.stderr
+    after = patch_path.read_text()
+    assert "dsh-rigorquant" not in after
+    assert "id: agent-team" not in after and "maxMembers" not in after
+    assert saved in after, after
+
+
 def test_uninstall_leaves_a_team_bundle_the_operator_enabled(tmp_path):
     env, dsh_home, log_path = _stub_dsh_env(tmp_path)
     _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base", TEAM_BUNDLE])

@@ -218,7 +218,8 @@ the install stops. It raises the team service's lifetime member cap to 64
 through a marked `dsh-rigorquant` block it appends to the profile's user
 patch (`$DSH_HOME/profiles/<profile>/cordis.patch.yml`), printing every line
 it writes. Re-running changes nothing once installed; `--uninstall` removes
-the marked block and disables the bundle only if that block records the
+the lines it wrote in the marked block (a setting the harness later saved
+between the markers stays) and disables the bundle only if that block records the
 installer having turned it on, leaving a bundle you enabled yourself
 untouched. With no `dsh` on the path this step is skipped with a warning,
 same as the rest of the install, and the Beta card on the Plugins page is
