@@ -26,13 +26,13 @@ answered. When correctness hinges on an unproven claim, escalate to
 proof-grade verification first (see escalation.md).
 
 **Core philosophy — reproducibility is the record; junk is derived state.**
-The committed study record is self-contained: a fresh clone of the repo plus
-the pinned uv lane regenerates every piece of study evidence, and nothing
-disposable sits on the committed surface. Concretely: every command a
-deliverable prints, and every path the record cites, resolves to a tracked
-file — never to `interim/` scratch; virtualenvs and uv caches are derived
-state, rebuilt by `uv sync --frozen` from the pinned lane's lockfile, never
-committed; and cleanup and reproducibility are the same close-out pass,
+The committed study record is self-contained: a fresh clone of the repo
+regenerates every piece of study evidence, because the study carries its own
+pinned uv lane (`env/`), and nothing disposable sits on the committed
+surface. Concretely: every command a deliverable prints, and every path the
+record cites, resolves to a tracked file — never to `interim/` scratch;
+virtualenvs and uv caches are derived state under `interim/`, rebuilt by
+`uv sync --frozen` from the study's own lockfile, never committed; and cleanup and reproducibility are the same close-out pass,
 enforced by `rq_check.py` at PASS time (see
 [references/reproducibility.md](references/reproducibility.md)).
 
@@ -112,8 +112,8 @@ relative to the **study root** unless prefixed otherwise.
    below, and a `.gitignore` containing `interim/` and `.lock` — in Mode B
    inside the study folder; in Mode A append `/interim/` (anchored, so it
    matches only the repo-root scratch directory) to the repo-root `.gitignore`.
-   Persist mode, slug, and `repo_root` in `study.json` (`env_lane` is resolved
-   and added by Step 2); resumes never re-ask.
+   Persist mode, slug, and `repo_root` in `study.json` (`env_lane` is added
+   by Step 2, which also creates `env/`); resumes never re-ask.
 
    **Mint the slug as `YYYYMMDD_<kebab-topic>[_v<N>]`** — the 8-digit intake
    date (same day as the `created` field), a kebab-case topic, and `_v<N>`
@@ -132,6 +132,8 @@ relative to the **study root** unless prefixed otherwise.
 ├── study.json          # identity: slug, title, mode, statement, subproblems,
 │                       #   seeds, budget, status, repo_root, env_lane
 ├── STUDY.md            # human-facing summary, refreshed at checkpoints
+├── env/                # the study's pinned uv lane: pyproject.toml + uv.lock
+│                       #   (copied from the shipped template at Step 2)
 ├── registry.json       # approach-family registry (see lifecycle.md schema)
 ├── journal.md          # append-only round log (append every round)
 ├── derivations/        # ground-truth derivations, two independent per claim
@@ -141,6 +143,8 @@ relative to the **study root** unless prefixed otherwise.
 │   ├── slides/         #   Beamer deck (main.tex) when required
 │   └── web/            #   interactive HTML (index.html) when required
 ├── interim/            # ALL scratch work — never committed:
+│   ├── venv/           #   the lane's virtualenv (UV_PROJECT_ENVIRONMENT)
+│   ├── uv-cache/       #   uv's package cache (UV_CACHE_DIR)
 │   ├── explorer-reports/
 │   ├── gt-scripts/
 │   └── tmp/
@@ -167,21 +171,48 @@ Create the goal tool objective **once, for the whole study** (`create_goal`),
 not per sub-problem. Sub-problems live in `study.json` / `registry.json` state.
 Every round the orchestrator returns; the goal-round driver relaunches it.
 
-## Step 2 — Locate the compute lane
+## Step 2 — Give the study its own compute lane
 
-The pinned uv lane is installed at a stable anchor, independent of the
-checkout: `$DSH_HOME/share/rigorquant/env` (`$DSH_HOME` defaults to `~/.dsh`;
-`install.sh` places it there). Resolve `env_lane` in this order:
+Each study carries its own pinned uv lane, so a clone of the record can
+rebuild every result even after RigorQuant ships a newer lane. RigorQuant
+installs a **template** at `$DSH_HOME/share/rigorquant/env` (`$DSH_HOME`
+defaults to `~/.dsh`; `install.sh` and the plugin's boot sync place it
+there). Never run code against the template, and never build a venv inside
+it: the sandbox refuses the write, and a release replaces the template.
 
-1. `study.json`'s `env_lane`, if it is an absolute path whose directory
-   contains `pyproject.toml`.
-2. `$DSH_HOME/share/rigorquant/env`, if it contains `pyproject.toml`.
+1. **Adopt the lane (once, at intake).** If `env/pyproject.toml` and
+   `env/uv.lock` are not already in the study root, copy those two files
+   from the template into `env/`, and record `"env_lane": "env"`
+   (study-root-relative) in `study.json`. `env/` is committed with the
+   record. A study that recorded the template path under an older release
+   adopts the lane the same way before claiming PASS.
+2. **Build the venv (orchestrator, once per machine).** From the study root:
 
-Record the resolved **absolute** path in `study.json` (`env_lane`). Run
-teammate code with `uv run --frozen --project <env_lane> python ...`. If
-neither resolves, ask the user where the lane is; never `uv sync` a stray lane
-inside the user's project. Never let teammates `pip install` into the ambient
-interpreter: reproducibility is a gate (D).
+   ```sh
+   UV_PROJECT_ENVIRONMENT="$PWD/interim/venv" UV_CACHE_DIR="$PWD/interim/uv-cache" uv sync --frozen --project env
+   ```
+
+   The venv and the cache are scratch under `interim/` (R1), rebuilt by this
+   command and deleted at close-out. This is the one step that downloads.
+3. **Run code (every role).** From the study root:
+
+   ```sh
+   UV_PROJECT_ENVIRONMENT="$PWD/interim/venv" UV_CACHE_DIR="$PWD/interim/uv-cache" uv run --frozen --offline --project env python ...
+   ```
+
+   Pass the study root in every brief that runs code. Never let teammates
+   `pip install` into the ambient interpreter or `uv sync` anything:
+   reproducibility is a gate (D).
+4. **Need another package?** Only the orchestrator adds one, into the
+   study's lane, never the template: `uv add --project env <package>`
+   (with the same two variables), then re-run step 2. The updated
+   `env/uv.lock` is committed with the record.
+
+If the template is missing, ask the user where the lane is; never `uv sync`
+a stray lane inside the user's project. The validator refuses a PASS whose
+`env/pyproject.toml` or `env/uv.lock` is missing or whose `env_lane` is not
+the study's own `env/` (`evidence.lane`,
+[references/reproducibility.md](references/reproducibility.md)).
 
 ## Step 2b — Literature lane (known/novel intake)
 
@@ -272,8 +303,7 @@ in [references/protocol.md](references/protocol.md).
    sub-problem's success criterion is at least one claim, so every `attack`
    task has a `ground-truth` task to wait on and the layers never skip. Set each task's
    `write_scopes` to its role's scratch directory (`interim/explorer-reports/`,
-   `interim/gt-scripts/`, `audits/`) — advisory, not a lock. The move pill in
-   the session header reads the move from this layering. Freeze and hash
+   `interim/gt-scripts/`, `audits/`) — advisory, not a lock. Freeze and hash
    anything a later move will judge.
 2. **Fan out (explorers, method track, OPEN):** create 1–2 fresh
    `explorer-<n>` teammates per `explore` task (`offgrid-<n>` under the
@@ -453,14 +483,18 @@ membrane: [references/literature.md](references/literature.md).
 
 When a method's correctness hinges on an unproven claim (convexity of a set,
 convergence of a scheme, correctness of a sampler, uniqueness of a
-decomposition), settle it BEFORE implementing. The jacobian MCP lane
-(`mcp__rigorquant-jacobian__math_find` / `math_run`) is **disabled by default**:
-enable the `mcp-jacobian` row first. Provisioning is **approval-gated**, never
+decomposition), settle it BEFORE implementing. Call `rq_escalate({})` without
+asking whenever a claim meets the trigger: it mounts the jacobian MCP lane
+(`mcp__rigorquant-jacobian__*`: `math_find` / `math_run`) for you, and
+`rq_escalate({ teammate: "<name>" })` mounts it for one running teammate. Log
+`escalation open: <claim>` / `escalation closed: <claim> — <verdict>` in
+`journal.md`; after a restart, call `rq_escalate` again while an escalation is
+still open. Installing and provisioning are **approval-gated**, never
 automatic:
 
-- Lane tools absent → ask the user, then run
+- `rq_escalate` returns an error → ask the user, then run
   `npx -y jacobian@0.12.0 upgrade`, verify with
-  `npx -y jacobian@0.12.0 doctor --json`, retry.
+  `npx -y jacobian@0.12.0 doctor --json`, call `rq_escalate` again.
 - A lean call reports `TOOLCHAIN_RESOLUTION` or `MATHLIB_MANIFEST` → ask the
   user, then run `RQ_ALLOW_PROVISION=1 bash <this skill's
   dir>/scripts/provision-lean.sh` (idempotent; installs elan + pinned Lean

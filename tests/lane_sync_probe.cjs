@@ -2,13 +2,15 @@
 //
 // stdin: a JSON array of steps
 //   { "op": "sync", "src": "<dir>", "dst": "<dir>", "version": "x" }
+//   { "op": "removeOrphanedPreset", "home": "<dir>" }
 //   { "op": "write", "path": "<file>", "data": "<text>" }
 //   { "op": "mkdir", "path": "<dir>" }
 //   { "op": "remove", "path": "<path>" }
 //   { "op": "read",  "path": "<file>" }
 //   { "op": "exists", "path": "<path>" }
 // stdout: one JSON line per step result, in order.
-// `sync` results are exactly what dsh/sync.js's syncManagedDir returns.
+// `sync` and `removeOrphanedPreset` results are exactly what dsh/sync.js's
+// functions of the same names return.
 
 const { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } = require('node:fs')
 const { dirname } = require('node:path')
@@ -21,10 +23,9 @@ async function main() {
   const out = []
   for (const step of steps) {
     if (step.op === 'sync') {
-      out.push(await mod.syncManagedDir(step.src, step.dst, {
-        version: step.version,
-        keyFile: step.keyFile,
-      }))
+      out.push(mod.syncManagedDir(step.src, step.dst, { version: step.version }))
+    } else if (step.op === 'removeOrphanedPreset') {
+      out.push(mod.removeOrphanedPreset(step.home))
     } else if (step.op === 'write') {
       mkdirSync(dirname(step.path), { recursive: true })
       writeFileSync(step.path, step.data)

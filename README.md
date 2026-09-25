@@ -121,47 +121,24 @@ A study runs on the harness's own Agent Teams surface, so there is no custom
 panel to learn: while a RigorQuant session runs, the session header's team
 action opens the **roster** (name, role, status) and the round's **task board**
 with its blocking edges — the two things to watch. The roster's model column
-is the member's own model option, not the route `rq-model-router` applies to
-its requests (Decision 16), so read a role's route off the **Plugins →
+shows the member's model selection, not the model `rq-model-router` routes
+its requests to (Decision 16), so read a role's route off the **Plugins →
 dsh-rigorquant** card, never off the roster. Each teammate is a row there:
 **open one** and its own conversation opens, so you can read a derivation or
 an audit while it runs (steering it is the ordinary conversation, and it
 breaks that teammate's blank context — documented, not prevented).
 
-RigorQuant adds one small thing to that surface: a **move pill** in the
-session header, beside the team action, showing which move the current round
-is on — Promise, Fan out, Ground-truth, Attack, Certify — derived from the
-task board's blocking edges (the shallowest layer with work left), plus a
-compact badge with a running teammate's role initials (hover for its name). It
-is display only: nothing clickable, no tool, route or model changed, and on a
-profile where the Team bundle is absent it renders nothing at all.
-
 The topology is **hub-and-spoke**, and the guards enforce it rather than
 asking: a teammate's message reaches the orchestrator or nowhere, a teammate
 cannot list the roster or the whole board, and it may read or update only a
-task no other teammate owns (the one its brief names, which it claims). The
-figure below is that topology — the orchestrator at the hub, the roles it
-creates as spokes, the round's tasks beneath them:
+task no other teammate owns (the one its brief names, which it claims).
 
-<p align="center">
-  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant agent team topology — hub-and-spoke roles over the round's task dependency graph">
-</p>
-
-The figure is the reader-safe rendering of that view, generated from
-[`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) — the
-live roster and board are visible only in a running web session. It is adapted
-from the activity panel of
-[dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) — the picture
-in
-[its README](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)
-— showing RigorQuant's own eight roles at a fan-out moment.
-
-> **Attribution.** The figure adapts the activity-panel design of
+> **Attribution.** The hero banner (`docs/figs/agent-team-hero.svg`) is
+> reworked from the hero graphic of
 > [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) by
 > [NanmiCoder](https://github.com/NanmiCoder) (程序员阿江 / Relakkes) —
 > Copyright (c) 2026, MIT License. The role portraits are this repo's own
-> `docs/figs/` assets. The hero banner (`docs/figs/agent-team-hero.svg`) is
-> likewise reworked from the upstream hero graphic.
+> `docs/figs/` assets.
 
 **The loop, in five moves.** Each round is fan-out → ground truth → adversary → synthesize.
 
@@ -177,51 +154,71 @@ in
 
 ## Install
 
-Requires DSH ≥ 0.1.6-alpha.2. The preset uses native child
-`agentOptions.reasoningEffort` (0.1.2-alpha.1), the `prefix`/`suffix` persona
-split (0.1.3-alpha.2 — a row whose config fails rejects the whole preset
-mount), the final-assistant-message delivery contract (`report` was removed in
-0.1.2-rc.1), and the `present` deliverables tool (0.1.5). The floor is
-0.1.6-alpha.2 because the browser half registers into slots that release
-introduced and the fallback route names a model only its catalog lists — on
-0.1.5 the routing card renders nothing, silently, and the fallback lane has no
-model to route to.
+Requires DSH `>=0.1.7-rc.2 <0.1.8` (Decision 25,
+`docs/adr/0002-declared-preset-on-dsh-0.1.7.md`). The preset is a declared
+`@deepseek-ai/dsh-agent-preset` row, the routes are the router row's own
+profile config, and the card edits them through the Plugins page's config
+forms; none of that exists on an older harness, and the installer refuses one.
+**0.5.0 is the last release for the 0.1.6 alpha harness**: nothing is
+backported, so stay on 0.5.0 if you cannot move the harness yet.
 
-That floor is an alpha and the team layer is experimental: 0.1.6 has not
-shipped final, and this release runs team-only on the **Agent Teams** bundles
-the harness ships as **Beta** cards — *Agent Teams* and *Agent Teams Web UI*,
-under **Plugins → Official**. Turn both on there yourself, or let a full
-install do it for you (below). The seams this release follows are recorded in
-Decision 20's 0.1.6 amendment (`docs/architecture.md`).
+That range is a prerelease and the team layer is experimental: this release
+runs team-only on the **Agent Teams** bundle the harness ships as a **Beta**
+card, *Agent Teams* under **Plugins → Official**. Turn it on there yourself,
+or let a full install do it for you (below).
+
+**Upgrading from 0.5.0** is one cutover, done before the first 0.1.7 boot.
+First finish or archive the RigorQuant studies in progress: resuming a session
+started on the 0.1.6 harness is not promised. Then:
+
+1. Stop dsh (every running process, the web app included).
+2. Install the harness pinned to the release this range was tested on:
+
+   ```sh
+   npm i -g @deepseek-ai/dsh@0.1.7-rc.2   # or @deepseek-ai/dsh@next
+   ```
+
+   Never an unqualified `npm i -g`: npm `latest` is still `0.1.5-rc.3`.
+3. Run `./install.sh` (or `npx dsh-rigorquant`) before starting dsh. It
+   carries your saved routes and a saved RigorQuant default over from the old
+   `settings.yaml`. If dsh already booted once, re-running it recovers them
+   from `settings.yaml.imported`.
+4. Start the web app and pick **RigorQuant** in the new-session picker. If
+   the picker is missing, switch **Coding Tools** back on in General
+   Settings: it is the picker's only gate, on by default, and off only if you
+   or Desktop onboarding switched it off.
 
 Fan-out is bounded by the host: eight live children per root
 (`maxActiveSubagents`, **Plugins → Subagent**). A literature-heavy study that
 wants four lines running beside its explorers can raise it there.
 
-A full install also turns on those two **Beta** bundles — the Plugins page's
-*Agent Teams* and *Agent Teams Web UI* cards under **Official** — when the
-target profile does not have them, pinned to the core's own version (a profile
-that lists them at some other version is re-pinned; a bundle you enabled
-without a recorded version is left alone), and raises the team service's
-lifetime member cap to 64 through a marked `dsh-rigorquant` block it appends
-to the profile's user patch
-(`$DSH_HOME/profiles/<profile>/cordis.patch.yml`), printing every line it
-writes. Re-running changes nothing once installed; `--uninstall` removes the
-marked block and disables the bundles only if that block records the installer
-having turned them on, leaving a bundle you enabled yourself untouched. With
-no `dsh` on the path this step is skipped with a warning, same as the rest of
-the install — the two Beta cards on the Plugins page are then yours to toggle
-(docs/adr/0001-rigorquant-on-agent-teams.md).
+A full install turns on that **Beta** bundle, the Plugins page's *Agent
+Teams* card under **Official**, when the target profile does not have it,
+pinned to the core's own version (a profile that lists it at some other
+version is re-pinned; a bundle you enabled without a recorded version is left
+alone). It always removes the separate *Agent Teams Web UI* bundle a 0.5.0
+profile has, saying so in one line: DSH 0.1.7 folded that panel into the one
+bundle and publishes no web bundle for this core, and if the removal fails
+the install stops. It raises the team service's lifetime member cap to 64
+through a marked `dsh-rigorquant` block it appends to the profile's user
+patch (`$DSH_HOME/profiles/<profile>/cordis.patch.yml`), printing every line
+it writes. Re-running changes nothing once installed; `--uninstall` removes
+the lines it wrote in the marked block (a setting the harness later saved
+between the markers stays) and disables the bundle only if that block records the
+installer having turned it on, leaving a bundle you enabled yourself
+untouched. With no `dsh` on the path this step is skipped with a warning,
+same as the rest of the install, and the Beta card on the Plugins page is
+then yours to toggle (docs/adr/0001-rigorquant-on-agent-teams.md).
 
-**One line, everything** — the preset, the compute lane, and the plugin (role
-model router + its card on the Plugins page):
+**One line, everything**: the compute lane and the plugin (the declared
+preset, the role model router and its card on the Plugins page):
 
 ```sh
 npx dsh-rigorquant
 # npx dsh-rigorquant --profile tui     # a profile other than web
 ```
 
-**From a clone** — the same install, from your own working tree. A checkout
+**From a clone**: the same install, from your own working tree. A checkout
 installs itself into the profile, so re-run this after editing `dsh/` to
 refresh the plugin:
 
@@ -233,24 +230,25 @@ cd dsh-rigorquant
 # ./install.sh --uninstall      # removes everything, plugin included
 ```
 
-**Plugin only** — the same everything, via the ecosystem's bundle path. The
-package declares a `dsh.bundle` manifest whose rows include a boot-sync half
-(`rq-preset-sync`): on the profile's next start it lands the agent preset into
-`$DSH_HOME/.agent-presets/rigorquant` and the compute lane into
+**Plugin only**: the same everything, via the ecosystem's bundle path. The
+package declares a `dsh.bundle` manifest that declares the `rigorquant` preset
+itself, and one of its rows is a boot-sync half (`rq-lane-sync`): on the
+profile's next start it lands the compute lane into
 `$DSH_HOME/share/rigorquant/`, so `dsh plugin add` alone yields a working
-distribution (docs/architecture.md Decision 22):
+distribution (docs/architecture.md Decisions 22 and 25). This path neither
+enables Agent Teams nor carries saved routes over; the installer does both:
 
 ```sh
-dsh --version                 # must be >= 0.1.6-alpha.2
+dsh --version                 # must be >= 0.1.7-rc.2 and < 0.1.8
 dsh plugin --profile web add dsh-rigorquant
 ```
 
 The sync is idempotent (a byte-identical tree is left untouched; derived state
-like `.venv` is never copied or pruned) and keeps same-version local edits to
-the installed preset — an upgrade replaces shipped files, exactly like
-re-running `./install.sh`. There is no uninstall hook in DSH's plugin CLI, so
-removal stays explicit (`./install.sh --uninstall`); if you remove only the
-plugin, the synced preset keeps working standalone and simply routes nothing.
+like `.venv` is never copied or pruned). It also removes the directory preset
+that releases before 0.6.0 copied under `$DSH_HOME`, but only when that
+copy's `.rq-sync.json` says this package put it there. There is no uninstall
+hook in DSH's plugin CLI, so removal of the lane stays explicit
+(`./install.sh --uninstall`).
 
 Start a new DSH session and pick the **RigorQuant** preset. Then:
 
@@ -259,7 +257,7 @@ Start a new DSH session and pick the **RigorQuant** preset. Then:
 
 ## Deployment notes
 
-Three harness facts a research deployment should decide on. None of them is
+Four harness facts a research deployment should decide on. None of them is
 RigorQuant's own machinery, and installing RigorQuant changes none of them:
 
 - **The DeepSeek session log is on by default.** The base bundle mounts
@@ -293,18 +291,32 @@ RigorQuant's own machinery, and installing RigorQuant changes none of them:
   a human to be able to see. Certification itself reads the study record,
   never the session (`docs/architecture.md` Decision 19).
 
+- **Scheduled tasks are neither used nor guarded.** DSH 0.1.7 ships
+  scheduled tasks (and their time context) disabled. RigorQuant does not use
+  them, and its per-call guards do not cover them: a scheduled task you
+  enable yourself runs outside the team's hub-and-spoke rules.
+
 ## Compute lane (one-time)
 
-The pinned uv lane lives at `$DSH_HOME/share/rigorquant/env`, placed there by
-`install.sh` or by the plugin's boot-sync row — whichever ran last owns the
-anchor, and both land identical bytes (see [env/README.md](env/README.md)).
-The venv itself is **never installed**: it is derived state, provisioned
-lazily inside the anchor by the first `uv run --frozen --project <env_lane>`
-(subsequent runs are instant; `--frozen` honors the committed lockfile). The
-jacobian escalation lane ships **disabled** and **pinned** (`jacobian@0.12.0`):
-enable the `mcp-jacobian` row, and the framework asks for approval before any
-one-time provisioning (`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain
-via the skill's `scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian.md).
+Each study carries its own pinned uv lane. `install.sh` or the plugin's
+boot-sync row places a **template** at `$DSH_HOME/share/rigorquant/env`
+(both land identical bytes; see [env/README.md](env/README.md)). At intake
+the orchestrator copies its `pyproject.toml` and `uv.lock` into the study's
+`env/`, commits them with the record, and builds the venv once under the
+study's gitignored `interim/` (venv and uv cache both live there, which is
+also the only place the `workspace-write` sandbox lets them go). A clone of
+the study therefore rebuilds the exact environment even after a later
+release replaces the template, and a study that needs another package adds
+it to its own lane. The validator refuses a PASS without the study's
+`env/uv.lock`. Budget about 1 GB per live study for the venv and cache,
+deleted at close-out: the sandbox keeps studies from sharing a uv cache. The
+jacobian escalation lane is **pinned** (`jacobian@0.12.0`) and is no preset
+row: it mounts at runtime. When a claim needs it, the orchestrator calls
+`rq_escalate` without asking, into itself or into a teammate it names, and
+the jacobian tools appear from the next request until the session ends. The
+framework still asks for approval before any one-time provisioning
+(`npx -y jacobian@0.12.0 upgrade`, or the Lean toolchain via the skill's
+`scripts/provision-lean.sh`). See [mcp/jacobian.md](mcp/jacobian.md).
 
 ## Role-routed models (rq-model-router)
 
@@ -312,11 +324,11 @@ The bundled plugin gives each RigorQuant role a model + reasoning-effort
 policy, with one fallback per role. Role identity comes from the teammate's
 Team membership name (`<role>-<n>`; the Lead is the orchestrator) — the
 router carries the shipped tier matrix itself (DoubleChecker and adversary
-default to `deepseek-v4-pro` @ `high`) and overlays an explicit Settings
-choice on top when one is saved. Configure overrides in **Plugins → dsh-rigorquant**
-(the bundle's own page, under its description): only Save writes, the last
-saved selection persists (settings user layer), and leaving the page drops
-staged edits. Shipped defaults:
+default to `deepseek-v4-pro` @ `high`) and overlays a saved route on top.
+Configure routes in **Plugins → dsh-rigorquant** (the bundle's own page,
+under its description): only Save writes, a saved route is the router row's
+own config in the profile's `cordis.patch.yml` and applies from the next
+request, and leaving the page drops staged edits. Shipped defaults:
 
 | Role | Primary | Fallback |
 | --- | --- | --- |
@@ -328,31 +340,35 @@ On a terminal primary failure (no adapter / HTTP 4xx, including the official
 quota response `1308` / “Usage limit reached”) the role degrades to its
 fallback for one forced retry, and recovers on the next success or after 10
 minutes. An agent outside a RigorQuant team (another preset, or with no Team
-membership at all) is never touched. The router needs DSH ≥ 0.1.6-alpha.2
-(its card registers on the Plugins page's bundle-config slot, which 0.1.6
-introduced). Design record: [docs/architecture.md](docs/architecture.md)
-Decision 16.
+membership at all) is never touched.
+
+**Signed in with a DeepSeek account only?** DSH 0.1.7 splits DeepSeek into
+`deepseek-official` (API key) and `deepseek-account` (account sign-in). When
+the official route is not routable (no API key) and the account route is, the
+shipped defaults above move to the same model ids on `deepseek-account`, and
+those requests are billed to your account quota, not to an API key. A route
+you saved yourself is never moved. Design record:
+[docs/architecture.md](docs/architecture.md) Decisions 16 and 25.
 
 ## Repository layout
 
 ```
 package.json                dsh.bundle manifest (dsh plugin add support)
 cordis.patch.yml            bundle patch: skill layer + rq-model-router +
-                            rq-team + rq-preset-sync rows
+                            rq-team + rq-lane-sync rows
 dsh/                        host halves (role router, team composition and
                             per-call guard, boot-sync) + one persona file per
-                            role, and the web client bundle (routing card +
-                            move pill)
-agent-presets/rigorquant/   preset composition + persona + bundled skills
-  skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
+                            role, and the web client bundle (routing card)
+agent-presets/
+  rigorquant.patch.yml      the declared `rigorquant` preset (persona + child rows)
+  rigorquant/skills/        bundled skills
+    rigorquant/             SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   the meta-validator (single canonical copy)
   .../schemas/              study.json + registry.json JSON Schemas, which the
                             validator loads — so schema and checker cannot drift
 env/                        pinned uv compute lane (sympy/cvxpy/hypothesis/…)
 mcp/jacobian.md             escalation lane wiring
 docs/architecture.md        grilled decision record + sources
-docs/figs/agent-team-activity.svg  reader-safe hub-and-spoke topology figure
-docs/figs/agent-team-activity.js   its generator (freshness-pinned in tests)
 docs/figs/agent-team-hero.svg       hero banner, reworked from the
                              dsh-agent-teams hero graphic (see the credit above)
 tests/                      the validator's test suite (see Testing below)

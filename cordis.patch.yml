@@ -3,8 +3,9 @@
 #
 # `dsh plugin --profile <p> add dsh-rigorquant` (or the github: spec) makes
 # the `rigorquant` skill and the role-model router available to every session
-# of that profile. The full RigorQuant agent preset (persona + orchestration +
-# tools) installs separately with ./install.sh.
+# of that profile, and declares the `rigorquant` preset through
+# ./agent-presets/rigorquant.patch.yml. ./install.sh adds Agent Teams and
+# carries saved routes over.
 #
 # The skill directory is resolved through the PACKAGE, not through `baseUrl`.
 # A patch file's `!!js` runs against the boot root context, whose `baseUrl` is
@@ -31,27 +32,31 @@
         customSkillDirs:
           - !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl + 'package.json').resolve('dsh-rigorquant/package.json')), 'agent-presets', 'rigorquant', 'skills')"
 
-    # Role-routed models (see docs/architecture.md, Decision 16). The plugin
-    # serves the `rigorquant-models` settings namespace (the browser half
-    # renders its form on this bundle's page under Plugins) and overlays
-    # explicit per-role choices plus a fallback on terminal route failure. The
-    # router carries the shipped tier matrix itself (DoubleChecker and
-    # adversary on pro; every other role inherits the session model, root
-    # following the chatbox picker) and resolves the role from the Team
-    # membership name (Decision 24). Agents with no membership, or outside
-    # this preset, are never touched.
+    # Role-routed models (see docs/architecture.md, Decisions 16 and 25). Each
+    # role's primary and fallback are `.volatile()` fields of THIS row's
+    # config (`<role>Primary`, `<role>Fallback`), so the profile owns them
+    # and a saved route applies on the next request; the browser half edits
+    # them on this bundle's page under Plugins. The router overlays those
+    # choices plus a fallback on terminal route failure. It carries the
+    # shipped tier matrix itself (DoubleChecker and adversary on pro; every
+    # other role inherits the session model, root following the chatbox
+    # picker), moves that matrix to `deepseek-account` when only the account
+    # route is routable, and resolves the role from the Team membership name
+    # (Decision 24). Agents with no membership, or outside this preset, are
+    # never touched.
     - id: rq-model-router
       name: 'dsh-rigorquant'
 
-    # Self-installing distribution (docs/architecture.md, Decision 22). The
-    # bundle-patch plane cannot express an agent preset — the harness pins the
-    # agent-presets roots to its shipped root — and node_modules cannot host
-    # the uv lane. This host half therefore lands files at boot: the preset
-    # into $DSH_HOME/.agent-presets/rigorquant, env/mcp/docs into
-    # $DSH_HOME/share/rigorquant/. Idempotent byte-compare; derived state
-    # (.venv, __pycache__) never copied or pruned; a same-version target keeps
-    # local edits; removal stays explicit via ./install.sh --uninstall.
-    - id: rq-preset-sync
+    # Compute-lane sync (docs/architecture.md, Decisions 22 and 25). The
+    # preset is declared in ./agent-presets/rigorquant.patch.yml; what a
+    # declaration cannot serve is the uv lane, since node_modules cannot host
+    # it. This host half therefore lands env/, mcp/ and docs/ into
+    # $DSH_HOME/share/rigorquant/ at boot (idempotent byte-compare; derived
+    # state such as .venv never copied or pruned) and removes the directory
+    # preset an older release landed, only when its .rq-sync.json names this
+    # package. Removal of the lane stays
+    # explicit via ./install.sh --uninstall.
+    - id: rq-lane-sync
       name: 'dsh-rigorquant/sync'
 
     # Team composition: role personas, tool-tier budgets, and the "RigorQuant

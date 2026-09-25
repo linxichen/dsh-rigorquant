@@ -60,7 +60,7 @@ if ! "$ELAN_BIN/lean" --version 2>/dev/null | grep -q "$LEAN_VERSION"; then
 fi
 
 # 2. Optionally persist elan on PATH for future shells. Off by default: the
-#    preset's mcp-jacobian row already appends ~/.elan/bin to the lane PATH.
+#    escalation lane (rq_escalate) already appends ~/.elan/bin to its PATH.
 if [ "${RQ_MODIFY_SHELL_RC:-0}" = "1" ]; then
   for rc in "$HOME/.zprofile" "$HOME/.bash_profile" "$HOME/.profile"; do
     [ -f "$rc" ] || continue

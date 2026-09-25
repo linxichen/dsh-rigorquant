@@ -3,13 +3,19 @@
 // One configuration entry on the Plugins page: the bundle's own form, rendered
 // on this bundle's page between its description and its rows
 // (`plugins.bundle.config`, keyed by the package name), editing the
-// `rigorquant-models` settings namespace this package's host half serves. Each
-// role row stages an explicit primary override (model + reasoning effort) and a
-// per-role fallback choice; "inherit" clears the user layer for that field so
-// the router's shipped tier matrix (fixed-tier roles) or the parent/session
-// route (root and inherit roles) governs again. Only a save writes: the last
-// saved selection is the persistent one (the settings user layer), and leaving
-// the page drops whatever was staged.
+// `rq-model-router` row's own profile config through `configForms`
+// (Decision 25). Each role row stages an explicit primary override (model +
+// reasoning effort) and a per-role fallback choice, all picked from the model
+// catalog; "inherit" clears the saved field so the router's shipped tier
+// matrix (fixed-tier roles) or the parent/session route (root and inherit
+// roles) governs again. Only a save writes: the last saved selection is the
+// persistent one (the profile's user layer), and leaving the page drops
+// whatever was staged. A write the Host refuses (`set`/`unset` resolving
+// `false`) is a failed save, shown under the form.
+//
+// rc.2's Plugins page generates no form for a row's config (the
+// `plugins.row.config` slot renders only what a plugin registers), so without
+// this card the routes could be edited only by hand in the profile patch.
 //
 // Shipped in the shell's client-bundle format, because that is what the browser
 // half is REQUIRED to be: the web shell appends this file as a classic
@@ -35,8 +41,9 @@ window.__ModuleLoader__.load({ id: 'dsh-rigorquant', factory: (require) => {
 // top-level binding shared with the `load` call would collide with any other
 // bundle's; the probe pins that the two literals agree.
 const BUNDLE = 'dsh-rigorquant'
-// The settings namespace the host half serves; also this entry's locale namespace.
-const CARD_KEY = 'rigorquant-models'
+// The router row's entry id: the key `configForms` serves its config under,
+// and this entry's locale namespace.
+const CARD_KEY = 'rq-model-router'
 const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 const SLOTS = ['Primary', 'Fallback']
 // Invocation frequency per role: the badge tone follows the level, the label
@@ -103,16 +110,14 @@ function createStore(initial) {
 // Cordis throws `cannot get property "remote.session" without inject` unless
 // each one is declared here. The routing card reads session.modelCatalog and
 // settings.describe, so declare both sub-namespaces (plus the raw `remote`).
-// `sessions` is NOT here: the move pill reads the team view through props the
-// session-scoped slot itself supplies (see applyMovePill below), never
-// through ctx.get('sessions') at mount time the way the retired activity
-// floater did.
-const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'settingsScope']
+// `configForms` (@deepseek-ai/dsh-client-ui-settings) serves the router row's
+// config form.
+const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings', 'configForms']
 
 const copy = {
   en: {
     title: 'RigorQuant model routing',
-    description: 'Per-role model overrides and fallbacks for RigorQuant sessions. Native tool defaults supply the DoubleChecker and adversary; root follows the chatbox picker, and other roles inherit their session model.',
+    description: 'Per-role model overrides and fallbacks for RigorQuant sessions. Left on Inherit, the DoubleChecker and adversary take the router\'s shipped routes (on DeepSeek Account when no API key is set); root follows the chatbox picker, and other roles inherit their session model.',
     inherit: 'Inherit',
     none: 'None',
     effortInherit: 'Default',
@@ -154,7 +159,7 @@ const copy = {
   },
   zh: {
     title: 'RigorQuant 角色模型路由',
-    description: '为 RigorQuant 会话配置每个角色的模型覆盖与回退。DoubleChecker 与 adversary 使用原生工具默认值；root 跟随聊天框选择器，其他选择“继承”的角色沿用会话模型。',
+    description: '为 RigorQuant 会话配置每个角色的模型覆盖与回退。DoubleChecker 与 adversary 留在“继承”时走路由器内置的默认路由（未配置 API key 时改走 DeepSeek 账号）；root 跟随聊天框选择器，其他选择“继承”的角色沿用会话模型。',
     inherit: '继承',
     none: '无',
     effortInherit: '默认',
@@ -221,7 +226,7 @@ const saveStyle = {
 class RqModelsCardController {
   constructor(ctx) {
     this.ctx = ctx
-    this.scope = ctx.settingsScope.bind({ namespace: CARD_KEY })
+    this.scope = ctx.configForms.get(CARD_KEY)
     // The staged edit is a DRAFT USER SECTION — the schema-form unit of
     // editing — not a side table of pending values. `undefined` means "no edit
     // staged"; once staged it is a plain object built immutably with
@@ -239,16 +244,15 @@ class RqModelsCardController {
     // can run in the bootstrap batch before `@deepseek-ai/dsh-api-session-controller`
     // mounts `remote.session` in the application batch. Polling the namespace
     // until it exists keeps a healthy catalog RPC from becoming the generic
-    // "unavailable" footer (same boot-ordering class as the activity `sessions`).
+    // "unavailable" footer (a boot-ordering race, not a catalog failure).
     this.catalogTimer = undefined
   }
 
   /**
    * The settings draft model, read from the `settingsSchema` service
    * (@deepseek-ai/dsh-client-ui-settings). The service is not optional in
-   * practice: it is provided by the same plugin that provides `settingsScope`,
-   * which this card injects, and the first statement of that plugin's apply
-   * runs before the scope is bound. The legacy
+   * practice: it is provided by the same plugin that provides `configForms`,
+   * which this card injects, and `configForms` itself is built on it. The legacy
    * `@deepseek-ai/dsh-client-schema-form` module is gone from the harness AND
    * from the browser's frozen module table, so a require on it would throw
    * inside this controller's construction and take the whole bundle entry
@@ -474,10 +478,13 @@ class RqModelsCardController {
         }
       }
     }
+    // `set`/`unset` resolve `false` when the Host refuses the write (or the
+    // connection keeps preferences process-local); that is a failed save,
+    // exactly like a transport rejection.
     let landed = true
     for (const operation of operations) {
       try {
-        await operation()
+        if (await operation() !== true) landed = false
       } catch {
         landed = false
       }
@@ -784,181 +791,6 @@ function apply(ctx) {
     },
     (props) => RqModelsCard({ ...props, t: ctx.locale.bind(CARD_KEY) }),
   ))
-  applyMovePill(ctx)
-}
-
-// ------------------------------------------------------------------ move pill
-// The round's move, read live off the Agent Teams task board (Decision 24;
-// docs/architecture.md, docs/adr/0001-rigorquant-on-agent-teams.md). This
-// registers into the conversation's per-session header utilities slot, right
-// next to the Team package's own roster action -- which sits in the sibling
-// `conversation.session.header.actions` seat
-// (client-ui-agent-team/lib/client.js, id 'agent-team').
-//
-// The read is the Team package's OWN browser seam: the `remote.agentTeams`
-// namespace, whose `view(agentId)` answers `RemoteResult<TeamView>`
-// (agent-team `lib/typert.remote-client.d.ts`). That is the only team read the
-// installed 0.1.6-alpha.2 serves: the client Session store has no
-// `projectionsBySession` at that tag (`git grep projectionsBySession` over the
-// harness is empty), so a projection-shaped read is silently undefined and the
-// pill renders nothing on every real session. `remote.agentTeams` is INJECTED,
-// never read off the root context: the Team bundle is optional, so with the
-// bundle absent the namespace does not exist, this callback never runs, and the
-// pill never registers -- "renders nothing when the namespace is absent" is
-// that gate, not a null branch.
-//
-// The namespace answers requests, not subscriptions, so the pill re-reads on a
-// timer while a session header is on screen: one local request per interval per
-// mounted header, with no stop condition — deliberately unconditional, because
-// the normal case is a session opened BEFORE its team exists, so a read that
-// reports no team must not end the watch. The cost is bounded in practice by
-// the header being mounted; a harness that serves this view as a subscription
-// (0.1.7 turns it into a session projection) retires the timer outright.
-const MOVE_REFRESH_MS = 4000
-const MOVE_NS = 'rigorquant-move'
-const moveCopy = {
-  en: {
-    'move.promise': 'Promise', 'move.fan-out': 'Fan out',
-    'move.ground-truth': 'Ground-truth', 'move.attack': 'Attack', 'move.certify': 'Certify',
-  },
-  zh: {
-    'move.promise': '许诺', 'move.fan-out': '扇出',
-    'move.ground-truth': '证据核验', 'move.attack': '攻击', 'move.certify': '认证',
-  },
-}
-// One layer per move past Promise, in loop order; a task's layer is
-// STRUCTURAL (its `blockedBy` depth), never guessed from its id or subject --
-// the board's own DAG is the only contract the orchestrator's task-creation
-// text (SKILL.md Step 3's Promise move: one `blocked_by` layer per move) has
-// to honor for the pill to read it correctly.
-const MOVE_ORDER = ['promise', 'fan-out', 'ground-truth', 'attack', 'certify']
-
-/** role → (badge initials, tooltip label), mirroring dsh/team.js's TEAMMATE_ROLES
- *  and the retired ROLE_DEF_CLIENT's compact labels. Duplicated here because
- *  the client bundle is standalone (it runs in the browser; dsh/team.js runs
- *  host-side and is not requirable from here). */
-const ROLE_BADGE = {
-  explorer: ['EX', 'Explorer'],
-  offgrid: ['OG', 'OffGrid'],
-  doublechecker: ['DC', 'DoubleChecker'],
-  adversary: ['AD', 'Adversary'],
-  'lit-line': ['LL', 'Literature'],
-  'lit-adversary': ['LA', 'Lit adversary'],
-  'doc-adversary': ['DA', 'Doc adversary'],
-}
-const ROLE_NAME_PATTERN = new RegExp(`^(${Object.keys(ROLE_BADGE).join('|')})-.+$`)
-
-function roleFromName(name) {
-  const match = typeof name === 'string' ? ROLE_NAME_PATTERN.exec(name) : null
-  return match !== null ? match[1] : null
-}
-
-/** Each task's distance from the DAG's roots (no blockers = 0), memoized per
- *  call. A `blockedBy` id absent from `tasks` is ignored, not a root -- an
- *  edge to a task the pill was not handed is not evidence of one. */
-function taskDepth(tasks) {
-  const byId = new Map(tasks.map((task) => [task.id, task]))
-  const cache = new Map()
-  const visiting = new Set()
-  const depthOf = (task) => {
-    if (cache.has(task.id)) return cache.get(task.id)
-    // A real board's `blocked_by` is a DAG; a cycle here is a defensive
-    // dead-end (treat as a root) rather than a stack overflow.
-    if (visiting.has(task.id)) return 0
-    visiting.add(task.id)
-    const blockers = (task.blockedBy ?? []).map((id) => byId.get(id)).filter((t) => t !== undefined)
-    const depth = blockers.length === 0 ? 0 : 1 + Math.max(...blockers.map(depthOf))
-    visiting.delete(task.id)
-    cache.set(task.id, depth)
-    return depth
-  }
-  return depthOf
-}
-
-/** The first incomplete of the five moves (Decision 24's replacement for the
- *  retired tool-name heuristic, `stageOf` in the deleted dsh/activity.js): no
- *  tasks yet, or every task done, reads as Promise; otherwise the shallowest
- *  layer that still has a pending or in-progress task. */
-function deriveMove(tasks) {
-  const list = Array.isArray(tasks) ? tasks.filter((task) => task && task.status !== 'deleted') : []
-  if (list.length === 0) return MOVE_ORDER[0]
-  const depthOf = taskDepth(list)
-  const maxLayer = MOVE_ORDER.length - 2
-  let shallowest = null
-  for (const task of list) {
-    if (task.status === 'completed') continue
-    const layer = Math.min(depthOf(task), maxLayer)
-    if (shallowest === null || layer < shallowest) shallowest = layer
-  }
-  return shallowest === null ? MOVE_ORDER[0] : MOVE_ORDER[shallowest + 1]
-}
-
-function MovePill(props) {
-  const R = React()
-  const { sessionId, useSession, load, t } = props
-  // A teammate's own header shows the Lead's round: the same address hop the
-  // Team package's own action makes before it reads the view.
-  const leadSessionId = useSession((snapshot) => snapshot?.subagent?.address?.parentSessionId) ?? sessionId
-  const [team, setTeam] = R.useState(null)
-  R.useEffect(() => {
-    let live = true
-    const read = () => {
-      // A failed RemoteResult (no team for this Lead, or the service refusing)
-      // reads the same as an absent team: nothing to show.
-      Promise.resolve(load(leadSessionId)).then(
-        (result) => { if (live) setTeam(result?.ok === true ? result.value : null) },
-        () => { if (live) setTeam(null) },
-      )
-    }
-    read()
-    const timer = setInterval(read, MOVE_REFRESH_MS)
-    return () => { live = false; clearInterval(timer) }
-  }, [load, leadSessionId])
-  if (team === null || team === undefined) return null
-  const move = deriveMove(team.tasks)
-  const running = (team.members ?? []).filter(
-    (member) => member.role === 'teammate' && member.status === 'running' && roleFromName(member.name) !== null)
-  return R.createElement('span', {
-    style: {
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      borderRadius: 999, padding: '0 10px', height: 24,
-      background: 'var(--dsw-alias-bg-module-platform)',
-      color: 'var(--dsw-alias-label-secondary)', fontSize: 12, whiteSpace: 'nowrap',
-    },
-  },
-    R.createElement('span', { style: { fontWeight: 500, color: 'var(--dsw-alias-label-primary)' } }, t(`move.${move}`)),
-    ...running.map((member) => {
-      const [initials, label] = ROLE_BADGE[roleFromName(member.name)]
-      return R.createElement('span', {
-        key: member.id,
-        title: `${label} — ${member.name}`,
-        style: {
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 18, height: 18, borderRadius: 999, flex: 'none',
-          background: 'var(--dsw-alias-fill-secondary)', color: 'var(--dsw-alias-label-primary)',
-          fontSize: 9, fontWeight: 600,
-        },
-      }, initials)
-    }))
-}
-
-function applyMovePill(ctx) {
-  ctx.effect(() => ctx.locale.register(MOVE_NS, moveCopy), 'rq-move: pill dictionaries')
-  // `ctx.inject` is the optionality seam: the callback runs only while the
-  // Team namespace exists in this composition, and reaches exactly what it
-  // named. No Team bundle, no namespace, no registration, nothing rendered.
-  ctx.inject(['remote.agentTeams'], (scope) => {
-    scope.slots.inject('conversation.session.header.utilities', () => scope.slots.register(
-      {
-        name: 'conversation.session.header.utilities',
-        id: 'rigorquant-move',
-        order: 10,
-        locale: MOVE_NS,
-        inject: () => ({ load: (leadSessionId) => scope.remote.agentTeams.view(leadSessionId) }),
-      },
-      (props) => MovePill({ ...props, t: scope.locale.bind(MOVE_NS) }),
-    ))
-  })
 }
 
 return { apply, inject }

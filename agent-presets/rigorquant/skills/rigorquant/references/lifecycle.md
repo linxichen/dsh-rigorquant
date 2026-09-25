@@ -11,7 +11,7 @@ a study (registry.json, journal.md, audits) are study-root-relative.
   "title": "one-line title",
   "mode": "repo-root | multi-study",
   "repo_root": "<absolute path resolved at intake>",
-  "env_lane": "<absolute path to the pinned uv lane — added by Step 2>",
+  "env_lane": "env",
   "task_id": "<problem id>",
   "created": "YYYY-MM-DD",
   "intake_pins": { "schema_sha256": "...", "validator_sha256": "..." },  # optional; hard-lessons L7
@@ -94,9 +94,11 @@ Notes on the schema:
   `rq_check.py` flags a recorded pin mismatch.
 - `mode` is the clean enum `"repo-root" | "multi-study"` (never a literal path
   or a `<...>` placeholder).
-- `env_lane` is an **absolute** path or the documented anchor
+- `env_lane` is `"env"`: the study's own pinned lane at `<study-root>/env/`
+  (`pyproject.toml` + `uv.lock`, committed), copied from the template at
   `$DSH_HOME/share/rigorquant/env`. It is **not** persisted at intake — Step 2
-  resolves and adds it.
+  creates `env/` and adds it. An absolute path to the same directory is
+  accepted; the template itself is not (`evidence.lane` refuses the PASS).
 - `tolerances` splits deterministic and stochastic acceptance (see
   check-battery.md): deterministic methods use condition-aware absolute and
   relative tolerances; stochastic methods agree in standard-error /

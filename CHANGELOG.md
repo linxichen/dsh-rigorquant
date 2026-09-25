@@ -8,6 +8,120 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.6.1] - Unreleased
+
+**Use 0.6.1, not 0.6.0.** A `dsh-rigorquant@0.6.0` reached npm on 2026-09-25
+from a working tree that had not been reviewed or tagged. Against it, 0.6.1:
+
+- restores the harness range `>=0.1.7-rc.2 <0.1.8` (0.6.0 declared
+  `^0.1.7-rc.2`, which admits an untested 0.1.8);
+- stops shipping the untracked 0.1.7 upgrade study (`docs/.npmignore`, and a
+  test that no untracked file under `docs/` is packed);
+- gives each study its own compute lane (issue #36): on rc.2 the sandbox
+  refuses the venv 0.6.0 builds in the shared lane under `$DSH_HOME`, and a
+  study's lockfile is now part of its record;
+- keeps a setting the harness saved inside the installer's marker block on
+  `--uninstall` (0.6.0 deleted it with the block).
+
+Everything below is the full change against 0.5.0.
+
+RigorQuant on DSH 0.1.7-rc.2: a declared preset, a router and card on
+profile-owned config, an escalation lane the orchestrator mounts at runtime,
+one Team bundle, and a leaner repo (Decision 25,
+`docs/adr/0002-declared-preset-on-dsh-0.1.7.md`). It requires DSH
+`>=0.1.7-rc.2 <0.1.8` and keeps no compatibility with 0.1.6: **0.5.0 is the
+last release for 0.1.6-alpha.2**, and nothing is backported. The release
+amends Decisions 5 (jacobian is mounted at runtime), 14 (a mounted lane
+reaches only the agents it is mounted into), 20 (the harness range), 22 (the
+bundle no longer copies a preset) and 24 (one Team bundle; the floor rises).
+
+### Upgrading
+Install it together with the harness, before the first 0.1.7 boot. Finish or
+archive studies in progress first: resuming a 0.1.6 session is not promised.
+Then stop dsh, run `npm i -g @deepseek-ai/dsh@0.1.7-rc.2` (never an
+unqualified install: npm `latest` is `0.1.5-rc.3`), run `./install.sh`, and
+pick RigorQuant in the web app. If the picker is missing, switch Coding Tools
+back on in General Settings. An operator who booted 0.1.7 first re-runs
+`./install.sh` to recover the preset default and the saved routes.
+
+### Changed
+- **The preset is declared** (issue #24). `rigorquant` is a
+  `@deepseek-ai/dsh-agent-preset` row in `agent-presets/rigorquant.patch.yml`,
+  listed after `cordis.patch.yml` in `dsh.bundle.patch`, with `config.id`
+  still `rigorquant`. The child list is 0.5.0's, minus the child
+  `skill-filesystem` row (the host row serves the skill) and the jacobian
+  row. `package.json` declares `peerDependencies` `@deepseek-ai/dsh
+  >=0.1.7-rc.2 <0.1.8`.
+- **Routes are the router row's own config** (issue #25). Each role's primary
+  and fallback are `.volatile()` fields of `rq-model-router`'s `Config`, so
+  the profile owns them and a saved route applies on the next request. When
+  `deepseek-official` is not routable and `deepseek-account` is, the shipped
+  matrix moves to the same model ids on `deepseek-account`, billed to the
+  account quota; a saved route always wins.
+- **The routing card edits `configForms`** (issue #26). rc.2's Plugins page
+  generates no form for a row's config, so the card stays, ported to
+  `configForms.get('rq-model-router')`; a set or unset resolving false is a
+  failed save.
+- **The escalation lane mounts at runtime** (issue #27). `rq_escalate`, a
+  host tool only the orchestrator can call, mounts
+  `@deepseek-ai/dsh-mcp-client` for `jacobian@0.12.0` into the orchestrator
+  or into a teammate it names, with `failOnStartupError: true`. The
+  orchestrator mounts it without asking; installing jacobian and setting up
+  Lean still ask. Blind roles may use a mounted lane only to check a
+  derivation they already made, and may use `math_find` only to look up the
+  operation that runs the check.
+- **The boot-time sync keeps only the compute lane** (issue #28), renamed
+  `rq-lane-sync`. It lands `env/`, `mcp/` and `docs/` under
+  `$DSH_HOME/share/rigorquant` and removes the orphaned directory preset an
+  older release landed, only when its marker names this package.
+- **Every teammate persona counters the harness's team reminder** (issue
+  #29): the teammate is roster-blind and messages only `lead`.
+- **`install.sh` targets rc.2** (issue #30). `MIN_DSH_VERSION` is
+  `0.1.7-rc.2`. It adds only `@deepseek-ai/dsh-experimental-agent-team-profile`,
+  pinned to the core (0.5.0's two-bundle call fails on rc.2 with
+  `ERR_PNPM_NO_MATCHING_VERSION` and enables neither). It always removes
+  `@deepseek-ai/dsh-experimental-agent-team-web-profile` from the profile,
+  saying why in one line, and a failed removal stops the install. It no
+  longer writes `$DSH_HOME/.agent-presets/rigorquant` (`--uninstall` still
+  removes an old one). It ports the `rigorquant-models` section of
+  `settings.yaml`, or of `settings.yaml.imported` once the harness has
+  booted, into the `rq-model-router` row of the profile patch, keeping only
+  keys the router declares, and sets `selectedDefault: rigorquant` on the
+  `agent-preset-registry` row only when the legacy `agent-presets:` default
+  was `rigorquant`. The port runs once: it leaves `.rq-settings-ported` in
+  the profile directory, and a router row that already carries a route, or a
+  registry row that already carries a default, is left alone.
+  YAML is read with the `yaml` package the dsh CLI ships.
+- **`--uninstall` removes only the lines the installer wrote** in its marked
+  block of the profile patch. The END marker is a trailing comment, so a row
+  the harness saves later lands between the markers (seen live on rc.2:
+  dismissing the first-run notice saved `ui-settings-general` there), and
+  removing the whole span deleted it.
+- **Each study carries its own compute lane** (issue #36, amending Decision
+  21). Step 2 copies the shipped lane's `pyproject.toml` + `uv.lock` into the
+  study's tracked `env/` and records `env_lane: "env"`; the venv and uv cache
+  live under `interim/` (`UV_PROJECT_ENVIRONMENT`, `UV_CACHE_DIR`), built once
+  by the orchestrator, and teammates run `uv run --frozen --offline --project
+  env`. Extra packages go into the study's lane (`uv add --project env`).
+  `$DSH_HOME/share/rigorquant/env` is only the template. The rc.2
+  `workspace-write` sandbox refused a venv in the shared lane (seen live), and
+  a release replacing the shared lockfile left older studies unreproducible.
+  `rq_check.py` refuses a PASS without `env/pyproject.toml` and `env/uv.lock`,
+  or whose `env_lane` is not the study's own `env/` (`evidence.lane`, rule R8).
+  A study already in flight adopts the lane by copying those two files.
+- **Both READMEs describe installing and running on rc.2** (issue #32): the
+  operator sequence, Coding Tools as the picker's gate, 0.5.0 as the last
+  release for the 0.1.6 alpha, finishing or archiving studies first,
+  account-only routing on account quota, the runtime escalation lane, the
+  roster's model column showing the selection rather than the routed model,
+  and scheduled tasks being neither used nor guarded.
+- `tests/test_repo_consistency.py` sweeps every tracked file outside this
+  changelog and the decision record for the retired 0.1.6 surfaces
+  (`settingsScope`, `remote.agentTeams`, `.agent-presets`,
+  `agent-team-web-profile`, `0.1.6-alpha.2`, `rq-preset-sync`, the move pill,
+  `mcp-jacobian`); only the cleanup code that removes one, and its tests, may
+  name it.
+
 ### Fixed
 - **The router degrades on a model its provider does not declare** (issue
   #22). A saved `rigorquant-models` override naming such a model (the live
@@ -27,6 +141,51 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
   provider catalog` option. Before, the select had no option for that value
   and the row read as "Inherit". A provider the catalog does not list is not
   judged, since its listing may simply have failed.
+
+### Removed
+Everything the migration made dead, deleted rather than deprecated, with the
+tests that pinned it:
+- The directory preset: `agent-presets/rigorquant/agent.cordis.yml` and
+  `agent-presets/rigorquant/preset.yml`; the preset's child
+  `skill-filesystem` and `mcp-jacobian` rows and their assertions; the CI
+  `.agent-presets` assertions; every "enable the `mcp-jacobian` row"
+  instruction in the skill and docs.
+- The `rigorquant-models` settings namespace: the router's
+  `SettingsSchema`/`NS` exports and its settings registration.
+- The move pill (`dsh/client.js`), its `remote.agentTeams` gate, the
+  `ui-conversation` client edge, the probe's pill fixtures, mount helper and
+  pill-gate scenario, the pill and namespace tests in
+  `tests/test_client_bundle.py`, `test_move_pill_role_badges_*`, and the pill
+  text in both READMEs and SKILL.md.
+- From the sync (`rq-preset-sync`, now `rq-lane-sync`): the preset pair in
+  `MANAGED_DIRS` and `KEY_FILES`, the in-place row-flip rationale, the
+  kept-local same-version branch and its `keyFile` option, `filesUnder()`,
+  and the floor comment `peerDependencies` replaced;
+  `tests/test_preset_sync.py` and `tests/preset_sync_probe.cjs` (renamed to
+  the lane-sync pair with the preset half deleted: the `agent.cordis.yml`
+  fixture, the local-edit test that flipped `mcp-jacobian`, the kept-local
+  rerun expectation).
+- From `install.sh`: `TEAM_BUNDLE_WEB` and the web bundle in the add call, the
+  `.agent-presets/rigorquant` copy and its "Installed preset" line, and the
+  0.1.6 floor rationale. From `tests/test_installer_agent_teams.py`: the
+  two-bundle enable, half-pair and two-bundle re-pin tests (rewritten for the
+  one bundle).
+- Docs (issue #31): the 0.1.2, 0.1.5 and 0.1.6 upgrade studies, the
+  repository review and the walkthrough page. Their links point at the matching Decision or ADR
+  (in `docs/architecture.md`, ADR 0001, `dsh/team.js`, `tests/team_probe.cjs`,
+  `tests/test_team_plugin.py`, `tests/test_repo_consistency.py`) or, in this
+  changelog, at the release tag that still carries the file. The dated-file
+  exemptions of the vocabulary and retired-model pins went with them.
+  `docs/hard-lessons-from-the-var-expected-return-run.md` (the skill cites
+  it) and `docs/showcase.html` stay.
+- The activity-panel figure in both READMEs: `docs/figs/agent-team-activity.svg`,
+  its generator `docs/figs/agent-team-activity.js`, and
+  `test_agent_team_activity_svg_is_fresh`. It pictured the retired activity
+  panel; the hero banner keeps the dsh-agent-teams credit.
+- Checks the stale-surface sweep now covers: `test_client_bundle.py`'s
+  `settingsScope`/`remote.agentTeams` read test and its probe verdicts, and
+  the per-file `mcp-jacobian` and `rq-preset-sync` asserts in
+  `test_repo_consistency.py`.
 
 ## [0.5.0] - 2026-09-24
 
@@ -55,7 +214,7 @@ who cannot enable a Beta bundle stay on 0.4.2.
   orchestrator (the harness's `lead` membership) gets a "RigorQuant team
   guard: armed" runtime context and its own guard, and is composed as well
   when RigorQuant is picked only after the session was created (the plugin
-  also recomposes on `agent-preset/selected`, `docs/upgrade-0.1.6.md` §3.11).
+  also recomposes on `agent-preset/selected`, Decision 24).
   The `agentTeams` service is reached duck-typed and never imported; when it
   is absent the plugin warns once and disarms.
 - **Topology by guard** (issue #10). A per-agent `tools.guard` enforces what
@@ -146,7 +305,7 @@ who cannot enable a Beta bundle stay on 0.4.2.
 
 ### Fixed
 - **The orchestrator could re-brief a settled fresh-per-brief teammate**
-  (found in the live release run, `docs/upgrade-0.1.6.md` §3.15). It sent
+  (found in the live release run, Decision 24). It sent
   hash-bound "erratum briefs" back to a settled `doublechecker-5` and
   `explorer-3`, although Explorers, OffGridThinkers and DoubleCheckers are
   fresh per brief. The orchestrator's guard now reads the live roster and
@@ -161,7 +320,7 @@ who cannot enable a Beta bundle stay on 0.4.2.
   turn: `get_goal`, then `update_goal` with action `resume`.
 - **Toggling the `rq-team` row in the Plugins page left the orchestrator
   armed, and the row could not be turned back on** (found verifying this release live,
-  `docs/upgrade-0.1.6.md` §3.15). Every persona, context, restriction and
+  Decision 24). Every persona, context, restriction and
   guard the plugin installs goes through the agent's own scope, so it
   outlived the plugin: with the row off, a live orchestrator kept the "armed" line
   and its guard, and switching the row back on hit "prompt context
@@ -188,7 +347,7 @@ who cannot enable a Beta bundle stay on 0.4.2.
   `status: 'running'`, so they rest on the probe).
   `tests/client_bundle_probe.cjs` models the real seams and
   `tests/test_client_bundle.py` pins the read, the gate, and zero fictional
-  projection reads. See `docs/upgrade-0.1.6.md` §3.14.
+  projection reads. See Decision 24.
 - **`install.sh` could produce a profile that cannot boot, and installed the
   published package from a git worktree** (issue #21, both found verifying
   #13's client half live). The Team bundles were added by bare name, so pnpm
@@ -202,11 +361,11 @@ who cannot enable a Beta bundle stay on 0.4.2.
   so a worktree profile got `dsh-rigorquant@0.4.2` from npm — the release that
   still ships the deleted `dsh/activity.js` — and the pre-commit hook wiring was
   skipped there too; both now share one `is_git_checkout` helper. Verified live
-  against the installed CLI; see `docs/upgrade-0.1.6.md` §3.13.
+  against the installed CLI; see Decision 24.
 
 ### Verified
 - **Released against the installed 0.1.6-alpha.2 with both Team bundles on**
-  (`docs/upgrade-0.1.6.md` §3.15, scratch profile `rq50` installed from the
+  (the 0.1.6 upgrade study (tag `v0.5.0`) §3.15, scratch profile `rq50` installed from the
   release tree by `install.sh`): the preset harness probe reports **28 rows,
   0 hard failures**; the bundle page shows v0.5.0 with **4 total · 4
   running** (`skill-filesystem-rigorquant`, `rq-model-router`,
@@ -220,7 +379,7 @@ who cannot enable a Beta bundle stay on 0.4.2.
   with all four rows Running and the card back.
   `rq-model-router`, `rq-preset-sync` and `skill-filesystem-rigorquant`, each
   toggled off and on alone, went back to 4 running with no toast.
-- **A full study ran live, unattended, to PASS** (`docs/upgrade-0.1.6.md`
+- **A full study ran live, unattended, to PASS** (the 0.1.6 upgrade study (tag `v0.5.0`)
   §3.15). It was a two-round minimum-variance closed-form study on a fresh
   profile installed by `install.sh`, with twelve named teammates (every role
   routed to `deepseek-flash` for the run). Each round was a task DAG.
@@ -412,8 +571,8 @@ carries the 0.1.5 port, which never shipped on its own: 0.4.1 predates it.
   in it.
 
 ### Verified
-- **Released against the installed 0.1.6-alpha.2** (`docs/upgrade-0.1.6.md`
-  §3.8, on a scratch profile installing the release tree by `file:`): the
+- **Released against the installed 0.1.6-alpha.2** (the 0.1.6 upgrade study,
+  tag `v0.4.2`, §3.8, on a scratch profile installing the release tree by `file:`): the
   preset harness probe reports **38 rows, 0 hard failures and no UNRESOLVED
   row**; the bundle page shows v0.4.2 with **all four components Running** —
   the skill-root row is the one that evaluates the patch's package-relative
@@ -434,8 +593,8 @@ carries the 0.1.5 port, which never shipped on its own: 0.4.1 predates it.
   count, both skill-file edits, the two new rows, and that
   `tests/router_probe.cjs` really fails if `PERSONA_SECTION` is reverted; it
   found three doc/claim deviations and one stale version note, all fixed in
-  `docs/upgrade-0.1.5.md` §8 (which records the findings and their
-  dispositions).
+  the 0.1.5 upgrade study's §8 at tag `v0.4.2` (which records the findings
+  and their dispositions).
 - **A reasoning effort the exact route refuses no longer kills the turn.**
   The settings card's effort dropdown fell back to a generic
   `[off, high, max]` vocabulary whenever the catalog reported no effort
@@ -450,10 +609,10 @@ carries the 0.1.5 port, which never shipped on its own: 0.4.1 predates it.
   predated DSH 0.1.2's `session.snapshotEvents()` rename).
 
 ### Documentation
-- `docs/upgrade-0.1.5.md` — the source-verified upgrade study: what changed
+- The 0.1.5 upgrade study (retired in 0.6.0; tag `v0.4.2`) — the source-verified upgrade study: what changed
   between 0.1.2 and 0.1.5, what the preset must adopt, the deeper agent/tool
   optimizations, and the ranked fix list this release implements.
-- `docs/upgrade-0.1.6.md` — the 0.1.6 source study: what changed upstream, the
+- The 0.1.6 upgrade study (retired in 0.6.0; tag `v0.4.2`) — the 0.1.6 source study: what changed upstream, the
   break list (the two silent browser breaks, the removed fallback model, the
   deprecated history reads), the Phase 0 probe evidence against the installed
   alpha, and the Phase 1 release verification recorded in its §3.8.
@@ -656,7 +815,7 @@ carries the 0.1.5 port, which never shipped on its own: 0.4.1 predates it.
   portrait), and a README (en/zh) team entry. Adds
   `docs/figs/avatar-literature-adversary.png` so the literature adversary gets
   its own portrait instead of sharing the literature-line one.
-- **Upgrade study for DSH v0.1.2-alpha.1** (`docs/upgrade-0.1.2.md`). Audited
+- **Upgrade study for DSH v0.1.2-alpha.1** (retired in 0.6.0; tag `v0.4.1`). Audited
   every Host event / service, Client slot / service, and settings seam this
   repo calls against the `dsh-v0.1.2-alpha.1` tag: no breaking incompatibility
   was found (ApiProxy removal, conversation-UI split, profile-launch

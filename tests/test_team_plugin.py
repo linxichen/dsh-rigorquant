@@ -42,14 +42,17 @@ module (via tests/team_probe.cjs, not by re-implementing it in Python):
    network verb denied for a web-denied role and allowed for an open role;
    a bad `spawn_teammate` name or `context: 'fork'` denied on the Lead.
 8. a session composed as rigorquant only AFTER its own `agent/created`
-   already ran (found live against the installed 0.1.6-alpha.2 harness,
-   docs/upgrade-0.1.6.md §3.11 — a "New Session" switched to the RigorQuant
+   already ran (found live on the harness 0.5.0 ran on, Decision 24 — a "New Session" switched to the RigorQuant
    preset in the picker, rather than created with it already selected)
    still gets the Lead's guard-armed context and `spawn_teammate` guard,
    via a second trigger on `agent-preset/selected`.
 9. unloading the plugin (the Plugins-page row toggle) disposes every
    composition it installed on a live agent, and reloading it recomposes
-   those agents exactly once (found live, docs/upgrade-0.1.6.md §3.15).
+   those agents exactly once (found live, Decision 24).
+10. the escalation lane (Decision 25, issue #27): the Lead alone gets the
+   `rq_escalate` tool, which mounts the jacobian MCP client into the caller
+   or a named live teammate, once per agent; the guard refuses it to every
+   teammate; a lane that cannot start is an error the orchestrator sees.
 """
 
 import json
@@ -128,12 +131,12 @@ def test_adversary_is_web_denied_but_keeps_skill(probe):
 
 def test_an_unparseable_teammate_name_is_skipped_silently(probe):
     entry = probe["present"]["unparseableName"]
-    assert entry == {"sections": [], "contexts": [], "restricts": [], "guardCount": 0}
+    assert entry == {"sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
 
 
 def test_a_non_rigorquant_team_is_never_touched(probe):
     entry = probe["present"]["nonRigorQuantTeammate"]
-    assert entry == {"sections": [], "contexts": [], "restricts": [], "guardCount": 0}
+    assert entry == {"sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
 
 
 def test_the_lead_gets_the_armed_guard_line_as_a_context_not_a_section(probe):
@@ -152,9 +155,11 @@ def test_reapplication_on_a_resume_sourced_creation(probe):
     assert len(resume["secondSections"]) == 1
 
 
-LEAD_LIVE = {"sections": [], "contexts": ["rq-team:guard-armed"], "restricts": 0, "guards": 1}
-TEAMMATE_LIVE = {"sections": ["deployment:persona-prefix"], "contexts": [], "restricts": 1, "guards": 1}
-NOTHING_LIVE = {"sections": [], "contexts": [], "restricts": 0, "guards": 0}
+LEAD_LIVE = {"sections": [], "contexts": ["rq-team:guard-armed"], "tools": ["rq_escalate"],
+             "restricts": 0, "guards": 1}
+TEAMMATE_LIVE = {"sections": ["deployment:persona-prefix"], "contexts": [], "tools": [],
+                 "restricts": 1, "guards": 1}
+NOTHING_LIVE = {"sections": [], "contexts": [], "tools": [], "restricts": 0, "guards": 0}
 
 
 def test_unloading_the_plugin_disarms_every_live_agent(probe):
@@ -239,7 +244,7 @@ def test_the_orchestrator_spawn_teammate_guard_refuses_bad_names_and_fork(probe)
 def test_the_orchestrator_never_rebriefs_a_settled_fresh_per_brief_teammate(probe):
     """Explorer, OffGridThinker and DoubleChecker are fresh per brief.
 
-    Found live in the 0.5.0 release run (docs/upgrade-0.1.6.md §3.15): the
+    Found live in the 0.5.0 release run (Decision 24): the
     orchestrator sent hash-bound "erratum briefs" to a settled
     doublechecker and explorer instead of briefing new teammates. Reuse is
     a new brief after the teammate settled, so the guard reads the live
@@ -262,7 +267,7 @@ def test_a_late_preset_switch_gets_no_composition_until_the_switch_lands(probe):
     original (non-rigorquant) preset when `agent/created` ran — this module
     correctly stayed silent, matching every other non-rigorquant agent."""
     before = probe["latePresetSelection"]["beforeSwitch"]
-    assert before == {"sections": [], "contexts": [], "restricts": [], "guardCount": 0}
+    assert before == {"sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
 
 
 def test_a_late_preset_switch_to_rigorquant_installs_the_lead_composition(probe):
@@ -270,10 +275,11 @@ def test_a_late_preset_switch_to_rigorquant_installs_the_lead_composition(probe)
     own recompose already landed on agent.ctx), the Lead gets exactly what it
     would have gotten from a same-preset agent/created: the armed context and
     its spawn_teammate guard — found missing live on the installed harness
-    (docs/upgrade-0.1.6.md §3.11) before this second trigger existed."""
+    (Decision 24) before this second trigger existed."""
     after = probe["latePresetSelection"]["afterSwitch"]
     assert after["sections"] == []
     assert after["guardCount"] == 1
+    assert after["tools"] == ["rq_escalate"]
     assert len(after["contexts"]) == 1
     context = after["contexts"][0]
     assert context["name"] == "rq-team:guard-armed"
@@ -300,3 +306,93 @@ def test_the_team_module_declares_agent_teams_optional():
     imports = re.findall(r"^\s*import .*from\s+'([^']+)'", source, re.M)
     imports += re.findall(r"require\(\s*'([^']+)'\s*\)", source)
     assert not any("dsh-experimental" in spec for spec in imports), imports
+
+
+# ── the escalation lane (issue #27) ───────────────────────────────────────
+
+
+def test_only_the_lead_is_given_rq_escalate(probe):
+    escalation = probe["escalation"]
+    assert escalation["toolRegisteredOnLead"]
+    assert probe["present"]["lead"]["tools"] == ["rq_escalate"]
+    for member in ("doublechecker1", "explorer1", "adversary1"):
+        assert probe["present"][member]["tools"] == [], member
+    assert escalation["teammateTools"] == [[], []]
+
+
+def test_the_guard_refuses_rq_escalate_to_every_teammate(probe):
+    checks = probe["guardChecks"]
+    assert "rq_escalate" in checks["teammateEscalateDenied"]
+    assert "rq_escalate" in checks["teammateEscalateOtherDenied"]
+
+
+def test_rq_escalate_takes_only_an_optional_teammate(probe):
+    parameters = probe["escalation"]["parameters"]
+    assert parameters["type"] == "object"
+    assert set(parameters["properties"]) == {"teammate"}
+    assert parameters.get("required", []) == []
+
+
+def test_rq_escalate_mounts_the_pinned_jacobian_client_into_the_caller(probe):
+    escalation = probe["escalation"]
+    assert escalation["intoCaller"]["value"] == {"target": "lead", "status": "mounted"}
+    assert escalation["imports"][0] == "@deepseek-ai/dsh-mcp-client"
+    [mount] = escalation["mounts"]["lead"]
+    assert mount["plugin"] == "mcp-client"
+    config = mount["config"]
+    assert config["validated"], "the config must go through the client's own schema"
+    assert config["serverName"] == "rigorquant-jacobian"
+    assert config["transport"] == "stdio"
+    assert config["command"] == "npx"
+    assert config["args"] == ["-y", "jacobian@0.12.0", "mcp"]
+    assert config["toolCallTimeoutMs"] == 120000
+    assert config["failOnStartupError"] is True
+    assert config["cwd"] == "/work/lead-esc"
+    assert config["env"]["JACOBIAN_LEAN_RUNTIME"]
+    assert config["env"]["PATH"].endswith("/.elan/bin")
+    rendered = " ".join(block["text"] for block in escalation["intoCaller"]["rendered"])
+    assert "mcp__rigorquant-jacobian__" in rendered
+
+
+def test_rq_escalate_mounts_into_a_named_teammate(probe):
+    escalation = probe["escalation"]
+    assert escalation["intoTeammate"]["value"] == {"target": "doublechecker-1", "status": "mounted"}
+    [mount] = escalation["mounts"]["doublechecker"]
+    assert mount["config"]["cwd"] == "/work/dc-esc"
+
+
+def test_mounting_is_idempotent_per_agent(probe):
+    escalation = probe["escalation"]
+    assert escalation["intoCallerAgain"]["value"] == {"target": "lead", "status": "already-mounted"}
+    assert escalation["intoTeammateAgain"]["value"] == {
+        "target": "doublechecker-1", "status": "already-mounted"}
+    assert len(escalation["mounts"]["lead"]) == 1
+    assert len(escalation["mounts"]["doublechecker"]) == 1
+
+
+def test_an_unknown_or_unloaded_teammate_is_a_clear_error(probe):
+    escalation = probe["escalation"]
+    assert "doublechecker-9" in escalation["unknownTeammate"]["error"]
+    assert "offgrid-1" in escalation["unloadedTeammate"]["error"]
+    assert "inactive" in escalation["unloadedTeammate"]["error"]
+
+
+def test_a_failed_connect_surfaces_as_an_error_and_can_be_retried(probe):
+    """failOnStartupError rejects the mount; rq_escalate reports it and points
+    at the install step instead of leaving a lane that silently retries."""
+    escalation = probe["escalation"]
+    error = escalation["failedConnect"]["error"]
+    assert "adversary-1" in error and "spawn npx ENOENT" in error
+    assert "jacobian@0.12.0 upgrade" in error
+    assert "error" in escalation["failedConnectRetried"], "a failure must not be cached as mounted"
+    assert len(escalation["mounts"]["adversary"]) == 2, "a failure must not be cached either"
+    assert escalation["failedFibersDisposed"] == 2
+
+
+def test_a_plugin_reload_does_not_mount_the_lane_twice(probe):
+    """The lane lives on the agent, not the plugin: after rq-team is toggled
+    off and on, rq_escalate still reports the existing mount instead of
+    mounting a second client (which the harness would refuse by name)."""
+    escalation = probe["escalation"]
+    assert escalation["afterReload"] == {"value": {"target": "lead", "status": "already-mounted"}}
+    assert len(escalation["mounts"]["lead"]) == 1

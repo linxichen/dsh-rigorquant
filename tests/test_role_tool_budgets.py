@@ -26,7 +26,7 @@ file embeds `!!js` runtime expressions.
 
 import re
 
-from conftest import CORDIS, REPO, composition_rows, is_disabled
+from conftest import REPO, composition_rows, is_disabled, preset_children
 
 # Global tools mounted for EVERY deployment that runs this preset: the
 # preset's own rows plus the dsh-base host composition. Deliberately NOT here:
@@ -79,7 +79,7 @@ def test_untagged_spawner_rows_are_disabled():
     persona with the full catalog. The fork row is gone entirely under
     Decision 24; the others stay disabled.
     """
-    rows = dict(composition_rows(CORDIS.read_text()))
+    rows = dict(composition_rows(preset_children()))
     assert "tool-subagent-fork" not in rows
     for row_id in ("workflow-ptc", "tool-workflow", "tool-ralph"):
         assert row_id in rows, "the preset lost the disabled %s row" % row_id

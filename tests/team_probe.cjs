@@ -11,8 +11,9 @@
 // messaging, roster/board blindness, own-task-only board access, the bash
 // network-verb denial for web-denied roles, and the orchestrator's
 // spawn_teammate name/fork refusal), plus a late preset switch and an
-// unload/reload of the plugin over live agents (the Plugins-page toggle).
-// Prints one JSON verdict.
+// unload/reload of the plugin over live agents (the Plugins-page toggle),
+// and the escalation lane: the Lead's `rq_escalate` tool mounting a stub
+// MCP client into the caller or a named teammate. Prints one JSON verdict.
 const { pathToFileURL } = require('node:url')
 
 /** One fake teammate/lead: its own agent.ctx scope recording every
@@ -22,6 +23,7 @@ function makeAgent(id, preset) {
   const contexts = []
   const restricts = []
   const guards = []
+  const registered = []
   const disposedSections = []
   const systemPromptStub = {
     section: (spec) => {
@@ -43,6 +45,10 @@ function makeAgent(id, preset) {
       guards.push(fn)
       return () => {}
     },
+    register: (definition) => {
+      registered.push(definition)
+      return () => {}
+    },
   }
   const agent = {
     id,
@@ -55,7 +61,7 @@ function makeAgent(id, preset) {
       },
     },
   }
-  return { agent, recorder: { sections, contexts, restricts, guards, disposedSections } }
+  return { agent, recorder: { sections, contexts, restricts, guards, registered, disposedSections } }
 }
 
 /** A point-in-time copy — `recorder`'s arrays are live and keep mutating, so
@@ -67,6 +73,7 @@ function pick(recorder) {
     contexts: recorder.contexts.slice(),
     restricts: recorder.restricts.slice(),
     guardCount: recorder.guards.length,
+    tools: recorder.registered.map((definition) => definition.name),
   }
 }
 
@@ -197,6 +204,10 @@ async function runPresentScenario(mod) {
     briefSettledAdversaryAllowed: drive(leadGuard, 'send_message', { target: 'adversary-1', message: 'new brief' }),
     briefInactiveLitLineAllowed: drive(leadGuard, 'send_message', { target: 'lit-line-1', message: 'new brief' }),
     unknownTargetLeftToTheTool: drive(leadGuard, 'send_message', { target: 'doublechecker-99', message: 'x' }),
+    // The escalation lane is the orchestrator's to grant: a teammate that
+    // can see the Lead's scoped tool is still refused at the call.
+    teammateEscalateDenied: drive(doublechecker1Guard, 'rq_escalate', {}),
+    teammateEscalateOtherDenied: drive(explorer1Guard, 'rq_escalate', { teammate: 'explorer-1' }),
   }
 
   return {
@@ -274,8 +285,8 @@ async function runResumeScenario(mod) {
 
 /**
  * A session created under a non-rigorquant preset, later switched to
- * rigorquant via `AgentPresets.select()` — found live (docs/upgrade-0.1.6.md
- * §3.11): `agent/created` already ran (and skipped, composedPreset still
+ * rigorquant via `AgentPresets.select()` — found live (Decision 24):
+ * `agent/created` already ran (and skipped, composedPreset still
  * reporting the old preset) before the switch, so without a second trigger
  * the Lead never gets composed for the rest of its life. Simulates the
  * harness's own ordering: `recompose()` lands on `agent.ctx` BEFORE
@@ -323,7 +334,7 @@ async function runLatePresetSelectionScenario(mod) {
  * ("prompt context \"…\" is already registered in this scope"). Guards and
  * restrictions are anonymous, so they are only counted. */
 function makeScopedAgent(id, preset) {
-  const live = { sections: new Set(), contexts: new Set(), restricts: 0, guards: 0 }
+  const live = { sections: new Set(), contexts: new Set(), tools: new Set(), restricts: 0, guards: 0 }
   const named = (set, kind) => (spec) => {
     if (set.has(spec.name)) throw new Error(`prompt ${kind} "${spec.name}" is already registered in this scope`)
     set.add(spec.name)
@@ -339,11 +350,19 @@ function makeScopedAgent(id, preset) {
       context: named(live.contexts, 'context'),
       getSectionOrder: () => 0,
     },
-    tools: { restrict: counted('restricts'), guard: counted('guards') },
+    tools: {
+      restrict: counted('restricts'),
+      guard: counted('guards'),
+      register: (definition) => {
+        live.tools.add(definition.name)
+        return () => { live.tools.delete(definition.name) }
+      },
+    },
   }
   const agent = { id, ctx: { __preset: preset, get: (name) => services[name] } }
   const snapshot = () => ({
-    sections: [...live.sections], contexts: [...live.contexts], restricts: live.restricts, guards: live.guards,
+    sections: [...live.sections], contexts: [...live.contexts], tools: [...live.tools],
+    restricts: live.restricts, guards: live.guards,
   })
   return { agent, snapshot }
 }
@@ -354,7 +373,7 @@ function makeScopedAgent(id, preset) {
  * owns (its listeners and effects); every persona, context, restriction and
  * guard it registered went through `agent.ctx`, so they belong to the
  * agent's scope and outlive the plugin unless the plugin disposes them
- * itself. Found live (docs/upgrade-0.1.6.md §3.15): the Lead stayed armed
+ * itself. Found live (Decision 24): the Lead stayed armed
  * with rq-team off, and turning it back on could not take effect because the
  * backfill re-registered the still-live armed context by the same name.
  */
@@ -403,6 +422,131 @@ async function runUnloadScenario(mod) {
   return { firstError: first.error, afterMount, afterUnload, remountError: second.error, afterRemount }
 }
 
+/** An agent whose scope can mount a plugin: `agent.ctx.plugin()` records
+ * the call and returns a thenable fiber, the way cordis does, that settles
+ * after the plugin's startup and rejects with its startup error. A named
+ * `failing` agent rejects every mount (a jacobian that cannot start). */
+function makeMountableAgent(id, preset, { failing = false } = {}) {
+  const base = makeAgent(id, preset)
+  const mounts = []
+  let disposed = 0
+  base.agent.ctx.plugin = (plugin, config) => {
+    mounts.push({ plugin: plugin.name, config })
+    const settled = failing
+      ? Promise.reject(new Error('spawn npx ENOENT'))
+      : Promise.resolve()
+    return {
+      dispose: () => { disposed += 1 },
+      then: (onFulfilled, onRejected) => settled.then(onFulfilled, onRejected),
+    }
+  }
+  base.agent.session = { header: { cwd: `/work/${id}` } }
+  return { ...base, mounts, disposedCount: () => disposed }
+}
+
+/**
+ * `rq_escalate` on a live Lead: mount into the caller, into a named live
+ * teammate, idempotently, and fail clearly for an unknown or unloaded
+ * teammate and for a lane that cannot start.
+ */
+async function runEscalationScenario(mod) {
+  const listeners = new Map()
+  const membershipByAgent = new Map()
+  const agentsById = new Map()
+  const imports = []
+  const stubClient = { name: 'mcp-client', Config: (config) => ({ ...config, validated: true }) }
+  const lead = makeMountableAgent('lead-esc', 'rigorquant')
+  const dc = makeMountableAgent('dc-esc', 'rigorquant')
+  const broken = makeMountableAgent('ad-esc', 'rigorquant', { failing: true })
+  const roster = [
+    { id: 'lead-esc', name: 'lead', role: 'lead', status: 'running' },
+    { id: 'dc-esc', name: 'doublechecker-1', role: 'teammate', status: 'running' },
+    { id: 'ad-esc', name: 'adversary-1', role: 'teammate', status: 'running' },
+    { id: 'og-esc', name: 'offgrid-1', role: 'teammate', status: 'inactive' },
+  ]
+  membershipByAgent.set(lead.agent, { role: 'lead', name: 'lead' })
+  membershipByAgent.set(dc.agent, { role: 'teammate', name: 'doublechecker-1' })
+  membershipByAgent.set(broken.agent, { role: 'teammate', name: 'adversary-1' })
+  for (const member of [lead, dc, broken]) agentsById.set(member.agent.id, member.agent)
+  const teamsService = {
+    tryMembership: (agent) => membershipByAgent.get(agent),
+    listMembers: () => roster,
+  }
+  const ctx = {
+    logger: { warn: () => {} },
+    effect: () => {},
+    on: (name, handler) => {
+      if (!listeners.has(name)) listeners.set(name, [])
+      listeners.get(name).push(handler)
+    },
+    get: (name) => {
+      if (name === 'agents') return { list: () => [], get: (id) => agentsById.get(id) }
+      if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
+      if (name === 'agentTeams') return teamsService
+      if (name === 'loader') {
+        return {
+          import: async (spec) => { imports.push(spec); return { default: stubClient } },
+          unwrapExports: (exports) => exports.default ?? exports,
+        }
+      }
+      return undefined
+    },
+  }
+  const emit = (name, ...args) => { for (const h of listeners.get(name) ?? []) h(...args) }
+
+  mod.apply(ctx)
+  for (const member of [lead, dc, broken]) emit('agent/created', { agent: member.agent, source: 'startup' })
+
+  const tool = lead.recorder.registered.find((definition) => definition.name === 'rq_escalate')
+  const call = async (args, caller = lead.agent) => {
+    try {
+      const value = await tool.execute(args, { agent: caller, arguments: args })
+      return { value, rendered: tool.output.render(args, value) }
+    } catch (error) {
+      return { error: String((error && error.message) || error) }
+    }
+  }
+
+  const intoCaller = await call({})
+  const intoCallerAgain = await call({})
+  const intoTeammate = await call({ teammate: 'doublechecker-1' })
+  const intoTeammateAgain = await call({ teammate: 'doublechecker-1' })
+  const unknownTeammate = await call({ teammate: 'doublechecker-9' })
+  const unloadedTeammate = await call({ teammate: 'offgrid-1' })
+  const failedConnect = await call({ teammate: 'adversary-1' })
+  const failedConnectRetried = await call({ teammate: 'adversary-1' })
+
+  // The Plugins page toggles rq-team off and on: the lane stays mounted on
+  // the agent, so the reloaded plugin's tool must still see it.
+  mod.apply(ctx)
+  emit('agent/created', { agent: lead.agent, source: 'startup' })
+  const reloadedTool = lead.recorder.registered.filter((d) => d.name === 'rq_escalate').at(-1)
+  let afterReload
+  try {
+    afterReload = { value: await reloadedTool.execute({}, { agent: lead.agent, arguments: {} }) }
+  } catch (error) {
+    afterReload = { error: String((error && error.message) || error) }
+  }
+
+  return {
+    toolRegisteredOnLead: tool !== undefined,
+    parameters: tool?.parameters ?? null,
+    teammateTools: [dc, broken].map((member) => member.recorder.registered.map((d) => d.name)),
+    imports,
+    intoCaller,
+    intoCallerAgain,
+    intoTeammate,
+    intoTeammateAgain,
+    unknownTeammate,
+    unloadedTeammate,
+    failedConnect,
+    failedConnectRetried,
+    afterReload,
+    mounts: { lead: lead.mounts, doublechecker: dc.mounts, adversary: broken.mounts },
+    failedFibersDisposed: broken.disposedCount(),
+  }
+}
+
 async function main() {
   const [, , modulePath] = process.argv
   const mod = await import(pathToFileURL(modulePath).href)
@@ -412,8 +556,11 @@ async function main() {
   const resume = await runResumeScenario(mod)
   const latePresetSelection = await runLatePresetSelectionScenario(mod)
   const unload = await runUnloadScenario(mod)
+  const escalation = await runEscalationScenario(mod)
 
-  process.stdout.write(JSON.stringify({ mountError, present, guardChecks, absent, resume, latePresetSelection, unload }))
+  process.stdout.write(JSON.stringify({
+    mountError, present, guardChecks, absent, resume, latePresetSelection, unload, escalation,
+  }))
 }
 
 main().catch((error) => {

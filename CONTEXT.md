@@ -35,7 +35,15 @@ _Avoid_: level, phase, move
 **Track**:
 One of the two independent lines of evidence on a claim: the method track
 (open, may use existing results) and the ground-truth track (re-derived blind).
-_Avoid_: lane (reserved for compute and literature lanes), branch
+_Avoid_: lane (reserved for the lanes below), branch
+
+**Lane**:
+An optional capability the orchestrator can draw on during a study, living
+outside the study record: the compute lane (the pinned numerical environment),
+the literature lane, and the escalation lane (exact computation and
+independent verification of a load-bearing unproven claim, with the Lean lane
+inside it).
+_Avoid_: falsification lane (that is the check battery), track
 
 **Study record**:
 The committed evidence of a study — `study.json`, registry, journal,

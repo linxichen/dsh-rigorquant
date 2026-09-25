@@ -34,7 +34,7 @@
     "repo_root": { "type": "string", "description": "absolute path resolved at intake" },
     "env_lane": {
       "type": "string",
-      "description": "absolute path to the pinned uv lane, added by Step 2 (not present at intake)"
+      "description": "the study's own pinned uv lane, normally \"env\" (study-root-relative: env/pyproject.toml + env/uv.lock, committed); added by Step 2 (not present at intake)"
     },
     "task_id": { "type": "string" },
     "created": { "type": "string" },

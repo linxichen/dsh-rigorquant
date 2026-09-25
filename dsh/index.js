@@ -1,14 +1,25 @@
 // RigorQuant model router — host half.
 //
-// One settings namespace (`rigorquant-models`) maps every RigorQuant role to a
-// primary model and a per-role fallback model, each with its own reasoning
-// effort. No native per-role model row remains under Agent Teams — a
+// The router row's own profile config maps every RigorQuant role to a primary
+// model and a per-role fallback model, each with its own reasoning effort
+// (Decision 25: DSH 0.1.7 has no plugin-registered settings namespace for
+// the routes to live in). Each `<role>Primary`/`<role>Fallback` field is
+// `.volatile()`, so a saved route reaches the next request without a
+// remount. No native per-role model row remains under Agent Teams — a
 // teammate is created by `spawn_teammate`, which carries no model choice at
 // all — so this router carries the shipped tier matrix itself
-// (`DEFAULT_PRIMARY`/`DEFAULT_FALLBACK`, resolved through the settings
-// section like any other field) and overlays a live Settings override on top
-// of it. The `agent/request` waterfall remains the small policy overlay that
-// makes live settings and fallback possible.
+// (`DEFAULT_PRIMARY`/`DEFAULT_FALLBACK`) and a route the user saved always
+// wins over it. The `agent/request` waterfall remains the small policy
+// overlay that makes live config and fallback possible.
+//
+// Account fallback: DSH 0.1.7-rc.2 splits DeepSeek into `deepseek-official`
+// (API key) and `deepseek-account` (account sign-in). When the official
+// route is not routable but the account route is, the SHIPPED matrix moves
+// to the same model ids on `deepseek-account`; a saved route is never moved.
+// "Routable" is the model catalog's rule (the provider lists at least one
+// model), plus, for the official route, a configured API key: its catalog
+// is advertised with or without a key, so the catalog alone would never
+// send an account-only user anywhere else.
 //
 // Role identity (docs/architecture.md Decision 24, amending Decision 23):
 // the teammate's NAME is the role. Every agent's Team membership is read
@@ -32,7 +43,7 @@
 // fallback — or the TTL — restores the primary. A fallback that also fails is
 // never retried again by this plugin (no retry loop). Every degrade and every
 // route-fatal give-up (the fallback failed too, or the role has no fallback)
-// is one warning naming the role, the route, and the settings key it came
+// is one warning naming the role, the route, and the config key it came
 // from: the teammate's own failure surfaces only as an unaccepted initial
 // prompt.
 //
@@ -49,10 +60,7 @@
 import z from '@deepseek-ai/schemastery'
 
 const name = 'rq-model-router'
-const inject = ['settings']
 
-/** Settings namespace served to the Plugins configuration tab. */
-const NS = 'rigorquant-models'
 /** Every routable role, in card order. */
 export const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 /** Every teammate role, i.e. `ROLES` minus the Lead-only `root` — the same
@@ -82,32 +90,36 @@ const choiceSchema = z.object({
   reasoningEffort: z.string(),
 })
 
-/** Flat on purpose: every field is a whole choice object the card writes whole.
- *  `.default(void 0)` keeps an absent field absent: schemastery otherwise
- *  materializes a missing object field as `{}` and rejects its required inners. */
-const SettingsSchema = z.object(Object.fromEntries(
-  ROLES.flatMap((role) => [
-    [`${role}Primary`, choiceSchema.default(void 0)],
-    [`${role}Fallback`, choiceSchema.default(void 0)],
-  ]),
-))
+/** Every per-role route field, `<role>Primary` and `<role>Fallback`. */
+const ROUTE_KEYS = ROLES.flatMap((role) => [`${role}Primary`, `${role}Fallback`])
 
 // Decision 16's shipped routes. `deepseek-flash` is DeepSeek-V41-Flash
-// (efforts off|low|high|max), the flash tier the 0.1.6 default catalog lists.
+// (efforts off|low|high|max), the flash tier the default catalog lists.
+const OFFICIAL = 'deepseek-official'
+const ACCOUNT = 'deepseek-account'
 const DEFAULT_PRIMARY = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'high' })
 const DEFAULT_FALLBACK = Object.freeze({ provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'low' })
 
+/** The shipped tier matrix: proof-critical roles on pro with a flash
+ *  fallback; every other role absent (inherit the session model). */
+const SHIPPED = Object.freeze({
+  doublecheckerPrimary: DEFAULT_PRIMARY,
+  doublecheckerFallback: DEFAULT_FALLBACK,
+  adversaryPrimary: DEFAULT_PRIMARY,
+  adversaryFallback: DEFAULT_FALLBACK,
+})
+
+/** Flat on purpose: every field is a whole choice object the card writes
+ *  whole, and a volatile field must sit at a fixed object path. The shipped
+ *  matrix is NOT a schema default: a default would make a saved route and an
+ *  unsaved one indistinguishable, and only an unsaved one may move to the
+ *  account route. `.default(void 0)` keeps an absent field absent:
+ *  schemastery otherwise materializes a missing object field as `{}` and
+ *  rejects its required inners. */
 const Config = z.object({
   presetId: z.string().default('rigorquant'),
   degradeTtlMs: z.number().default(600000),
-  defaults: SettingsSchema.default({
-    // The shipped tier matrix: proof-critical roles on pro with a flash
-    // fallback; every other role absent (inherit the session model).
-    doublecheckerPrimary: DEFAULT_PRIMARY,
-    doublecheckerFallback: DEFAULT_FALLBACK,
-    adversaryPrimary: DEFAULT_PRIMARY,
-    adversaryFallback: DEFAULT_FALLBACK,
-  }),
+  ...Object.fromEntries(ROUTE_KEYS.map((key) => [key, choiceSchema.default(void 0).volatile()])),
 })
 
 function isRecord(value) {
@@ -166,9 +178,6 @@ function applyChoice(resolved, choice) {
 }
 
 function apply(ctx, config) {
-  // Registers fiber-scoped: stopping this plugin unregisters the namespace.
-  ctx.settings.register(NS, SettingsSchema, { base: config.defaults, applies: 'live' })
-
   /** sessionId → { role, until, provider, model, choice, gaveUp } while
    *  degraded: `choice` is the fallback degraded to, `gaveUp` whether its own
    *  failure has already warned. */
@@ -235,27 +244,73 @@ function apply(ctx, config) {
     return withoutEffort
   }
 
-  const section = () => ctx.settings.get(NS)
-  const choiceFor = (role, slot) => {
-    const value = section()?.[`${role}${slot}`]
-    return isChoice(value) ? value : null
+  /** Whether one provider lists at least one model: the model catalog's
+   *  own rule for a routable provider. A failed listing is not routable. */
+  async function listsModels(provider) {
+    const llm = ctx.get('llm')
+    if (llm === undefined) return false
+    try {
+      if (!llm.listProviders().some((entry) => entry.id === provider)) return false
+      return (await llm.listModels(provider)).length > 0
+    } catch {
+      return false
+    }
   }
-  // Both slots read the same resolved (defaults-then-user) section: no
-  // native route exists to shadow, so a reset simply falls back to whatever
-  // `Config.defaults` states for that field (the shipped tier matrix for
-  // DoubleChecker/adversary, absent — inherit — for every other role).
-  const primaryFor = (role) => choiceFor(role, 'Primary')
-  const fallbackFor = (role) => choiceFor(role, 'Fallback')
+
+  /** Whether the official route has an API key, read the way the harness's
+   *  own default-model initialisation reads it: the route's `apiKeyEnv`
+   *  reference, described by the credentials service. When that cannot be
+   *  read at all, the key is assumed present, so the shipped matrix stays
+   *  where it always was. */
+  async function officialKeyConfigured() {
+    const llm = ctx.get('llm')
+    const settings = ctx.get('settings')
+    const credentials = ctx.get('credentials')
+    if (llm === undefined || settings === undefined || credentials === undefined) return true
+    try {
+      const entry = llm.listConfigurableProviders().find((provider) => provider.provider === OFFICIAL)
+      if (entry === undefined) return true
+      let value = settings.describe({ redactSecrets: true }).find((view) => view.ns === entry.settingsNs)?.value
+      for (const key of entry.settingsPath) value = isRecord(value) ? value[key] : undefined
+      const ref = isRecord(value) && typeof value.apiKeyEnv === 'string' && value.apiKeyEnv !== ''
+        ? value.apiKeyEnv
+        : 'DEEPSEEK_API_KEY'
+      return (await credentials.describe(ref)).configured === true
+    } catch {
+      return true
+    }
+  }
+
+  /** The provider the shipped matrix routes to right now: the account route
+   *  when the official one is not routable and the account one is, else
+   *  the official route (whose own failure then takes the degrade lane). */
+  async function shippedProvider() {
+    if (await listsModels(OFFICIAL) && await officialKeyConfigured()) return OFFICIAL
+    return await listsModels(ACCOUNT) ? ACCOUNT : OFFICIAL
+  }
+
+  /** One slot's route: the saved route when the user saved one, else the
+   *  shipped matrix's (moved to the account route when only that one is
+   *  routable), else `null` — inherit. */
+  async function routeFor(role, slot) {
+    const key = `${role}${slot}`
+    const saved = config[key]?.get()
+    if (isChoice(saved)) return saved
+    const shipped = SHIPPED[key]
+    if (shipped === undefined) return null
+    const provider = shipped.provider === OFFICIAL ? await shippedProvider() : shipped.provider
+    return provider === shipped.provider ? shipped : { ...shipped, provider }
+  }
+  const primaryFor = (role) => routeFor(role, 'Primary')
+  const fallbackFor = (role) => routeFor(role, 'Fallback')
   /** One slot's route for a warning: the role, the route, and where it came
-   *  from — the settings key the operator edits, marked as the shipped
-   *  default when it still equals `Config.defaults` (no override is set). */
+   *  from — the config key the operator edits, marked as the shipped
+   *  default when no route is saved under it. */
   const describeRoute = (role, slot, choice) => {
     const key = `${role}${slot}`
-    const base = config.defaults?.[key]
-    const shipped = isChoice(base) && base.provider === choice.provider && base.model === choice.model
-      && (base.reasoningEffort ?? '') === (choice.reasoningEffort ?? '')
+    const shipped = !isChoice(config[key]?.get())
     return `${role} ${slot.toLowerCase()} ${choice.provider}/${choice.model} `
-      + `(settings key ${key}${shipped ? ', shipped default' : ''})`
+      + `(config key ${key}${shipped ? ', shipped default' : ''})`
   }
 
   ctx.on('session/event', (session, event) => {
@@ -310,8 +365,8 @@ function apply(ctx, config) {
     const d = degraded.get(agentId)
     const active = d !== undefined && d.role === role && d.until > Date.now()
     if (active) {
-      const fallback = fallbackFor(role)
-      // A live settings edit can remove a fallback while a retry is pending.
+      const fallback = await fallbackFor(role)
+      // A live config edit can remove a fallback while a retry is pending.
       // Do not keep forcing an absent route; let the inherited route run.
       if (fallback === null) {
         degraded.delete(agentId)
@@ -323,12 +378,10 @@ function apply(ctx, config) {
       return remember(await withSupportedEffort(applyChoice(resolved, fallback)))
     }
 
-    // The resolved primary is the shipped tier matrix merged with any live
-    // Settings override (`ctx.settings.get()` already resolves defaults
-    // under the user layer); a role with neither (every role but
-    // DoubleChecker/adversary, absent an override) inherits the resolved
-    // route untouched.
-    const primary = primaryFor(role)
+    // The primary is the saved route, else the shipped tier matrix; a role
+    // with neither (every role but DoubleChecker/adversary, absent a saved
+    // route) inherits the resolved route untouched.
+    const primary = await primaryFor(role)
     return remember(await withSupportedEffort(
       primary === null ? resolved : applyChoice(resolved, primary),
     ))
@@ -359,9 +412,9 @@ function apply(ctx, config) {
       }
       return action
     }
-    const primary = primaryFor(role)
+    const primary = await primaryFor(role)
     if (primary === null || route.model !== primary.model) return action
-    const fallback = fallbackFor(role)
+    const fallback = await fallbackFor(role)
     if (fallback === null) {
       const routeKey = `${primary.provider}/${primary.model}`
       if (noFallbackWarned.get(agentId) !== routeKey) {
@@ -390,4 +443,4 @@ function apply(ctx, config) {
   })
 }
 
-export { Config, SettingsSchema, NS, name, apply, inject, DEFAULT_PRIMARY, DEFAULT_FALLBACK }
+export { Config, name, apply, DEFAULT_PRIMARY, DEFAULT_FALLBACK }

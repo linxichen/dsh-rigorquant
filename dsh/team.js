@@ -51,7 +51,7 @@
 // call reparents it (`agent.ctx.get('agentPresets').composedPreset(...)`)
 // as a SEPARATE step, recorded as its own `agent-preset/selected` session
 // event and re-broadcast as the plain cordis event of the same name — found
-// live (docs/upgrade-0.1.6.md §3.11) when a session created under "Standard
+// live (Decision 24, ADR 0001) when a session created under "Standard
 // mode" then switched to RigorQuant in the picker left its Lead with no
 // "team guard: armed" line and no `spawn_teammate` guard for its entire
 // life, because `agent/created` had already run (and skipped, seeing the
@@ -63,10 +63,16 @@
 // dispose-then-reinstall `maybeInstall` once the recompose has already
 // landed on `agent.ctx` (the harness composes before appending the event,
 // so the composed-preset read below is never stale at that point).
+//
+// The Lead's composition also carries the escalation lane's `rq_escalate`
+// tool (dsh/lane.js; Decision 25), registered in the Lead's own scope. The
+// teammate guard refuses it too, since the orchestrator alone decides who
+// gets the lane.
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { ESCALATE_TOOL, createLane, escalationTool } from './lane.js'
 
 const name = 'rq-team'
 const inject = ['agents', 'tools', 'systemPrompt']
@@ -154,7 +160,7 @@ const OWN_TASK_TOOLS = new Set(['team_task_get', 'team_task_update'])
 
 /** Network verbs the bash-curl residual hole denies at the call for
  * web-denied roles (blind roles plus Adversary/Document adversary) — the
- * exact verb set docs/upgrade-0.1.6.md §4.3 and issue #10 name. */
+ * exact verb set issue #10 names. */
 const BASH_NETWORK_VERBS = /\b(curl|wget|pip\s+install|uv\s+(sync|add|pip))\b/
 
 /** Web-denied union: every role without web access (CONTEXT.md's "Web-denied
@@ -188,6 +194,9 @@ function teammateGuard(agent, membership, role, teams) {
     }
     if (ROSTER_BLIND_TOOLS.has(execution.name)) {
       return `rq-team: ${membership.name} is roster-blind — ${execution.name} is denied`
+    }
+    if (execution.name === ESCALATE_TOOL) {
+      return `rq-team: only the orchestrator grants the escalation lane — ${ESCALATE_TOOL} is denied to ${membership.name}`
     }
     if (OWN_TASK_TOOLS.has(execution.name)) {
       const taskId = args.task_id
@@ -233,7 +242,7 @@ function nextNameFor(role, roster) {
  *
  * `send_message` refuses a new brief to a settled fresh-per-brief teammate
  * (Explorer, OffGridThinker, DoubleChecker) — found live in the 0.5.0
- * release run (docs/upgrade-0.1.6.md §3.15), where the orchestrator sent
+ * release run (Decision 24), where the orchestrator sent
  * "erratum briefs" back to the authors instead of briefing new teammates.
  * Settled is read live from the roster: a running teammate may still be
  * answered (a blocking question mid-turn), the reused roles are untouched,
@@ -280,6 +289,7 @@ function loadPersonas(ctx) {
 function apply(ctx, config = {}) {
   const presetId = typeof config.presetId === 'string' ? config.presetId : PRESET_ID
   const personas = loadPersonas(ctx)
+  const lane = createLane(ctx)
   let warnedAbsent = false
   const installed = new Map() // agent -> disposer
 
@@ -320,9 +330,13 @@ function apply(ctx, config = {}) {
     if (membership.role === 'lead') {
       const disposeContext = systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT })
       const disposeGuard = tools !== undefined ? tools.guard(leadGuard(agent, teams)) : () => {}
+      const disposeEscalate = tools !== undefined
+        ? tools.register(escalationTool(lane, agent, teams, ctx.get('agents')))
+        : () => {}
       installed.set(agent, () => {
         disposeContext()
         disposeGuard()
+        disposeEscalate()
       })
       return
     }
@@ -345,7 +359,7 @@ function apply(ctx, config = {}) {
   // agent's scope and would outlive this plugin: toggled off in the Plugins
   // page, the Lead stayed armed and guarded, and toggled back on, the
   // backfill below collided with the still-live armed context by name
-  // (docs/upgrade-0.1.6.md §3.15). Unloading the plugin disposes them all.
+  // (Decision 24). Unloading the plugin disposes them all.
   ctx.effect(() => () => {
     for (const agent of [...installed.keys()]) disposeFor(agent)
   }, 'rq-team: per-agent compositions')

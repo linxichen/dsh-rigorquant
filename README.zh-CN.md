@@ -109,39 +109,20 @@ goal，需要一次人工回合（"continue"）重新武装；它不会跨重启
 一项 study 跑在 Harness 自带的 Agent Teams 界面上，没有自定义面板要学：
 RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到**花名册**（名字、
 角色、状态）和本轮的**任务看板**及其阻塞边——要盯的就是这两样。花名册的模型列
-显示的是该成员自身的模型选项，而不是 `rq-model-router` 实际施加到其请求上的
-路由（决策 16），因此某个角色的路由要去 **插件 → dsh-rigorquant** 卡片上看，
+显示的是该成员的模型选择，而不是 `rq-model-router` 实际把其请求路由到的模型
+（决策 16），因此某个角色的路由要去 **插件 → dsh-rigorquant** 卡片上看，
 不要在花名册上读。花名册里每位队友占一行：**点开任意一位**，打开的就是它自己的
 会话，于是你可以在它运行的同时读它的推导或审计（直接对话就是普通会话，会打断
 该队友的空白上下文——这一点会被记录，但不被阻止）。
 
-RigorQuant 只在这套界面上加了一样小东西：会话头部紧挨团队动作的
-**move 胶囊（pill）**，标出当前轮所处的 move——Promise、Fan out、
-Ground-truth、Attack、Certify——由任务看板的阻塞边推出（还有活要干的最浅一
-层），并为每位运行中的队友点一枚小徽章（角色缩写，悬停显示名字）。它只做展示：
-没有任何可点之处，不改动工具、路由或模型；在未挂载 Team bundle 的 profile 上
-它什么都不渲染。
-
 拓扑是**枢纽-辐条（hub-and-spoke）**，而且由守卫**强制**成事实而非约定：
 队友的消息要么到编排者、要么发不出去；队友无法列出花名册或整个看板；只能读取或
-更新没有被其他队友占有的任务（也就是它简报指定的那一条，由它 claim）。下图就是
-这一拓扑——编排者居中，它创建的角色为辐条，本轮的任务在下方：
+更新没有被其他队友占有的任务（也就是它简报指定的那一条，由它 claim）。
 
-<p align="center">
-  <img src="docs/figs/agent-team-activity.svg" width="52%" alt="RigorQuant 团队拓扑——枢纽-辐条式角色与其下方本轮的任务依赖图">
-</p>
-
-上图是该视图的读者友好静态渲染，由
-[`docs/figs/agent-team-activity.js`](docs/figs/agent-team-activity.js) 生成——
-实时花名册与看板只在运行中的 web 会话里可见。它改绘自
-[dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)
-的活动面板——[其 README 中的那张图](https://github.com/NanmiCoder/dsh-agent-teams/blob/main/assets/ui.png)——这里展示 RigorQuant 自身八个角色在"扇出"时刻的状态。
-
-> **署名。** 本图改编自
-> [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的活动面板设计，作者
+> **署名。** hero 横幅（`docs/figs/agent-team-hero.svg`）改自
+> [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的 hero 图，作者
 > [NanmiCoder](https://github.com/NanmiCoder)（程序员阿江 / Relakkes）——
-> Copyright (c) 2026，MIT 许可证。角色头像为本仓库 `docs/figs/` 自有资源；
-> hero 横幅（`docs/figs/agent-team-hero.svg`）同样改自上游 hero 图。
+> Copyright (c) 2026，MIT 许可证。角色头像为本仓库 `docs/figs/` 自有资源。
 
 **五步循环。** 每轮＝扇出 → 求真 → 对抗 → 综合。
 
@@ -157,63 +138,80 @@ Ground-truth、Attack、Certify——由任务看板的阻塞边推出（还有�
 
 ## 安装
 
-需要 DSH ≥ 0.1.6-alpha.2。preset 依次用到：原生子代理
-`agentOptions.reasoningEffort`（0.1.2-alpha.1）、persona 的 `prefix`/`suffix` 拆分
-（0.1.3-alpha.2 —— 某一行配置校验失败会导致整个 preset 无法挂载）、
-“最终助手消息即交付”的契约（`report` 已在 0.1.2-rc.1 移除）以及 `present`
-交付物工具（0.1.5）。下限之所以是 0.1.6-alpha.2：浏览器半边注册的插槽由该版本
-引入，回退路由指向的模型也只在该版本的目录中——在 0.1.5 上，模型路由卡片会静默地
-什么都不渲染，回退通道也无模型可路由。
+需要 DSH `>=0.1.7-rc.2 <0.1.8`（决策 25，
+`docs/adr/0002-declared-preset-on-dsh-0.1.7.md`）。preset 是一个声明式的
+`@deepseek-ai/dsh-agent-preset` 行，路由是路由器那一行自己的 profile 配置，卡片
+通过插件页的配置表单编辑它们——更早的宿主上这些都不存在，安装脚本会直接拒绝。
+**0.5.0 是支持 0.1.6 alpha 宿主的最后一个版本**：不做任何回移，暂时无法升级宿主
+的话，请留在 0.5.0。
 
-这个下限本身是 alpha，团队层还是**实验性**的：0.1.6 尚未发布正式版，而本版本
-只跑在宿主以 **Beta** 卡片形式提供的 **Agent Teams** bundle 上——即
-**插件 → 官方** 下那两张带 **Beta** 标记的卡片：*智能体团队（Agent Teams）*
-与 *智能体团队 Web UI*。你可以在那里自行开启它们，也可以交给完整安装去做
-（见下）。本版本依赖的接缝记录在 docs/architecture.md 决策 20 的 0.1.6 修正里。
+这个版本范围是预发布版，团队层还是**实验性**的：本版本只跑在宿主以 **Beta**
+卡片形式提供的 **Agent Teams** bundle 上——即 **插件 → 官方** 下带 **Beta**
+标记的 *智能体团队（Agent Teams）* 卡片。你可以在那里自行开启，也可以交给完整
+安装去做（见下）。
+
+**从 0.5.0 升级**是一次性切换，要在 0.1.7 第一次启动之前完成。先把进行中的
+RigorQuant 研究完成或归档：在 0.1.6 宿主上开始的会话，不保证能在新版上恢复。然后：
+
+1. 停止 dsh（所有正在运行的进程，包括 web 应用）。
+2. 安装钉在本版本范围所测试版本上的宿主：
+
+   ```sh
+   npm i -g @deepseek-ai/dsh@0.1.7-rc.2   # 或 @deepseek-ai/dsh@next
+   ```
+
+   不要执行不带版本的 `npm i -g`：npm 的 `latest` 仍是 `0.1.5-rc.3`。
+3. 在启动 dsh 之前运行 `./install.sh`（或 `npx dsh-rigorquant`）。它会把你在旧
+   `settings.yaml` 里保存的路由，以及保存过的 RigorQuant 默认 preset 迁移过来。
+   若 dsh 已经启动过一次，重新运行它会从 `settings.yaml.imported` 中找回它们。
+4. 启动 web 应用，在新会话选择器里选 **RigorQuant**。若选择器不见了，请在通用
+   设置中重新打开 **代码工作工具**（Coding Tools）：它是选择器唯一的开关，默认
+   开启，只有你自己或桌面端引导把它关掉时才会关闭。
 
 扇出受宿主限制：每个 root 同时最多 8 个存活子代理（`maxActiveSubagents`，
 **插件 → Subagent**）。文献密集的研究若要让 4 条文献线与探索者并行，可在那里调高。
 
-完整安装还会打开那两张 **Beta** bundle——即插件页 **官方** 分组下的
-*智能体团队（Agent Teams）* 与 *智能体团队 Web UI* 卡片——条件是目标 profile
-尚未启用它们，且会钉到 core 自身的版本上（若 profile 记录的是别的版本，则改钉回
-core 的版本；你自己启用、没有记录版本号的 bundle 不会被碰）；并在 profile 的用户补丁
-（`$DSH_HOME/profiles/<profile>/cordis.patch.yml`）中追加一段带
-`dsh-rigorquant` 标记的配置块，把团队服务的成员数量上限提高到 64，并打印它写入的
-每一行。装好之后重复运行不会再有变化；`--uninstall` 只会移除该标记块，并且只在
-该标记块记录了"是安装脚本启用的"时才关闭对应 bundle——你自己手动启用的 bundle
-不受影响。若 PATH 上没有 `dsh`，这一步会打印警告后跳过，其余安装步骤照常进行
-——那两张 Beta 卡片就留给你在插件页自行开关（参见
+完整安装会打开那张 **Beta** bundle——即插件页 **官方** 分组下的
+*智能体团队（Agent Teams）* 卡片——条件是目标 profile 尚未启用它，且会钉到
+core 自身的版本上（若 profile 记录的是别的版本，则改钉回 core 的版本；你自己
+启用、没有记录版本号的 bundle 不会被碰）。它总会移除 0.5.0 的 profile 里那个
+独立的 *智能体团队 Web UI* bundle，并用一行说明原因：DSH 0.1.7 已把该面板并入
+唯一的 bundle，也没有为这个 core 发布 web bundle；移除失败则安装中止。它还会在
+profile 的用户补丁（`$DSH_HOME/profiles/<profile>/cordis.patch.yml`）中追加一段
+带 `dsh-rigorquant` 标记的配置块，把团队服务的成员数量上限提高到 64，并打印它
+写入的每一行。装好之后重复运行不会再有变化；`--uninstall` 只会移除它在该标记块里写入的那几行（之后宿主存进标记之间的设置会保留），
+并且只在该标记块记录了"是安装脚本启用的"时才关闭该 bundle——你自己手动启用的
+bundle 不受影响。若 PATH 上没有 `dsh`，这一步会打印警告后跳过，其余安装步骤
+照常进行——那张 Beta 卡片就留给你在插件页自行开关（参见
 docs/adr/0001-rigorquant-on-agent-teams.md）。
 
 两种安装形态：
 
-**Bundle（一条命令，完整可用）**——仓库声明了 `dsh.bundle` manifest，其中的
-`rq-preset-sync` 行会在 profile 下次启动时，把 agent preset 落盘到
-`$DSH_HOME/.agent-presets/rigorquant`、把计算通道落盘到
-`$DSH_HOME/share/rigorquant/`，因此生态的 `dsh plugin add` 安装路径即可获得
-完整框架（设计记录：docs/architecture.md 决策 22）：
+**Bundle（一条命令）**——仓库声明了 `dsh.bundle` manifest，它自己声明
+`rigorquant` preset，其中的 `rq-lane-sync` 行会在 profile 下次启动时，把计算通道
+落盘到 `$DSH_HOME/share/rigorquant/`，因此生态的 `dsh plugin add` 安装路径即可获得
+完整框架（设计记录：docs/architecture.md 决策 22 与 25）。这条路径既不开启
+Agent Teams，也不迁移保存过的路由；这两件事由安装脚本完成：
 
 ```sh
-dsh --version                 # 必须 >= 0.1.6-alpha.2
+dsh --version                 # 必须 >= 0.1.7-rc.2 且 < 0.1.8
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 
-启动同步是幂等的（字节一致的目录不动；`.venv` 等派生状态既不复制也不清除），
-同版本下保留对已安装 preset 的本地修改——升级时替换随包文件，与重跑
-`./install.sh` 一致。DSH 的插件 CLI 没有卸载钩子，因此移除始终是显式操作
-（`./install.sh --uninstall`）；若只移除插件，已同步的 preset 仍可独立运行，
-只是不再有模型路由。
+启动同步是幂等的（字节一致的目录不动；`.venv` 等派生状态既不复制也不清除）。
+它还会删除 0.6.0 之前的版本复制到 `$DSH_HOME` 下的目录式 preset，但仅当该目录
+的 `.rq-sync.json` 表明是本包放置的。DSH 的插件 CLI 没有卸载钩子，因此计算通道
+的移除始终是显式操作（`./install.sh --uninstall`）。
 
-**Preset（完整框架，显式安装）**——RigorQuant 智能体预设（persona + 编排 + 工具）
-及内置技能：
+**安装脚本（完整框架）**——计算通道，以及插件（声明式 preset、角色模型路由器及其
+插件页卡片）：
 
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant
 cd dsh-rigorquant
-./install.sh                    # 安装 preset + 技能 + 计算通道 + 插件
+./install.sh                    # 安装计算通道 + 插件，开启 Agent Teams，迁移保存的路由
 # ./install.sh --skill-only     # 或只安装技能（rigorquant、arxiv、academic-paper-search）
-# ./install.sh --uninstall      # 移除 preset、技能与共享通道
+# ./install.sh --uninstall      # 移除技能、共享通道与插件
 ```
 
 启动一个新的 DSH 会话并选择 **RigorQuant** preset，然后说：
@@ -222,7 +220,7 @@ cd dsh-rigorquant
 
 ## 部署须知
 
-三件需要研究型部署自行决定的事。它们都不是 RigorQuant 自己的机器，安装
+四件需要研究型部署自行决定的事。它们都不是 RigorQuant 自己的机器，安装
 RigorQuant 也不会改变其中任何一件：
 
 - **DeepSeek 会话日志默认开启。** base bundle 以 `enabled: true` 挂载
@@ -251,16 +249,26 @@ RigorQuant 也不会改变其中任何一件：
   看见，这正是决策 19 的冻结写入规则需要人类能看到的东西。认证本身只读研究记录，
   从不读会话（docs/architecture.md 决策 19）。
 
+- **定时任务既不使用，也不受守卫约束。** DSH 0.1.7 发布时定时任务（及其时间
+  上下文）是关闭的。RigorQuant 不使用它们，它的逐次调用守卫也不覆盖它们：你自己
+  开启的定时任务会跑在团队的枢纽-辐条规则之外。
+
 ## 计算通道（一次性）
 
-固定的 uv 通道位于 `$DSH_HOME/share/rigorquant/env`，由 `install.sh` 或插件的
-boot-sync 行落盘——两者写入的字节一致，最后运行者持有该锚点（见
-[env/README.md](env/README.md)）。venv 本身**从不随包安装**：它是派生状态，
-由第一次 `uv run --frozen --project <env_lane>` 在锚点内**惰性创建**（后续
-调用即时；`--frozen` 严格遵守已提交的 lockfile）。jacobian 升级通道默认
-**关闭**且已**固定版本**（`jacobian@0.12.0`）：先启用 `mcp-jacobian` 行，
-框架在一次性配置前会**请求批准**（`npx -y jacobian@0.12.0 upgrade`，或通过
-技能内的 `scripts/provision-lean.sh` 安装 Lean 工具链）。详见
+每项研究都带着自己的固定 uv 通道。`install.sh` 或插件的 boot-sync 行会在
+`$DSH_HOME/share/rigorquant/env` 放一份**模板**（两者写入的字节一致；见
+[env/README.md](env/README.md)）。立项时，编排者把其中的 `pyproject.toml` 与
+`uv.lock` 复制到研究的 `env/`，随记录一起提交，并在研究的 `interim/`（已被
+gitignore）下一次性建好 venv——venv 与 uv 缓存都放在那里，这也是
+`workspace-write` 沙箱唯一允许它们写入的地方。因此即便之后的版本替换了模板，
+研究的克隆也能重建完全相同的环境；需要额外包的研究把它加进自己的通道。缺少研究
+自己的 `env/uv.lock` 时，校验器拒绝 PASS。每项进行中的研究约需 1 GB 给 venv 与
+缓存，收尾时删除：沙箱使各研究无法共用 uv 缓存。jacobian 升级通道已**固定版本**
+（`jacobian@0.12.0`），它不再是 preset 的一行，而是在运行时挂载：当某个论断需要时，
+编排者无需询问就调用 `rq_escalate`，挂载到自己或它点名的某个队友身上，jacobian
+工具从下一次请求起出现，直到会话结束。框架在一次性配置前仍会**请求批准**
+（`npx -y jacobian@0.12.0 upgrade`，或通过技能内的 `scripts/provision-lean.sh`
+安装 Lean 工具链）。详见
 [mcp/jacobian.md](mcp/jacobian.md)。
 
 ## 角色模型路由（rq-model-router）
@@ -268,9 +276,10 @@ boot-sync 行落盘——两者写入的字节一致，最后运行者持有该�
 内置插件为每个 RigorQuant 角色制定模型与推理强度策略，每个角色各有一个
 回退模型。角色身份来自 Team 成员的名字（`<role>-<n>`；Lead 即编排者）——
 路由器自身携带已发布的层级矩阵（DoubleChecker 与 adversary 默认使用
-`deepseek-v4-pro` @ `high`），并在保存了明确的设置选择时将其覆盖在上层。
+`deepseek-v4-pro` @ `high`），并把保存过的路由覆盖在上层。
 配置入口：**插件 → dsh-rigorquant**
-（该 bundle 自己的页面，位于其描述之下）：只有“保存”才会写入，最后一次保存的选择会持久化（写入设置用户层），
+（该 bundle 自己的页面，位于其描述之下）：只有“保存”才会写入，保存的路由就是
+路由器那一行在 profile 的 `cordis.patch.yml` 里的配置，从下一次请求起生效；
 离开页面会丢弃未保存的修改。默认配置：
 
 | 角色 | 主选 | 回退 |
@@ -281,30 +290,33 @@ boot-sync 行落盘——两者写入的字节一致，最后运行者持有该�
 
 主选路由遇到终止性失败（无适配器 / HTTP 4xx；包括官方额度响应
 `1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。不属于 RigorQuant 团队的智能体
-（其他 preset，或完全没有 Team 成员身份）一律不受影响。路由器需要
-DSH ≥ 0.1.6-alpha.2（其配置卡片注册在插件页的 bundle 配置插槽上，该插槽由
-0.1.6 引入）。
-设计记录见 [docs/architecture.md](docs/architecture.md) 决策 16。
+（其他 preset，或完全没有 Team 成员身份）一律不受影响。
+
+**只用 DeepSeek 账号登录？** DSH 0.1.7 把 DeepSeek 拆成 `deepseek-official`
+（API key）与 `deepseek-account`（账号登录）。当官方路由不可路由（没有 API key）
+而账号路由可路由时，上表的默认配置会改用 `deepseek-account` 上同名的模型，这些
+请求计入你的账号额度，而不是某个 API key。你自己保存的路由永远不会被改动。
+设计记录见 [docs/architecture.md](docs/architecture.md) 决策 16 与 25。
 
 ## 仓库结构
 
 ```
 package.json                dsh.bundle manifest（支持 dsh plugin add）
 cordis.patch.yml            bundle patch：技能层 + rq-model-router +
-                            rq-team + rq-preset-sync 行
+                            rq-team + rq-lane-sync 行
 dsh/                        宿主半（角色路由、团队组合与逐调用守卫、
                             启动同步）+ 每角色一个 persona 文件，与 web 客户端包
-                            （路由卡片 + move 胶囊）
-agent-presets/rigorquant/   preset 组合 + persona + 内置技能
-  skills/rigorquant/        SKILL.md + references/ + scripts/ + schemas/
+                            （路由卡片）
+agent-presets/
+  rigorquant.patch.yml      声明式 `rigorquant` preset（persona + 子行）
+  rigorquant/skills/        内置技能
+    rigorquant/             SKILL.md + references/ + scripts/ + schemas/
   .../scripts/rq_check.py   元校验器（唯一正式副本）
   .../schemas/              study.json 与 registry.json 的 JSON Schema；
                             校验器直接加载它们，因此二者不会漂移
 env/                        固定的 uv 计算通道（sympy/cvxpy/hypothesis/…）
 mcp/jacobian.md             升级通道接线说明
 docs/architecture.md        逐项确认过的设计决策记录 + 资料来源
-docs/figs/agent-team-activity.svg  读者友好的枢纽-辐条拓扑静态图
-docs/figs/agent-team-activity.js   其生成脚本（测试锁定不漂移）
 docs/figs/agent-team-hero.svg       hero 横幅，改自 dsh-agent-teams
                             的 hero 图（见上方署名）
 tests/                      校验器测试套件（见下方"测试"）

@@ -40,8 +40,6 @@ jobs:
       - name: Smoke-test install.sh
         run: |
           DSH_HOME="$RUNNER_TEMP/dsh" ./install.sh
-          test -f "$RUNNER_TEMP/dsh/.agent-presets/rigorquant/skills/rigorquant/scripts/rq_check.py"
-          test -f "$RUNNER_TEMP/dsh/.agent-presets/rigorquant/skills/rigorquant/schemas/study.schema.json"
           test -f "$RUNNER_TEMP/dsh/share/rigorquant/env/pyproject.toml"
           DSH_HOME="$RUNNER_TEMP/dsh" ./install.sh --uninstall
-          test ! -d "$RUNNER_TEMP/dsh/.agent-presets/rigorquant"
+          test ! -d "$RUNNER_TEMP/dsh/share/rigorquant"

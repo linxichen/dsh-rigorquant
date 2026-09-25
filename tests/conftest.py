@@ -35,8 +35,22 @@ RQ_CHECK = Path(os.environ.get("RQ_CHECK_BIN", SKILL_DIR / "scripts/rq_check.py"
 # same file. Role budgets no longer live in the composition (Decision 24:
 # dsh/team.js applies them by teammate name), so there is no delegation deny
 # list left to parse.
+#
+# The child list lives inside the declared preset row (Decision 25), under
+# `config.plugins`. `preset_children()` cuts that list out and dedents it to
+# column 0, so the row helpers below read it as a top-level composition.
 
-CORDIS = REPO / "agent-presets/rigorquant/agent.cordis.yml"
+PRESET_PATCH = REPO / "agent-presets/rigorquant.patch.yml"
+
+
+def preset_children():
+    """The declared preset's child list, dedented to column 0."""
+    lines = PRESET_PATCH.read_text().split("\n")
+    start = next(i for i, line in enumerate(lines)
+                 if line.strip() == "plugins:") + 1
+    indent = min(len(line) - len(line.lstrip())
+                 for line in lines[start:] if line.strip())
+    return "\n".join(line[indent:] for line in lines[start:])
 
 
 def composition_rows(text):
@@ -148,13 +162,22 @@ def golden_study(root: Path) -> Path:
     (root / "derivations").mkdir(exist_ok=True)
     (root / "audits").mkdir(exist_ok=True)
     (root / "artifacts" / "paper").mkdir(parents=True, exist_ok=True)
+    # The study's own lane declaration (issue #36): copied from the shipped
+    # template at intake and committed with the record.
+    (root / "env").mkdir(exist_ok=True)
+    (root / "env" / "pyproject.toml").write_text(
+        '[project]\nname = "rigorquant-lane"\nversion = "0.6.0"\n'
+        'requires-python = ">=3.11"\ndependencies = ["sympy"]\n')
+    (root / "env" / "uv.lock").write_text(
+        'version = 1\nrequires-python = ">=3.11"\n\n'
+        '[[package]]\nname = "sympy"\nversion = "1.13.3"\n')
 
     study = {
         "slug": "20260815_minvar-demo",
         "title": "Minimum-variance portfolio weights",
         "mode": "repo-root",
         "repo_root": str(root),
-        "env_lane": "/opt/dsh/share/rigorquant/env",
+        "env_lane": "env",
         "task_id": "20260815_minvar-demo",
         "created": "2026-08-15",
         "statement": "Derive and certify minimum-variance weights under a full-investment constraint.",

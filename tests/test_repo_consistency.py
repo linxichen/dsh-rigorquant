@@ -1,9 +1,9 @@
 """Consistency between documents, and between a document and the filesystem.
 
-docs/repository-review.md closed with the observation that every finding this
-repository has ever produced came from a reader, not from anything executable,
-and that the defect class is unenforced consistency between files. These are
-those checks.
+The four-pass repository review (retired under Decision 25; tag `v0.5.0`)
+closed with the observation that every finding this repository has ever
+produced came from a reader, not from anything executable, and that the defect
+class is unenforced consistency between files. These are those checks.
 """
 
 import json
@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from conftest import CORDIS, REPO, SKILL_DIR, composition_rows, is_disabled, top_level_rows
+from conftest import PRESET_PATCH, REPO, SKILL_DIR, composition_rows, is_disabled, preset_children, top_level_rows
 
 SKILL_SCRIPTS = ("rq_check.py", "provision-lean.sh")
 ROUTER_PROBE = REPO / "tests/router_probe.cjs"
@@ -26,8 +26,7 @@ def tracked_files():
 
 
 def docs():
-    return [REPO / f for f in tracked_files()
-            if f.endswith(".md") and not f.startswith("docs/repository-review")]
+    return [REPO / f for f in tracked_files() if f.endswith(".md")]
 
 
 def test_exactly_one_validator_is_shipped():
@@ -76,9 +75,9 @@ def test_package_files_all_exist():
 def test_the_package_and_lane_version_stamps_agree():
     """A release bumps both stamps; the 0.4.1 release commit did it by hand.
 
-    The lane stamp is what rq-preset-sync keys its replace-vs-keep decision
-    on, so a release that bumps one stamp and not the other ships a preset
-    the profiles keep stale (upgrade-0.1.6.md §3.7, finding 1).
+    rq-lane-sync stamps the landed lane with the package version, so a
+    release that bumps one stamp and not the other ships a lane whose own
+    version and ownership marker disagree about which release it is.
     """
     manifest = json.loads((REPO / "package.json").read_text())
     stamp = re.search(r'^version = "([^"]+)"',
@@ -100,27 +99,21 @@ def test_install_script_installs_everything_the_runtime_needs():
 def test_native_agent_options_floor_is_declared_and_enforced():
     """The mount-time floor cannot be installed into an older DSH.
 
-    The binding constraint is no longer `agentOptions.reasoningEffort`
-    (0.1.2-alpha.1): 0.1.3-alpha.2 replaced the persona row's single `text` key
-    with a required `prefix`, and a row whose config fails rejects the WHOLE
-    preset mount. 0.1.6-alpha.2 is where the routing card's slot and the
-    `deepseek-flash` fallback both hold — on 0.1.5 this release's card renders
-    nothing, and its fallback lane has no model to route to.
+    Decision 25: the preset is a declared `@deepseek-ai/dsh-agent-preset`
+    row, the routes are `.volatile()` profile config, and the card edits them
+    through `configForms` -- none of which exists before 0.1.7-rc.2.
 
-    One floor, stated in six places: a reader who finds an older number in
-    any of them learns the wrong minimum. `dsh/sync.js` is in the list
-    because the bundle install path (`dsh plugin add`) runs it INSTEAD of
-    `install.sh` and so never reaches the runtime check — that path can only
-    state the floor, never enforce it.
+    One floor, stated in several places: a reader who finds an older number
+    in any of them learns the wrong minimum. The bundle install path
+    (`dsh plugin add`) is gated by `peerDependencies` instead
+    (test_the_package_requires_the_rc2_harness_line).
     """
-    floor = "0.1.6-alpha.2"
+    floor = "0.1.7-rc.2"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
     assert "version_at_least" in install
     stale = "0.1.5-alpha.2"
-    for path in (REPO / "README.md", REPO / "README.zh-CN.md",
-                 REPO / "agent-presets/rigorquant/agent.cordis.yml",
-                 REPO / "dsh/sync.js"):
+    for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
         text = path.read_text()
         assert floor in text, "%s omits the DSH floor" % path.name
         assert stale not in text, (
@@ -143,7 +136,7 @@ def test_preset_persona_row_uses_the_prefix_suffix_split():
     entire mount down (not just the persona) — and discovery's health check only
     resolves module names, so the picker still shows it as healthy.
     """
-    composition = (REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text()
+    composition = preset_children()
     assert "name: '@deepseek-ai/dsh-persona'" in composition
     assert "    prefix: >-" in composition
     assert "text: >-" not in composition
@@ -153,7 +146,7 @@ def test_preset_persona_row_uses_the_prefix_suffix_split():
     assert "const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'" in team
 
 
-FLOOR = "0.1.6-alpha.2"
+FLOOR = "0.1.7-rc.2"
 
 
 def _stub_dsh_env(tmp_path, version=FLOOR):
@@ -180,12 +173,13 @@ def _stub_dsh_env(tmp_path, version=FLOOR):
 
 
 def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
-    """A pre-0.1.6 CLI must not receive the preset at all.
+    """A CLI below the floor must not receive the preset at all.
 
-    The stub answers with the PREVIOUS floor: the check has to reject the
-    harness this release moved off, not merely some ancient tag.
+    The stub answers with the prerelease just below the floor: the check has
+    to reject the nearest harness this release cannot run on, not merely some
+    ancient tag.
     """
-    env, dsh_home = _stub_dsh_env(tmp_path, version="0.1.5-alpha.2")
+    env, dsh_home = _stub_dsh_env(tmp_path, version="0.1.7-rc.1")
     result = subprocess.run(
         [str(REPO / "install.sh"), "--profile", "upgrade-test"],
         cwd=REPO,
@@ -209,17 +203,16 @@ def test_installer_accepts_the_minimum_dsh_version(tmp_path):
         text=True,
         check=True,
     )
-    assert "Installed preset" in result.stdout
-    assert (dsh_home / ".agent-presets/rigorquant/agent.cordis.yml").is_file()
+    assert "Installed compute lane" in result.stdout
+    assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file()
 
 
-# ── the Agent Teams bundles: enabling, the cap override, uninstall ─────────
+# ── the Agent Teams bundle: enabling, the cap override, uninstall ──────────
 #
-# 0.4.2 (the classic release) only detected the two optional bundles the
-# harness ships as the Beta "Agent Teams" and "Agent Teams Web UI" cards.
-# 0.5.0 runs team-only, so install.sh enables both and raises the team
-# service's lifetime member cap under a marker in the profile's user patch
-# (Decision 24, docs/adr/0001-rigorquant-on-agent-teams.md); the full
+# RigorQuant runs team-only, so install.sh enables the one Agent Teams bundle
+# DSH 0.1.7 ships (the Beta "Agent Teams" card) and raises the team service's
+# lifetime member cap under a marker in the profile's user patch (Decisions
+# 24 and 25, docs/adr/0001-rigorquant-on-agent-teams.md); the full
 # enable/idempotent/uninstall/no-dsh coverage lives in
 # tests/test_installer_agent_teams.py.
 
@@ -253,7 +246,7 @@ def test_architecture_record_matches_the_preset_composition():
     by construction because no teammate can create teammates, and Decision 8
     must carry that amendment rather than a depth the preset no longer sets.
     """
-    preset = CORDIS.read_text()
+    preset = preset_children()
     numeric = [row_id for row_id, body in composition_rows(preset)
                if re.search(r"^\s*maxDepth:\s*\d", body, re.MULTILINE)
                and not is_disabled(body)]
@@ -293,7 +286,7 @@ def test_the_disabled_workflow_row_names_a_package_that_exists():
     enabled and unresolvable it would be fatal, because discovery marks the
     whole preset "Failed to load" and the picker hides it.
     """
-    composition = CORDIS.read_text()
+    composition = preset_children()
     rows = dict(composition_rows(composition))
     assert "workflow-worker-thread" not in rows, (
         "the retired engine still has a row")
@@ -319,7 +312,7 @@ def test_disabled_external_agent_rows_track_the_shipped_background_mode():
     exactly why a copy left on the old key drifts unnoticed until someone
     enables the row.
     """
-    rows = dict(composition_rows(CORDIS.read_text()))
+    rows = dict(composition_rows(preset_children()))
     for row_id in ("tool-subagent-codex", "tool-subagent-claude-code"):
         body = rows[row_id]
         assert "backgroundMode: one-shot" in body, (
@@ -336,7 +329,7 @@ def test_no_delegation_row_offers_caller_selectable_models():
     per call would override the role's routed tier and the DoubleChecker
     could silently run on flash.
     """
-    assert "modelSelectionSettings" not in CORDIS.read_text()
+    assert "modelSelectionSettings" not in preset_children()
 
 
 def test_the_procedure_states_the_live_children_pool_rule():
@@ -452,7 +445,7 @@ def test_the_preset_carries_no_classic_delegation_rows():
     name; and any enabled spawn row is a second, unguarded way to create a
     child. With none left, depth-one delegation holds by construction.
     """
-    preset = CORDIS.read_text()
+    preset = preset_children()
     rows = dict(composition_rows(preset))
     present = sorted(r for r in CLASSIC_ROWS if r in rows)
     assert not present, "classic delegation rows still in the preset: %s" % present
@@ -468,23 +461,75 @@ def test_the_preset_carries_no_classic_delegation_rows():
         assert gone not in preset, "the preset still carries %r" % gone
 
 
-def test_the_kept_delegation_rows_stay_disabled_and_the_checker_lane_pinned():
-    """What the classic cut keeps: external agents off, the checker lane off
-    and pinned, and `present` on."""
-    preset = CORDIS.read_text()
+def test_the_kept_delegation_rows_stay_disabled_and_present_stays_on():
+    """What the classic cut keeps: external agents off and `present` on."""
+    preset = preset_children()
     rows = dict(composition_rows(preset))
     top = top_level_rows(preset)
     rows.update(top)
-    for row_id in ("tool-subagent-codex", "tool-subagent-claude-code", "mcp-jacobian"):
+    for row_id in ("tool-subagent-codex", "tool-subagent-claude-code"):
         assert row_id in rows, "the preset lost %s" % row_id
         assert is_disabled(rows[row_id]), "%s must stay disabled" % row_id
-    assert "jacobian@0.12.0" in rows["mcp-jacobian"], "the checker lane lost its pin"
     assert "present" in top, "the `present` row left the preset"
     assert not is_disabled(top["present"]), "the `present` row must stay on"
 
 
+def test_the_preset_is_declared_in_its_own_bundle_patch():
+    """Decision 25: on DSH 0.1.7 a preset exists because a bundle declares it.
+
+    The harness ignores directory presets, so the directory preset is
+    deleted, not kept alongside, and the declaration rides the bundle's
+    patch list after `cordis.patch.yml`. The skill files stay where the host
+    `skill-filesystem-rigorquant` row serves them from.
+    """
+    pkg = json.loads((REPO / "package.json").read_text())
+    assert pkg["dsh"]["bundle"]["patch"] == [
+        "./cordis.patch.yml", "./agent-presets/rigorquant.patch.yml"]
+    patch = PRESET_PATCH.read_text()
+    head = patch[:patch.index("        plugins:")]
+    assert re.search(r"^- insert:\n", head, re.MULTILINE)
+    assert "      name: '@deepseek-ai/dsh-agent-preset'" in head
+    assert "        id: rigorquant\n" in head
+    assert re.search(r"^        order: \d+$", head, re.MULTILINE)
+    assert "replaces this row's WHOLE\n    # `config`" in head, (
+        "the preset row lost its override-by-id warning")
+    for gone in ("agent.cordis.yml", "preset.yml"):
+        assert not (REPO / "agent-presets/rigorquant" / gone).exists(), (
+            "the directory preset's %s is back" % gone)
+    assert (SKILL_DIR / "SKILL.md").is_file()
+
+
+def test_the_declared_child_list_drops_the_skill_root_and_the_jacobian_row():
+    """The host row serves the skill; the escalation lane mounts at runtime.
+
+    A child `skill-filesystem` row would register a second provider for the
+    same skills, and on a declared preset child `baseUrl` is the profile
+    root, so a path resolved from it points nowhere. The jacobian MCP row
+    cannot be flipped per study once the preset is declared (ADR 0002), so no
+    child mounts the MCP client; the stale-surface sweep pins its old id.
+    """
+    children = preset_children()
+    ids = set(dict(composition_rows(children))) | set(top_level_rows(children))
+    assert "skill-filesystem" not in ids, "the declared preset still has a skill-filesystem row"
+    assert "dsh-mcp-client" not in children
+    assert "tool-skill" in ids, "the skill tool left the preset"
+    assert "baseUrl" not in children, (
+        "a child resolves a path from baseUrl, which is the profile root here")
+
+
+def test_the_package_requires_the_rc2_harness_line():
+    """The bundle refuses harness versions outside the tested line.
+
+    The compatibility gate matches `peerDependencies` with
+    `includePrerelease`, so the rc floor itself satisfies the range and 0.1.8
+    does not.
+    """
+    pkg = json.loads((REPO / "package.json").read_text())
+    assert pkg["peerDependencies"] == {"@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.1.8"}
+
+
 def _persona_prefix():
-    preset = CORDIS.read_text()
+    preset = preset_children()
     m = re.search(r"prefix: >-\n(.*?)\n    suffix:", preset, re.DOTALL)
     assert m, "the persona row lost its prefix"
     return " ".join(m.group(1).split())
@@ -576,7 +621,7 @@ def test_the_roster_policy_is_stated_once_and_consistently():
 
 
 def test_a_correction_to_a_fresh_role_goes_to_a_new_teammate():
-    """Found live in the 0.5.0 release run (docs/upgrade-0.1.6.md §3.15): the
+    """Found live in the 0.5.0 release run (Decision 24): the
     orchestrator sent "erratum briefs" back to a settled doublechecker and
     explorer. Both the skill and the protocol must say a correction is a new
     brief for a new teammate, and that the guard refuses the message."""
@@ -590,11 +635,11 @@ def test_a_correction_to_a_fresh_role_goes_to_a_new_teammate():
 
 
 def test_resuming_rearms_the_goal_by_its_tool_calls():
-    """Found live in the 0.5.0 release run (docs/upgrade-0.1.6.md §3.15): after
+    """Found live in the 0.5.0 release run (Decision 24): after
     a cold resume the orchestrator worked on while the goal stayed inactive,
     because the text said a human turn re-arms it without saying who calls
     what. The persona and the skill both name the calls."""
-    persona = " ".join((REPO / "agent-presets/rigorquant/agent.cordis.yml").read_text().split())
+    persona = " ".join(preset_children().split())
     skill = " ".join((SKILL_DIR / "SKILL.md").read_text().split())
     for name, text in (("persona", persona), ("SKILL.md", skill)):
         assert "`get_goal`, then `update_goal` with action `resume`" in text, (
@@ -671,17 +716,17 @@ def test_tracked_documents_speak_the_glossary_vocabulary():
     `_Avoid_` -- so those lines are exempt; every other tracked document,
     English or Chinese, may not.
 
-    Dated records are exempt the same way `docs/upgrade-*.md` is exempt from
-    the retired-model pin: a released changelog entry, a point-in-time study
-    and the repository review quote the vocabulary of their era, and editing
-    them would falsify what was said then. The sweep therefore covers the
-    documents that describe the system as it is now.
+    The changelog is exempt: a released entry quotes the vocabulary of its
+    era, and editing it would falsify what was said then. The point-in-time
+    studies and the repository review that shared this exemption are retired
+    (Decision 25), so the sweep covers every other document, all of which
+    describe the system as it is now.
     """
     banned = (
         re.compile(r"five[- ]move\s+stage", re.IGNORECASE),
         re.compile(r"rigorquant\s+(?:task|任务)", re.IGNORECASE),
     )
-    dated = re.compile(r"^(CHANGELOG\.md|docs/upgrade-[\d.]+\.md|docs/repository-review\.md)$")
+    dated = re.compile(r"^CHANGELOG\.md$")
     offenders = []
     for rel in tracked_files():
         if not rel.endswith((".md", ".html")) or dated.match(rel):
@@ -704,24 +749,23 @@ def test_both_readmes_describe_the_team_through_the_native_surface():
 
     Issue #13 retired the custom activity panel for the harness's own team
     view, so the section that used to describe the `rq-activity` host half and
-    its `shell.overlay` floater must describe the four native things a
-    researcher looks at -- the roster and the task board in the session
-    header, a teammate opened as an ordinary conversation, and the move pill
-    -- and must keep the hub-and-spoke figure as the picture of the topology
-    the per-call guards enforce. The retired implementation may not be named:
-    not the host half, not the overlay slot, not the floater/悬浮件. The
-    upstream *design* may still be credited -- the figure is adapted from it.
+    its `shell.overlay` floater must describe the native things a researcher
+    looks at -- the roster and the task board in the session header, and a
+    teammate opened as an ordinary conversation -- and the hub-and-spoke
+    topology the per-call guards enforce. The retired implementation may not
+    be named: not the host half, not the overlay slot, not the floater/悬浮件.
+    Nor may the activity-panel figure come back (Decision 25 removed it).
     """
     for name, heading, words in (
         ("README.md", "The team, live",
-         ("roster", "task board", "move pill", "session header", "hub-and-spoke",
-          "enforce", "docs/figs/agent-team-activity.svg")),
+         ("roster", "task board", "session header", "hub-and-spoke",
+          "enforce")),
         ("README.zh-CN.md", "团队实时视图",
-         ("花名册", "任务看板", "胶囊", "会话头部", "枢纽", "强制",
-          "docs/figs/agent-team-activity.svg")),
+         ("花名册", "任务看板", "会话头部", "枢纽", "强制")),
     ):
         body = _pin_section_words(name, heading, words, level=3)
-        for retired in ("rq-activity", "shell.overlay", "floater", "悬浮件", "悬浮条"):
+        for retired in ("rq-activity", "shell.overlay", "floater", "悬浮件", "悬浮条",
+                        "agent-team-activity"):
             assert retired not in body, (
                 "%s's team section still describes the retired %r" % (name, retired))
 
@@ -730,19 +774,59 @@ def test_both_readmes_install_sections_carry_the_beta_toggle_and_the_cap():
     """Issue #15: the Install section answers "what will this do to my profile".
 
     The floor is pinned elsewhere; what a reader cannot infer is that the
-    Agent Teams bundles are the two Beta cards on the Plugins page under
-    Official, that a full install turns them on and raises the lifetime member
-    cap through a marked block in the profile's user patch, and that the whole
-    release rests on an experimental bundle and an alpha harness.
+    Agent Teams bundle is a Beta card on the Plugins page under Official, that
+    a full install turns it on and raises the lifetime member cap through a
+    marked block in the profile's user patch, and that the whole release
+    rests on an experimental bundle and a prerelease harness.
     """
     for name, heading, words in (
         ("README.md", "Install", ("Beta", "Official", "cordis.patch.yml",
                                   "member cap to 64", "experimental",
-                                  "0.1.6-alpha.2")),
+                                  "0.1.7-rc.2")),
         ("README.zh-CN.md", "安装", ("Beta", "官方", "cordis.patch.yml",
-                                    "提高到 64", "实验性", "0.1.6-alpha.2")),
+                                    "提高到 64", "实验性", "0.1.7-rc.2")),
     ):
         _pin_section_words(name, heading, words)
+
+
+def test_both_readmes_carry_the_0_1_7_operator_facts():
+    """Issue #32: what an operator moving to DSH 0.1.7-rc.2 has to know.
+
+    The upgrade is one cutover, so the Install section carries the operator
+    sequence (the CLI pinned to rc.2 -- npm `latest` is 0.1.5-rc.3, so an
+    unqualified `npm i -g` installs a harness this release refuses), Coding
+    Tools as the picker's gate, 0.5.0 as the last release for the 0.1.6
+    alpha, and finishing or archiving studies first. Routing says an
+    account-only sign-in routes to `deepseek-account` on account quota; the
+    team section says the roster's model column is the selection, not the
+    route; the deployment notes say scheduled tasks are neither used nor
+    guarded; and the compute lane mounts at runtime.
+    """
+    for name, pins in (
+        ("README.md", (
+            ("Install", ("stop dsh", "npm i -g @deepseek-ai/dsh@0.1.7-rc.2", "npm `latest`",
+                         "./install.sh", "Coding Tools", "0.5.0", "last release",
+                         "finish or archive")),
+            ("Role-routed models", ("deepseek-account", "account quota")),
+            ("Deployment notes", ("scheduled tasks",)),
+            ("Compute lane", ("rq_escalate", "at runtime")),
+        )),
+        ("README.zh-CN.md", (
+            ("安装", ("停止 dsh", "npm i -g @deepseek-ai/dsh@0.1.7-rc.2", "npm 的 `latest`",
+                      "./install.sh", "代码工作工具", "0.5.0", "最后一个版本", "完成或归档")),
+            ("角色模型路由", ("deepseek-account", "账号额度")),
+            ("部署须知", ("定时任务",)),
+            ("计算通道", ("rq_escalate", "运行时")),
+        )),
+    ):
+        for heading, words in pins:
+            _pin_section_words(name, heading, words)
+        team = _section((REPO / name).read_text(), "The team, live" if name == "README.md"
+                        else "团队实时视图", level=3)
+        assert ("model column" if name == "README.md" else "模型列") in team, name
+        text = (REPO / name).read_text()
+        unqualified = re.findall(r"npm i(?:nstall)? -g @deepseek-ai/dsh(?![@\w-])", text)
+        assert not unqualified, "%s has an unqualified harness install" % name
 
 
 def test_both_readmes_carry_the_deployment_notes():
@@ -868,6 +952,26 @@ def test_router_native_defaults_overrides_and_fallback_round_trip():
                for line in warnings), "the probe no longer covers the failing-fallback give-up"
     assert any("explorerPrimary" in line and "no fallback" in line for line in warnings), (
         "the probe no longer covers the no-fallback give-up")
+    # Issue #25: account-only users get the shipped matrix on
+    # `deepseek-account`, so a degrade there names the moved route.
+    assert any("deepseek-account/deepseek-v4-pro (config key adversaryPrimary, shipped default)" in line
+               for line in warnings), "the probe no longer covers the account-only catalog"
+
+
+def test_router_routes_live_on_its_own_volatile_config():
+    """Decision 25: `ctx.settings.register` is gone on DSH 0.1.7.
+
+    The router threw `TypeError: ctx.settings.register is not a function` at
+    mount on rc.2. Its routes are now `.volatile()` fields of the router
+    row's own config, which the profile owns; nothing may reach for the
+    retired `rigorquant-models` namespace again.
+    """
+    router = (REPO / "dsh/index.js").read_text()
+    for gone in ("settings.register", "rigorquant-models", "settings.get(",
+                 "SettingsSchema", "const NS"):
+        assert gone not in router, "dsh/index.js still names %r" % gone
+    assert "choiceSchema.default(void 0).volatile()" in router
+    assert "ROUTE_KEYS = ROLES.flatMap((role) => [`${role}Primary`, `${role}Fallback`])" in router
 
 
 def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
@@ -905,26 +1009,46 @@ def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
             f"{role}.md must state its own role name up front")
 
 
-def test_move_pill_role_badges_pin_the_same_seven_roles():
-    """dsh/client.js's ROLE_BADGE is a fourth, browser-side copy of the same
-    role set (the client bundle is standalone and cannot `require` the
-    host-side dsh/team.js). A role dropped or added there without a matching
-    update here would silently mislabel or drop a running teammate's badge
-    on the move pill.
-    """
-    team = (REPO / "dsh" / "team.js").read_text()
-    team_match = re.search(r"export const TEAMMATE_ROLES = \[([^\]]*)\]", team)
-    assert team_match, "dsh/team.js no longer exports TEAMMATE_ROLES"
-    team_roles = set(re.findall(r"'([a-z-]+)'", team_match.group(1)))
+# One line, verbatim in every persona (issue #29). On rc.2, `spawn_teammate`
+# prefixes each teammate's first prompt with a reminder to call `list_agents`
+# and message other teammates (`tool-agent-team/src/index.ts:196-203` at
+# `dsh-v0.1.7-rc.2`), and rq-team's guard refuses both.
+TEAM_REMINDER_LINE = (
+    "The harness's team reminder does not apply to you: you are roster-blind "
+    "and message only `lead`, so never call `list_agents` or message another "
+    "teammate."
+)
 
-    client = (REPO / "dsh" / "client.js").read_text()
-    badge_match = re.search(r"const ROLE_BADGE = \{(.*?)\n\}", client, re.DOTALL)
-    assert badge_match, "dsh/client.js no longer declares ROLE_BADGE"
-    badge_roles = set(re.findall(r"^\s*'?([a-z-]+)'?:\s*\[", badge_match.group(1), re.MULTILINE))
 
-    assert badge_roles == team_roles, (
-        "role drift: dsh/client.js's ROLE_BADGE=%s vs dsh/team.js's TEAMMATE_ROLES=%s"
-        % (sorted(badge_roles), sorted(team_roles)))
+def test_every_persona_counters_the_harness_team_reminder():
+    """The persona overrides the harness's first-prompt Team reminder."""
+    for persona in sorted((REPO / "dsh" / "personas").glob("*.md")):
+        flat = " ".join(persona.read_text().split())
+        assert flat.count(TEAM_REMINDER_LINE) == 1, (
+            "%s does not state, once, that the harness team reminder does "
+            "not apply" % persona.name)
+
+
+def test_the_escalation_lane_is_mounted_at_runtime_and_checked_only_by_blind_roles():
+    """Decision 25 (issue #27): the orchestrator mounts jacobian with
+    `rq_escalate`; no document tells it to flip a preset row, and a blind role
+    may use a mounted lane only to check a derivation it already made."""
+    skill = SKILL_DIR / "SKILL.md"
+    escalation = SKILL_DIR / "references" / "escalation.md"
+    for path in (skill, escalation, REPO / "mcp" / "jacobian.md"):
+        text = path.read_text()
+        assert "rq_escalate" in text, "%s never names rq_escalate" % path.name
+    flat = " ".join(escalation.read_text().split())
+    for rule in ("without asking the user", "escalation open:", "ASK the user",
+                 "call `rq_escalate` again"):
+        assert rule in flat, "escalation.md lost %r" % rule
+    assert "falsification lane" not in flat, "CONTEXT.md: that is the check battery"
+    check_only = ("never to fetch a known result",
+                  "Use `math_find` only to look up the operation that runs your check")
+    for role in ("offgrid", "doublechecker"):
+        persona = " ".join((REPO / "dsh" / "personas" / f"{role}.md").read_text().split())
+        for rule in check_only:
+            assert rule in persona, "%s.md lacks the check-only lane rule %r" % (role, rule)
 
 
 def _shipped_route(slot):
@@ -962,16 +1086,16 @@ def test_no_shipped_file_names_the_retired_fallback_model():
 
     Break B3 of the 0.1.6 upgrade study: an unlisted id fails only once the
     fallback lane is entered, so the miss is silent until a primary fails
-    (Decision 16 records the shipped routes). The name may survive only where
-    it is history — the upgrade studies. The id is assembled here so this file
+    (Decision 16 records the shipped routes). The upgrade studies that could
+    name it as history are retired (Decision 25), so no file may. The id is
+    assembled here so this file
     is not exempt from its own pin; the retired vision-exp id (same prefix,
     `-vision-exp` suffix) is a different model and not this pin's concern.
     """
     retired = re.compile(r"(?<![\w-])%s(?![\w-])" % "-".join(("deepseek", "v4", "flash")))
-    history = re.compile(r"^docs/upgrade-[\d.]+\.md$")
     offenders = []
     for rel in tracked_files():
-        if history.match(rel) or rel.endswith((".png", ".pdf", ".lock")):
+        if rel.endswith((".png", ".pdf", ".lock")):
             continue
         try:
             text = (REPO / rel).read_text()
@@ -1004,13 +1128,11 @@ def test_every_role_has_a_description_and_frequency_in_both_locales():
     assert match, "dsh/index.js no longer exports its ROLES list"
     roles = re.findall(r"'([a-z-]+)'", match.group(1))
     client = (REPO / "dsh" / "client.js").read_text()
-    # Both locale sections of every copy block live inside the factory
-    # closure: first the settings card (the one that carries role copy), then
-    # the move pill. Each must be bilingual — a monolingual block is a
-    # language that silently falls back to the other's strings.
+    # The card's copy block lives inside the factory closure and must be
+    # bilingual — a monolingual block is a language that silently falls back
+    # to the other's strings.
     sections = re.findall(r"^\s{2}(en|zh): \{", client, re.MULTILINE)
-    assert sections[:2] == ["en", "zh"], "the card copy sections moved; update this test"
-    assert sections[2:] == ["en", "zh"], "the move-pill copy is not bilingual"
+    assert sections == ["en", "zh"], "the card copy sections moved; update this test"
     vocabulary = {"en": {"Frequent", "Common", "Rare"}, "zh": {"频繁", "常见", "少见"}}
     for role in roles:
         for locale in ("en", "zh"):
@@ -1109,6 +1231,27 @@ def test_npm_ignore_excludes_python_bytecode():
         assert "__pycache__" in text and "*.pyc" in text
 
 
+def test_the_npm_package_ships_no_untracked_doc():
+    """package.json whitelists docs/, so npm packs whatever sits there.
+
+    0.6.0 went to npm with an untracked point-in-time upgrade study that
+    Decision 25 says is never committed. docs/.npmignore keeps upgrade
+    studies out of the artifact, and no untracked file under docs/ may ship.
+    """
+    ignore = REPO / "docs" / ".npmignore"
+    assert ignore.exists() and "upgrade-*.md" in ignore.read_text()
+    npm = shutil.which("npm")
+    if npm is None:
+        pytest.skip("npm is required to list the packed files")
+    out = subprocess.run([npm, "pack", "--dry-run", "--json", "--ignore-scripts"],
+                         cwd=REPO, capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    packed = {f["path"] for f in json.loads(out.stdout)[0]["files"]}
+    tracked = set(tracked_files())
+    leaked = sorted(p for p in packed if p.startswith("docs/") and p not in tracked)
+    assert not leaked, "untracked docs would ship: %s" % leaked
+
+
 def test_no_document_calls_an_isolation_boundary_a_wall():
     """Decision 14: shipped text may not over-claim enforcement.
 
@@ -1120,7 +1263,7 @@ def test_no_document_calls_an_isolation_boundary_a_wall():
     claims = ("bit-level isolation", "fully isolated", "sandboxed lane",
               "cannot reach the network")
     offenders = []
-    for doc in docs() + [REPO / "agent-presets/rigorquant/agent.cordis.yml"]:
+    for doc in docs() + [PRESET_PATCH]:
         # Paragraph scope: the denial routinely sits a line away from the word.
         for block in re.split(r"\n\s*\n", doc.read_text()):
             low = block.lower()
@@ -1149,6 +1292,11 @@ def test_no_reference_to_a_docs_file_dangles():
     referenced = {}
     for rel in tracked_files():
         if rel.endswith((".png", ".pdf", ".lock")):
+            continue
+        # The changelog is a historical record: a release note that removed a
+        # file keeps naming it, and renaming the entry would falsify history.
+        # Every other tracked file must reference only what still exists.
+        if rel == "CHANGELOG.md":
             continue
         try:
             text = (REPO / rel).read_text()
@@ -1274,43 +1422,42 @@ def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
         "the rigorquant skill provider must not scan the default roots")
 
 
-def test_bundle_patch_mounts_the_preset_sync_half():
-    """Decision 22: the bundle self-installs the preset and the compute lane.
+def test_bundle_patch_mounts_the_lane_sync_half():
+    """Decisions 22 and 25: the bundle self-installs the compute lane.
 
-    The whole point of the rq-preset-sync row is that `dsh plugin add` alone
+    The whole point of the rq-lane-sync row is that `dsh plugin add` alone
     leaves a WORKING distribution at the next profile boot. If the row is
-    dropped from the patch, plugin-only installs silently regress to a router
-    with nothing to route.
+    dropped from the patch, plugin-only installs have no compute lane.
     """
-    import json as _json
-
     patch = (REPO / "cordis.patch.yml").read_text()
-    assert "rq-preset-sync" in patch, "cordis.patch.yml no longer mounts the boot-sync half"
+    assert "- id: rq-lane-sync" in patch, "cordis.patch.yml no longer mounts the boot-sync half"
     assert "'dsh-rigorquant/sync'" in patch, (
         "the sync row must load this package's ./sync export")
-    manifest = _json.loads((REPO / "package.json").read_text())
+    manifest = json.loads((REPO / "package.json").read_text())
     export = manifest["exports"].get("./sync")
     assert export, "package.json no longer exports ./sync"
     assert (REPO / export).exists(), "exports./sync points at a missing file"
 
 
-def test_boot_sync_manages_the_preset_and_the_lane_and_never_derived_state():
-    """The engine must land every runtime tree and never touch derived state.
+def test_boot_sync_manages_the_lane_only_and_never_derived_state():
+    """The engine lands the lane trees, no preset, and never touches derived state.
 
     A venv is provisioned lazily inside the lane anchor by the first
     `uv run --frozen`; one prune pass that treats it as an extra would delete a
     provisioned environment mid-study. The behavioral side of this contract is
-    executed for real in tests/test_preset_sync.py; this pins the wiring.
+    executed for real in tests/test_lane_sync.py; this pins the wiring.
     """
     sync = (REPO / "dsh" / "sync.js").read_text()
-    for tree in ("agent-presets/rigorquant", "env", "mcp", "docs"):
-        assert f"'{tree}'" in sync, f"sync.js does not manage {tree}"
+    managed = sync[sync.index("const MANAGED_DIRS"):sync.index("const ORPHANED_PRESET")]
+    for tree in ("env", "mcp", "docs"):
+        assert f"['{tree}'" in managed, f"sync.js does not manage {tree}"
+    assert "agent-presets" not in managed, "sync.js still copies the preset"
     for derived in (".venv", "__pycache__"):
         assert f"'{derived}'" in sync, f"sync.js does not exclude {derived}"
-    assert "install.sh --uninstall" in sync or "--uninstall" in sync, (
+    assert "--uninstall" in sync, (
         "sync.js must document that removal stays explicit (no uninstall hook)")
-    # And the behavioral suite must exist and name the venv hazard.
-    behavioral = (REPO / "tests" / "test_preset_sync.py").read_text()
+    assert "CANNOT enforce" not in sync, "peerDependencies enforce the floor now"
+    behavioral = (REPO / "tests" / "test_lane_sync.py").read_text()
     assert ".venv" in behavioral, "no test executes the venv-survival contract"
 
 
@@ -1372,26 +1519,101 @@ def test_a_fetched_copy_installs_the_published_version():
         "the fetched-copy path must install the published version by name")
 
 
-def test_agent_team_activity_svg_is_fresh():
-    """The committed panel SVG must be exactly what the generator emits.
+# ── the stale-surface sweep (Decision 25, issue #32) ─────────────────────────
 
-    The activity view is generated (docs/figs/agent-team-activity.js embeds
-    the role portraits as data URIs); a hand-edited SVG is the drift class
-    this suite exists to catch -- and an edit here would silently stop
-    matching the README's credited source.
+# Every 0.1.6 surface the 0.6.0 migration removed. Assembled from parts so
+# this file does not match its own sweep.
+STALE_SURFACES = tuple("".join(parts) for parts in (
+    ("settings", "Scope"),
+    ("remote.", "agentTeams"),
+    (".agent", "-presets"),
+    ("agent-team-", "web-profile"),
+    ("0.1.6", "-alpha.2"),
+    ("rq-", "preset-sync"),
+    ("move ", "pill"),
+    ("mcp-", "jacobian"),
+))
+# The changelog and the decision record (docs/architecture.md and the ADRs)
+# are history: they say what shipped and why, in the words of the time.
+STALE_SURFACE_HISTORY = re.compile(r"^(CHANGELOG\.md|docs/architecture\.md|docs/adr/.*)$")
+# Code that cleans up after an older release has to name what it removes,
+# and the tests of that cleanup have to build it. Nothing else may.
+_DIRECTORY_PRESET, _WEB_BUNDLE, _ALPHA2 = STALE_SURFACES[2:5]
+STALE_SURFACE_CLEANUP = {
+    # --uninstall removes an old install's directory preset; a full install
+    # removes the retired web bundle from the profile.
+    "install.sh": {_DIRECTORY_PRESET, _WEB_BUNDLE},
+    # rq-lane-sync removes the orphaned directory preset it owns.
+    "dsh/sync.js": {_DIRECTORY_PRESET},
+    "tests/test_lane_sync.py": {_DIRECTORY_PRESET},
+    # The installer tests seed a 0.5.0 profile: the web bundle pinned at the
+    # alpha.2 core, and the old directory preset.
+    "tests/test_installer_agent_teams.py": {_DIRECTORY_PRESET, _WEB_BUNDLE, _ALPHA2},
+}
+
+
+def test_no_file_names_a_retired_0_1_6_surface():
+    """Nothing in the repo still names a 0.1.6 surface (issue #32).
+
+    Leaner by rule: whatever the migration made dead is deleted, so a
+    document or comment that still names one describes a system that no
+    longer exists. Matching is case-insensitive, so a capitalized mention
+    counts too.
     """
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required to regenerate the activity SVG")
-    svg = REPO / "docs/figs/agent-team-activity.svg"
-    generator = REPO / "docs/figs/agent-team-activity.js"
-    before = svg.read_bytes()
-    after = before
-    try:
-        subprocess.run([node, str(generator)], cwd=REPO, check=True, capture_output=True)
-        after = svg.read_bytes()
-    finally:
-        if after != before:
-            svg.write_bytes(before)
-    assert after == before, (
-        "docs/figs/agent-team-activity.svg is stale; run `node docs/figs/agent-team-activity.js`")
+    offenders = []
+    for rel in tracked_files():
+        if STALE_SURFACE_HISTORY.match(rel) or rel.endswith((".png", ".pdf", ".lock")):
+            continue
+        try:
+            text = (REPO / rel).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        allowed = STALE_SURFACE_CLEANUP.get(rel, set())
+        for number, line in enumerate(text.splitlines(), 1):
+            for surface in STALE_SURFACES:
+                if surface not in allowed and surface.lower() in line.lower():
+                    offenders.append("%s:%d: %s" % (rel, number, line.strip()[:100]))
+    assert not offenders, "a retired 0.1.6 surface is still named:\n" + "\n".join(offenders)
+
+
+def test_the_cleanup_exemptions_are_still_needed():
+    """An exemption that matches nothing any more is a hole in the sweep."""
+    for rel, surfaces in STALE_SURFACE_CLEANUP.items():
+        assert set(surfaces) <= set(STALE_SURFACES), rel
+        text = (REPO / rel).read_text().lower()
+        for surface in surfaces:
+            assert surface.lower() in text, (
+                "%s no longer names %r; drop its exemption" % (rel, surface))
+
+
+# Bare names, joined to docs/ at run time so this file is no reference to
+# them for test_no_reference_to_a_docs_file_dangles.
+RETIRED_DOC_NAMES = ("upgrade-0.1.2.md", "upgrade-0.1.5.md", "upgrade-0.1.6.md",
+                     "repository-review.md", "walkthrough.html")
+
+
+def test_retired_docs_are_gone_and_nothing_links_to_them():
+    """Issue #31: the docs describe only the harness this release supports.
+
+    The reasons behind past changes live in docs/architecture.md, the ADRs
+    and git history (and the release tags, which still carry these files).
+    The skill cites the hard-lessons record, and the showcase stays.
+    """
+    tracked = set(tracked_files())
+    for name in RETIRED_DOC_NAMES:
+        assert "docs/" + name not in tracked, "docs/%s is back" % name
+    for kept in ("docs/hard-lessons-from-the-var-expected-return-run.md", "docs/showcase.html"):
+        assert kept in tracked, "%s was deleted with the retired docs" % kept
+    names = RETIRED_DOC_NAMES
+    offenders = []
+    for rel in tracked:
+        if rel == "tests/test_repo_consistency.py" or rel.endswith((".png", ".pdf", ".lock")):
+            continue
+        try:
+            text = (REPO / rel).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for name in names:
+            if name in text:
+                offenders.append("%s names %s" % (rel, name))
+    assert not offenders, "\n".join(offenders)
