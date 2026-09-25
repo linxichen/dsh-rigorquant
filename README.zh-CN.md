@@ -267,11 +267,15 @@ RigorQuant 也不会改变其中任何一件：
 
 ## 计算通道（一次性）
 
-固定的 uv 通道位于 `$DSH_HOME/share/rigorquant/env`，由 `install.sh` 或插件的
-boot-sync 行落盘——两者写入的字节一致，最后运行者持有该锚点（见
-[env/README.md](env/README.md)）。venv 本身**从不随包安装**：它是派生状态，
-由第一次 `uv run --frozen --project <env_lane>` 在锚点内**惰性创建**（后续
-调用即时；`--frozen` 严格遵守已提交的 lockfile）。jacobian 升级通道已**固定版本**
+每项研究都带着自己的固定 uv 通道。`install.sh` 或插件的 boot-sync 行会在
+`$DSH_HOME/share/rigorquant/env` 放一份**模板**（两者写入的字节一致；见
+[env/README.md](env/README.md)）。立项时，编排者把其中的 `pyproject.toml` 与
+`uv.lock` 复制到研究的 `env/`，随记录一起提交，并在研究的 `interim/`（已被
+gitignore）下一次性建好 venv——venv 与 uv 缓存都放在那里，这也是
+`workspace-write` 沙箱唯一允许它们写入的地方。因此即便之后的版本替换了模板，
+研究的克隆也能重建完全相同的环境；需要额外包的研究把它加进自己的通道。缺少研究
+自己的 `env/uv.lock` 时，校验器拒绝 PASS。每项进行中的研究约需 1 GB 给 venv 与
+缓存，收尾时删除：沙箱使各研究无法共用 uv 缓存。jacobian 升级通道已**固定版本**
 （`jacobian@0.12.0`），它不再是 preset 的一行，而是在运行时挂载：当某个论断需要时，
 编排者无需询问就调用 `rq_escalate`，挂载到自己或它点名的某个队友身上，jacobian
 工具从下一次请求起出现，直到会话结束。框架在一次性配置前仍会**请求批准**

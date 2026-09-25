@@ -85,28 +85,34 @@ def test_blind_personas_carry_the_protocol_they_cannot_load():
             "%s is told to load a skill it is denied" % role)
 
 
-LANE_INVOCATION = "uv run --frozen --project"
+# The study's own lane (issue #36): the declaration is the tracked env/ at
+# the study root, the venv and uv cache are scratch under interim/, and a
+# teammate runs offline against the venv the orchestrator built at Step 2.
+LANE_ENV = ('UV_PROJECT_ENVIRONMENT="$PWD/interim/venv" '
+            'UV_CACHE_DIR="$PWD/interim/uv-cache"')
+LANE_INVOCATION = "uv run --frozen --offline --project env"
 
 
 def test_blind_personas_carry_the_pinned_compute_lane():
     """The blind lane's compute leverage must name the sanctioned invocation.
 
     Blind roles keep bash (C1), so derivation compute reaches them only
-    through the pinned uv lane. Both blind personas must instruct the exact
-    invocation SKILL.md Step 2 sanctions (`uv run --frozen --project ...`),
-    anchor the lane location, and prohibit installs/fetches (the guard now
-    refuses those verbs at the call, but the persona is what tells the role
-    why). This pins the persona text against silent removal and against
-    drifting from the skill's documented form.
+    through the study's pinned uv lane. Both blind personas must instruct the
+    exact invocation SKILL.md Step 2 sanctions (from the study root, venv and
+    cache under interim/, offline), and prohibit installs/fetches (the guard
+    refuses the network verbs at the call, but the persona is what tells the
+    role why). The shared $DSH_HOME template is not a lane a teammate runs
+    against: the sandbox refuses a venv there, and it is not the record.
     """
     for role in BLIND:
         persona = " ".join((PERSONAS / ("%s.md" % role)).read_text().split())
-        assert LANE_INVOCATION in persona, \
+        assert LANE_ENV in persona and LANE_INVOCATION in persona, \
             "%s persona lost the compute-lane invocation" % role
-        assert "$DSH_HOME/share/rigorquant/env" in persona, \
-            "%s persona lost the lane anchor" % role
+        assert "study root" in persona, "%s persona never says where to run it" % role
+        assert "share/rigorquant/env" not in persona, \
+            "%s persona still points at the shared template" % role
         assert "pip install" in persona and "uv sync" in persona, \
             "%s persona lost the no-install/no-fetch discipline" % role
-    skill = (SKILL_DIR / "SKILL.md").read_text()
-    assert LANE_INVOCATION in skill, \
+    skill = " ".join((SKILL_DIR / "SKILL.md").read_text().split())
+    assert LANE_ENV in skill and LANE_INVOCATION in skill, \
         "SKILL.md no longer documents the invocation the personas teach"

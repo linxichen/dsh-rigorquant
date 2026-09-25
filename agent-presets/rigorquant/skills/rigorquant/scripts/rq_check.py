@@ -538,6 +538,44 @@ def check_closeout_junk(study, root: Path, problems):
             "(references/reproducibility.md)." % ", ".join(hits[:8]))
 
 
+def check_env_lane(study, root: Path, problems):
+    """Issue #36 / Decision 21: the study's environment is part of its record.
+
+    A PASS is refused unless the study carries its own lane declaration --
+    env/pyproject.toml and env/uv.lock, non-empty, on the committed surface
+    -- and env_lane names that directory. The lane RigorQuant installs under
+    $DSH_HOME is only the template copied at intake: every release replaces
+    it, so a study that cites it cannot be rebuilt from a clone. The venv and
+    the uv cache stay scratch under interim/ (R1).
+    """
+    if not claiming_pass(study):
+        return
+    lane = root / "env"
+    adopt = ("copy pyproject.toml and uv.lock from $DSH_HOME/share/rigorquant/env "
+             "into env/ at the study root, record env_lane \"env\", and commit "
+             "them (references/reproducibility.md)")
+    for name in ("pyproject.toml", "uv.lock"):
+        f = lane / name
+        if not f.is_file() or f.stat().st_size == 0:
+            problems.add(
+                "evidence.lane",
+                "PASS refused: env/%s is missing or empty -- the study's lane "
+                "declaration travels with the record; %s." % (name, adopt))
+    declared = study.get("env_lane")
+    if not declared:
+        problems.add("evidence.lane",
+                     "PASS refused: study.json records no env_lane; %s." % adopt)
+        return
+    target = Path(str(declared))
+    target = (target if target.is_absolute() else root / target).resolve()
+    if target != lane.resolve():
+        problems.add(
+            "evidence.lane",
+            "PASS refused: env_lane %r is not the study's own env/ -- a lane "
+            "outside the record (the shared template, or scratch) cannot be "
+            "rebuilt from a clone; %s." % (str(declared), adopt))
+
+
 def check_tolerance_reconciliation(study, root: Path, problems):
     """check-battery.md: a tolerance restated in an audit must match study.json."""
     declared = study.get("tolerances") or {}
@@ -1643,6 +1681,7 @@ def run(study_root: str):
     check_document_adversary_reports(study, root, problems)
     check_pass_evidence(study, root, problems)
     check_closeout_junk(study, root, problems)
+    check_env_lane(study, root, problems)
     check_tolerance_reconciliation(study, root, problems)
     check_declared_hashes(root, problems)
     check_status_verdict_reference(study, root, problems)

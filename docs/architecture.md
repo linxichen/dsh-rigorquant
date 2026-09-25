@@ -550,9 +550,22 @@ Enforcement is in `rq_check.py` at PASS time: `evidence.junk` (derived state
 on the committed surface), `deliverables.scratch-refs` (a deliverable citing
 `interim/`), `deliverables.repro-paths` (a deliverable citing a missing
 `code/|derivations/|audits/|literature/` file), plus the pre-existing
-registry-outputs-exist check. Full statement, operational rules R1-R7, junk
+registry-outputs-exist check. Full statement, operational rules R1-R8, junk
 taxonomy and the close-out sweep protocol:
 `agent-presets/rigorquant/skills/rigorquant/references/reproducibility.md`.
+
+**Amended for 0.6.0 (issue #36, found in the rc.2 live run): the study
+carries its own lane.** "A fresh clone plus the pinned lane" had a hole: the
+lane was RigorQuant's copy under `$DSH_HOME`, which every release replaces,
+and a study needing another package had no committed place to declare it.
+On rc.2 the `workspace-write` sandbox also refuses a venv there. Now Step 2
+copies the shipped lane's `pyproject.toml` + `uv.lock` into the study's
+tracked `env/` (`env_lane: "env"`), builds the venv and uv cache under
+`interim/`, and teammates run offline against it; extra packages go into
+the study's lane with `uv add --project env`. `$DSH_HOME/share/rigorquant/env`
+is only the template. `rq_check.py` enforces it at PASS (`evidence.lane`,
+rule R8). Cost: studies cannot share a uv cache under the sandbox, about
+1 GB per live study, deleted at close-out.
 
 ## Decision 22 — the bundle self-installs the preset and the lane
 
@@ -839,6 +852,8 @@ Amends:
 - **5:** jacobian stays opt-in and pinned, but is mounted at runtime.
 - **14:** a mounted lane reaches only the agents it is mounted into.
 - **20:** the harness range.
+- **21:** the study carries its own lane (`env/`, enforced as
+  `evidence.lane`); the shared lane is only the template (issue #36).
 - **22:** the bundle no longer copies a preset; the sync keeps the compute
   lane only.
 - **24:** one Team bundle; the move pill retires; the floor is raised.

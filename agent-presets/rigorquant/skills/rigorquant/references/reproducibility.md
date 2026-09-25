@@ -10,8 +10,9 @@ zero working reproduction commands. The two obligations below are enforced by
 ## The philosophy, in two obligations
 
 1. **Perfect reproducibility.** The committed study record is self-contained: a
-   fresh clone of the repo, plus the pinned uv lane, regenerates every piece of
-   study evidence. Every command a deliverable prints, and every path the
+   fresh clone of the repo regenerates every piece of study evidence, because
+   the study's pinned uv lane (`env/pyproject.toml` + `env/uv.lock`) is part
+   of the record. Every command a deliverable prints, and every path the
    record cites (`study.json`, `registry.json`, audits), resolves to a file
    that is part of the committed record — never to scratch.
 2. **Minimal junk.** Nothing disposable sits on the committed surface. Derived
@@ -31,7 +32,7 @@ validator turns it from an intention into a gate.
   that works in the author's checkout but not from a clone *documents a file*,
   it does not *reproduce a study*.
 - **Derived state is not the record.** A venv is recreated deterministically
-  from the pinned lane's `pyproject.toml` + `uv.lock` via
+  from the study's `env/pyproject.toml` + `env/uv.lock` via
   `uv sync --frozen` (or `uv run --frozen`). Keeping it costs ~0.5 GB of noise
   that hides the study and imports megabytes of unverifiable state into a
   record whose whole point is verifiability. The lockfile is the guarantee;
@@ -48,7 +49,8 @@ validator turns it from an intention into a gate.
   in the study is committed.
 - **R2 — Derived state is disposable.** Virtualenvs and uv caches are
   gitignored, never committed, and deleted at study close. They are rebuilt
-  from the pinned lane with `uv sync --frozen` / `uv run --frozen`.
+  from the study's lane with `uv sync --frozen` / `uv run --frozen`
+  (`interim/venv`, `interim/uv-cache`; SKILL.md Step 2).
 - **R3 — Study-generating code is tracked in `code/`.** Every script that
   generates evidence (ground-truth tracks, battery generators, reproduction
   scripts the deliverables print) lives in a tracked `code/` directory, with a
@@ -77,6 +79,13 @@ validator turns it from an intention into a gate.
 - **R7 — Prove it after every cleanup.** After any cleanup (venv removal,
   cache purge, tmp sweep), re-run one pinned script and the validator before
   claiming the pre-cleanup state.
+- **R8 — The lane declaration is record.** The study carries its own
+  `env/pyproject.toml` + `env/uv.lock`, copied from the template RigorQuant
+  installs at `$DSH_HOME/share/rigorquant/env` and committed, and
+  `study.json` records `"env_lane": "env"`. The template is not the record:
+  every release replaces it, so a study citing it cannot be rebuilt from a
+  clone. A package the study needs goes into its own lane
+  (`uv add --project env <package>`), never into the template.
 
 ## Junk taxonomy (what the validator refuses at PASS)
 
@@ -101,6 +110,7 @@ by definition: it is the one designated scratch home, gitignored at intake.
 | check | enforces | fires when |
 |---|---|---|
 | `evidence.junk` | R2, minimal junk | derived state sits on the committed surface at PASS |
+| `evidence.lane` | R8 | at PASS, `env/pyproject.toml` or `env/uv.lock` is missing or empty, or `env_lane` is not the study's own `env/` |
 | `deliverables.scratch-refs` | R4 | a deliverable's `.tex` cites a file under `interim/` (scratch-home env assignments tolerated) |
 | `deliverables.repro-paths` | R3, R5 | a deliverable cites a `code/|derivations/|audits/|literature/` path that does not exist on disk |
 | registry outputs must exist | R5 | a registry route cites an output that does not exist on disk |

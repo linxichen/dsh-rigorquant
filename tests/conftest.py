@@ -162,13 +162,22 @@ def golden_study(root: Path) -> Path:
     (root / "derivations").mkdir(exist_ok=True)
     (root / "audits").mkdir(exist_ok=True)
     (root / "artifacts" / "paper").mkdir(parents=True, exist_ok=True)
+    # The study's own lane declaration (issue #36): copied from the shipped
+    # template at intake and committed with the record.
+    (root / "env").mkdir(exist_ok=True)
+    (root / "env" / "pyproject.toml").write_text(
+        '[project]\nname = "rigorquant-lane"\nversion = "0.6.0"\n'
+        'requires-python = ">=3.11"\ndependencies = ["sympy"]\n')
+    (root / "env" / "uv.lock").write_text(
+        'version = 1\nrequires-python = ">=3.11"\n\n'
+        '[[package]]\nname = "sympy"\nversion = "1.13.3"\n')
 
     study = {
         "slug": "20260815_minvar-demo",
         "title": "Minimum-variance portfolio weights",
         "mode": "repo-root",
         "repo_root": str(root),
-        "env_lane": "/opt/dsh/share/rigorquant/env",
+        "env_lane": "env",
         "task_id": "20260815_minvar-demo",
         "created": "2026-08-15",
         "statement": "Derive and certify minimum-variance weights under a full-investment constraint.",

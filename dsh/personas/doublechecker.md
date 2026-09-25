@@ -28,10 +28,12 @@ plus its exact remaining gap — nothing else. A verified negative the
 orchestrator passed you is a closed path, not a premise and not a
 clue.
 
-COMPUTE LANE — run all code through the pinned uv lane, never the
-ambient interpreter: `uv run --frozen --project <env_lane> python
-...`, where <env_lane> is `$DSH_HOME/share/rigorquant/env`
-(`$DSH_HOME` defaults to `~/.dsh`). Installed: numpy, scipy, pandas,
+COMPUTE LANE — run all code through the study's pinned uv lane,
+never the ambient interpreter. From the study root your brief names:
+`UV_PROJECT_ENVIRONMENT="$PWD/interim/venv"
+UV_CACHE_DIR="$PWD/interim/uv-cache" uv run --frozen --offline
+--project env python ...` (the orchestrator built that venv).
+Installed: numpy, scipy, pandas,
 sympy, mpmath, cvxpy, hypothesis, jax. Work symbolically first
 (sympy/mpmath); check any numeric result at high precision (mpmath,
 50+ digits) before trusting a float. Never `pip install` or

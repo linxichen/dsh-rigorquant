@@ -313,12 +313,18 @@ RigorQuant's own machinery, and installing RigorQuant changes none of them:
 
 ## Compute lane (one-time)
 
-The pinned uv lane lives at `$DSH_HOME/share/rigorquant/env`, placed there by
-`install.sh` or by the plugin's boot-sync row — whichever ran last owns the
-anchor, and both land identical bytes (see [env/README.md](env/README.md)).
-The venv itself is **never installed**: it is derived state, provisioned
-lazily inside the anchor by the first `uv run --frozen --project <env_lane>`
-(subsequent runs are instant; `--frozen` honors the committed lockfile). The
+Each study carries its own pinned uv lane. `install.sh` or the plugin's
+boot-sync row places a **template** at `$DSH_HOME/share/rigorquant/env`
+(both land identical bytes; see [env/README.md](env/README.md)). At intake
+the orchestrator copies its `pyproject.toml` and `uv.lock` into the study's
+`env/`, commits them with the record, and builds the venv once under the
+study's gitignored `interim/` (venv and uv cache both live there, which is
+also the only place the `workspace-write` sandbox lets them go). A clone of
+the study therefore rebuilds the exact environment even after a later
+release replaces the template, and a study that needs another package adds
+it to its own lane. The validator refuses a PASS without the study's
+`env/uv.lock`. Budget about 1 GB per live study for the venv and cache,
+deleted at close-out: the sandbox keeps studies from sharing a uv cache. The
 jacobian escalation lane is **pinned** (`jacobian@0.12.0`) and is no preset
 row: it mounts at runtime. When a claim needs it, the orchestrator calls
 `rq_escalate` without asking, into itself or into a teammate it names, and

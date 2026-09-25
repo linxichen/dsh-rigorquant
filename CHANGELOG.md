@@ -82,6 +82,18 @@ back on in General Settings. An operator who booted 0.1.7 first re-runs
   the harness saves later lands between the markers (seen live on rc.2:
   dismissing the first-run notice saved `ui-settings-general` there), and
   removing the whole span deleted it.
+- **Each study carries its own compute lane** (issue #36, amending Decision
+  21). Step 2 copies the shipped lane's `pyproject.toml` + `uv.lock` into the
+  study's tracked `env/` and records `env_lane: "env"`; the venv and uv cache
+  live under `interim/` (`UV_PROJECT_ENVIRONMENT`, `UV_CACHE_DIR`), built once
+  by the orchestrator, and teammates run `uv run --frozen --offline --project
+  env`. Extra packages go into the study's lane (`uv add --project env`).
+  `$DSH_HOME/share/rigorquant/env` is only the template. The rc.2
+  `workspace-write` sandbox refused a venv in the shared lane (seen live), and
+  a release replacing the shared lockfile left older studies unreproducible.
+  `rq_check.py` refuses a PASS without `env/pyproject.toml` and `env/uv.lock`,
+  or whose `env_lane` is not the study's own `env/` (`evidence.lane`, rule R8).
+  A study already in flight adopts the lane by copying those two files.
 - **Both READMEs describe installing and running on rc.2** (issue #32): the
   operator sequence, Coding Tools as the picker's gate, 0.5.0 as the last
   release for the 0.1.6 alpha, finishing or archiving studies first,
