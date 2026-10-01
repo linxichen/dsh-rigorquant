@@ -90,8 +90,18 @@ const choiceSchema = z.object({
   reasoningEffort: z.string(),
 })
 
-/** Every per-role route field, `<role>Primary` and `<role>Fallback`. */
+/** Every per-role route field, `<role>Primary` and `<role>Fallback`. The ONE
+ *  list of route fields: `Config` is built from it and the probes read it back
+ *  through the module, so a route cannot exist in one place and not the
+ *  other. */
 const ROUTE_KEYS = ROLES.flatMap((role) => [`${role}Primary`, `${role}Fallback`])
+
+/** The role and the slot a route field name carries. The suffix is fixed, so
+ *  the split cannot be ambiguous (`lit-adversaryPrimary` gets `lit-adversary`). */
+function routeOf(key) {
+  const [, role, slot] = /^(.*)(Primary|Fallback)$/.exec(key)
+  return { role, slot }
+}
 
 // Decision 16's shipped routes. `deepseek-flash` is DeepSeek-V41-Flash
 // (efforts off|low|high|max), the flash tier the default catalog lists.
@@ -109,7 +119,15 @@ const SHIPPED = Object.freeze({
   adversaryFallback: DEFAULT_FALLBACK,
 })
 
-/** The human name of every role, for text a person reads. */
+/** The human name of every role, for text a person reads.
+ *
+ *  The card's locale copy is a second, richer rendering of these names
+ *  ("Explorer (method track)"); the two surfaces must not name one model route
+ *  differently, so `test_repo_consistency.py` pins each label here as the
+ *  leading name of the card's `role.<role>` string. "Root orchestrator" keeps
+ *  the card's wording deliberately: CONTEXT.md avoids "root" as a NAME for the
+ *  orchestrator in prose, but this is the label of the harness's `root` role
+ *  on a settings page, and it must read the same in both places. */
 const ROLE_LABELS = Object.freeze({
   root: 'Root orchestrator',
   explorer: 'Explorer',
@@ -148,10 +166,10 @@ function routeDescription(role, slot) {
 const Config = z.object({
   presetId: z.string().default('rigorquant'),
   degradeTtlMs: z.number().default(600000),
-  ...Object.fromEntries(ROLES.flatMap((role) => ['Primary', 'Fallback'].map((slot) => [
-    `${role}${slot}`,
-    choiceSchema.description(routeDescription(role, slot)).default(void 0).volatile(),
-  ]))),
+  ...Object.fromEntries(ROUTE_KEYS.map((key) => {
+    const { role, slot } = routeOf(key)
+    return [key, choiceSchema.description(routeDescription(role, slot)).default(void 0).volatile()]
+  })),
 })
 
 function isRecord(value) {

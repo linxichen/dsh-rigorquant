@@ -99,23 +99,34 @@ def test_install_script_installs_everything_the_runtime_needs():
 
 
 def test_native_agent_options_floor_is_declared_and_enforced():
-    """The mount-time floor cannot be installed into an older DSH.
+    """The mount-time RANGE cannot be installed outside, at either end.
 
     Decision 25 (carried forward by Decision 26): the preset is a declared
     `@deepseek-ai/dsh-agent-preset` row, the routes are `.volatile()` profile
     config, the card edits them through `configForms`, and the unattended
     intake ask uses the timed `ask_user_question` mode -- none of which exists
-    before 0.2.0-rc.2.
+    before 0.2.0-rc.2. The ceiling is not decoration: on a newer core the loader
+    SKIPS this bundle, so a profile would boot with no RigorQuant and no error,
+    which is the same silent failure the floor prevents.
 
-    One floor, stated in several places: a reader who finds an older number
-    in any of them learns the wrong minimum. The bundle install path
-    (`dsh plugin add`) is gated by `peerDependencies` instead
-    (test_the_package_requires_the_rc2_harness_line).
+    The range is stated in several places: a reader who finds a different number
+    in any of them learns the wrong contract. `install.sh` enforces both bounds
+    and the manifest's `peerDependencies` carries the same pair; this test ties
+    the two together so neither can move alone.
     """
     floor = "0.2.0-rc.2"
+    ceiling = "0.2.1"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
+    assert "MAX_DSH_VERSION=\"%s\"" % ceiling in install
     assert "version_at_least" in install
+    # Both bounds are actually consulted, not merely declared.
+    assert install.count("version_at_least \"$actual\"") == 2, (
+        "install.sh declares a two-sided range but compares only one side")
+    pkg = json.loads((REPO / "package.json").read_text())
+    assert pkg["peerDependencies"]["@deepseek-ai/dsh"] == ">=%s <%s" % (floor, ceiling), (
+        "install.sh enforces [%s, %s) while the manifest declares %s"
+        % (floor, ceiling, pkg["peerDependencies"]["@deepseek-ai/dsh"]))
     stale = "0.1.5-alpha.2"
     for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
         text = path.read_text()
@@ -162,7 +173,7 @@ def _stub_dsh_env(tmp_path, version=FLOOR):
     Returns (env, dsh_home); dsh_home does not exist yet.
     """
     fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
+    fake_bin.mkdir(parents=True)
     fake_dsh = fake_bin / "dsh"
     fake_dsh.write_text(
         "#!/bin/sh\n"
@@ -196,19 +207,45 @@ def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
     assert not dsh_home.exists(), "the old runtime guard must run before copying"
 
 
-def test_installer_accepts_the_minimum_dsh_version(tmp_path):
-    """The prerelease floor itself is supported, not merely later stable tags."""
-    env, dsh_home = _stub_dsh_env(tmp_path)
-    result = subprocess.run(
-        [str(REPO / "install.sh"), "--profile", "upgrade-test"],
-        cwd=REPO,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert "Installed compute lane" in result.stdout
-    assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file()
+def test_installer_accepts_every_version_inside_the_range(tmp_path):
+    """The whole supported range installs, floor and stable release alike."""
+    for version in (FLOOR, "0.2.0"):
+        env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
+        result = subprocess.run(
+            [str(REPO / "install.sh"), "--profile", "upgrade-test"],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (version, result.stdout, result.stderr)
+        assert "Installed compute lane" in result.stdout, version
+        assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file(), version
+
+
+def test_installer_rejects_a_dsh_above_the_supported_range(tmp_path):
+    """A newer core is the same silent failure as an older one.
+
+    The loader skips a bundle whose peer range the running core does not
+    satisfy, so a full install onto 0.2.1+ would land the lane and enable the
+    Team bundle while the plugin itself mounted nowhere. The guard therefore
+    checks the ceiling too, before copying anything.
+    """
+    for version in ("0.2.1", "0.3.0"):
+        env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
+        result = subprocess.run(
+            [str(REPO / "install.sh"), "--profile", "upgrade-test"],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 2, (version, result.stdout, result.stderr)
+        assert "requires dsh >= %s" % FLOOR in result.stderr, version
+        assert "< 0.2.1" in result.stderr, (
+            "the refusal must name the ceiling it enforced: %s" % result.stderr)
+        assert not dsh_home.exists(), (
+            "the range guard must run before copying (%s)" % version)
 
 
 # ── the Agent Teams bundle: enabling, the cap override, uninstall ──────────
@@ -642,6 +679,48 @@ def test_the_router_config_holds_up_against_the_real_schemastery():
     # there would never render and would misstate what the native page shows.
     assert "presetId" not in verdict["descriptions"] or \
         verdict["descriptions"]["presetId"] is None
+
+
+def test_the_router_and_the_card_name_the_same_roles_and_slots():
+    """Two surfaces describe one model route, so they cannot name it differently.
+
+    `dsh/index.js` carries `ROLE_LABELS` for the settings page the harness
+    generates; `dsh/client.js` carries the card's locale copy and its two slot
+    names. The browser half cannot import a Node module, so the agreement is
+    pinned here rather than shared: every router label is the leading name of
+    the card's `role.<role>` string, both know the same role set, and the card's
+    slot vocabulary is the one the route fields are built from.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to validate the router schema")
+    out = subprocess.run([node, str(ROUTER_SCHEMA_PROBE)], cwd=REPO,
+                         capture_output=True, text=True)
+    require_harness(out)
+    assert out.returncode == 0, "%s\n%s" % (out.stdout, out.stderr)
+    verdict = json.loads(out.stdout)
+
+    client = (REPO / "dsh" / "client.js").read_text()
+    # The card ships two dictionaries; the router's labels are English, so the
+    # comparison is against the `en` copy (the `zh` one is a translation, not a
+    # second vocabulary).
+    english = client[client.index("  en: {"):client.index("  zh: {")]
+    card = dict(re.findall(r"'role\.([\w-]+)': '([^']+)'", english))
+    labels = verdict["roleLabels"]
+    assert set(card) == set(labels), (
+        "the card and the router disagree about which roles exist: %s vs %s"
+        % (sorted(card), sorted(labels)))
+    for role, label in labels.items():
+        assert card[role].startswith(label), (
+            "the card calls %s %r while the router's settings page calls it %r"
+            % (role, card[role], label))
+
+    slots = re.search(r"const SLOTS = \[([^\]]+)\]", client)
+    assert slots, "the card no longer declares its slots"
+    card_slots = [slot.strip().strip("'") for slot in slots.group(1).split(",")]
+    assert sorted(card_slots) == verdict["slots"], (
+        "the card's slot names %s are not the route fields' %s"
+        % (card_slots, verdict["slots"]))
 
 
 def _persona_prefix():

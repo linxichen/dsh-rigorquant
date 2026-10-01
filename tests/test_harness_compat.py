@@ -17,9 +17,11 @@ against, or when it predates declared presets or cannot be judged (outside the
 package's `>=0.2.0-rc.2 <0.2.1` range or without its own gate), because this
 repository is also developed and packaged without one.
 
-A core the package REFUSES is not "no harness": that refusal is the subject of
-`test_the_probe_refuses_a_harness_outside_the_declared_range`, so the skip
-helper must not swallow it.
+A core the package REFUSES and a machine with no core both leave these tests
+nothing to validate against, so both skip -- on the probes' exit codes (3 = no
+harness, 2 = refused), never on their wording. The refusal itself is the
+subject of `test_the_probe_refuses_a_harness_outside_the_declared_range`, which
+does not use the skip helper.
 """
 
 import json
@@ -82,15 +84,24 @@ def test_the_probe_finds_the_roles_delivery_and_present_rows():
 
 
 def _installed_harness():
-    """The `@deepseek-ai` directory of a real DSH install, or None."""
-    from_env = os.environ.get("RQ_HARNESS_MODULES")
-    if from_env:
-        return Path(from_env)
-    dsh = shutil.which("dsh")
-    if dsh is None:
+    """The `@deepseek-ai` directory the probes resolve, or None.
+
+    Asked of the probes' own locator (tests/harness_locator.cjs), so this side
+    cannot disagree with the JavaScript about which install is in play: the
+    environment variable, the `dsh` on PATH and the module-path fallback are
+    all resolved in that one place.
+    """
+    node = shutil.which("node")
+    if node is None:
         return None
-    candidate = Path(os.path.realpath(dsh)).parent.parent / "node_modules" / "@deepseek-ai"
-    return candidate if candidate.is_dir() else None
+    locator = REPO / "tests" / "harness_locator.cjs"
+    script = (
+        "const { resolveHarness } = require(%s);"
+        "process.stdout.write(resolveHarness(undefined) ?? '')" % json.dumps(str(locator))
+    )
+    out = subprocess.run([node, "-e", script], cwd=REPO, capture_output=True, text=True)
+    resolved = out.stdout.strip()
+    return Path(resolved) if out.returncode == 0 and resolved else None
 
 
 def _shadow_harness(real_scope, root, version):

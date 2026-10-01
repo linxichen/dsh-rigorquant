@@ -11,9 +11,9 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 ## [0.7.0] - Unreleased
 
 RigorQuant on DSH 0.2.0-rc.2, and on the four native mechanisms that release
-serves: a timed unattended ask, manifest display metadata, declarative manifest
-compatibility, and field descriptions for the settings page the harness
-generates (Decision 26,
+serves: a timed unattended ask, manifest display metadata, field descriptions
+for the settings page the harness generates, and the manifest's own declaration
+of the range it is built for (Decision 26,
 `docs/adr/0003-rigorquant-on-dsh-0.2.0.md`). It requires DSH
 `>=0.2.0-rc.2 <0.2.1` and drops 0.1.7: **0.6.1 is the last release for the
 0.1.7-rc.2 line**, and nothing is backported. The release amends Decisions 20
@@ -46,7 +46,11 @@ could see.
   `peerDependencies` and by `install.sh` (`MIN_DSH_VERSION`), restated under
   `engines.dsh`, stated in both READMEs, and pinned by
   `test_repo_consistency.py`.
-- **The manifest declares its dialect**: `dsh.manifestVersion: 1`.
+- **The manifest declares its dialect**: `dsh.manifestVersion: 1`, beside
+  `engines.dsh` and the enforced `peerDependencies` range. This core enforces
+  neither manifest field yet: they are the contract in machine-readable form,
+  and `install.sh` refuses a core outside the range at EITHER end — a newer
+  core fails to load the bundle exactly as an older one does.
 - **The bundle ships native display metadata**: `locale/en.json` and
   `locale/zh.json` (`meta.title`, `meta.description`) plus `icon.svg`, read by
   the Plugins page, bundle details and the Settings plugin inventory without

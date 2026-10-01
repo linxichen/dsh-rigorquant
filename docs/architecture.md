@@ -867,8 +867,10 @@ Recorded as an ADR: `docs/adr/0003-rigorquant-on-dsh-0.2.0.md`.
 
 **Harness.** From 0.7.0 the harness range is `>=0.2.0-rc.2 <0.2.1`, and the
 **required floor is now `DSH ≥ 0.2.0-rc.2`**, enforced by `peerDependencies`
-and by `install.sh`, restated declaratively under `engines.dsh`, stated in both
-READMEs, and pinned by `test_repo_consistency.py`. This is not cosmetic: the
+and by `install.sh` — which refuses a core at EITHER end of the range, because
+the loader skips an out-of-range bundle at both — restated declaratively under
+`engines.dsh`, stated in both READMEs, and pinned by
+`test_repo_consistency.py`. This is not cosmetic: the
 CLI's compatibility gate reads a bundle's `peerDependencies` *before* it loads
 it, and **skips a bundle the running core does not satisfy**, so on 0.2.0 the
 old range would have mounted the plugin nowhere, silently. 0.6.1 is the last
@@ -896,10 +898,12 @@ otherwise do itself or leaving a native surface bare:
   Settings plugin inventory a title, description and artwork, resolved from the
   manifest before the plugin runs. No host code and no client bundle is
   involved.
-- **Declarative manifest compatibility.** `dsh.manifestVersion: 1` and
-  `engines.dsh` state the manifest dialect and the runtime range next to the
+- **Declarative manifest metadata.** `dsh.manifestVersion: 1` and
+  `engines.dsh` state the manifest dialect and the runtime range beside the
   enforced `peerDependencies`, so a reader learns the contract from the
-  manifest rather than from a crash.
+  manifest rather than from a crash. This core enforces neither field yet:
+  they are documentation with a machine-readable shape, and the range they
+  describe is enforced by `peerDependencies` and by `install.sh`.
 - **Field descriptions for the generated settings page, on the fields that
   page keeps.** `SettingsForms` projects a row's schema through `volatileForm`,
   which keeps only `meta.volatile` subtrees, so the sixteen route fields carry

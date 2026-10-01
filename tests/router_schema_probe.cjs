@@ -14,8 +14,9 @@
 //   node tests/router_schema_probe.cjs [harness-modules-dir]
 //
 // Defaults to `RQ_HARNESS_MODULES`, then the `@deepseek-ai` directory of the
-// `dsh` on PATH. Prints one JSON verdict on stdout. Exit 0 = the verdict is
-// green; exit 1 = a problem; exit 2 = no harness this package supports.
+// `dsh` on PATH. Prints one JSON verdict on stdout. Exit codes are the shared
+// probe contract in ./harness_locator.cjs: 0 = green, 1 = a real problem,
+// 2 = the installed core is refused, 3 = nothing to validate against.
 
 'use strict'
 
@@ -25,12 +26,12 @@ const { pathToFileURL } = require('node:url')
 const { join, resolve } = require('node:path')
 const vm = require('node:vm')
 
-const { REPO, installedCoreVersion, judgeCore, resolveHarness } = require('./harness_locator.cjs')
+const { EXIT_NO_HARNESS, EXIT_PROBLEM, REPO, requireSupportedCore, resolveHarness } = require('./harness_locator.cjs')
 
 const harness = resolveHarness(process.argv[2])
 if (harness === undefined) {
   process.stderr.write('router_schema_probe: cannot locate an installed harness; pass its @deepseek-ai directory\n')
-  process.exit(2)
+  process.exit(EXIT_NO_HARNESS)
 }
 const harnessRequire = createRequire(join(harness, '__probe__.cjs'))
 
@@ -43,10 +44,10 @@ function loadRouter(z) {
   source = source.replace("import z from '@deepseek-ai/schemastery'", 'const z = schemaStub')
   source = source.replace(/^export const /gm, 'const ')
   source = source.replace(/^export \{ ([^}]+) \}$/m, 'module.exports = { $1 }')
-  // ROLES and ROUTE_KEYS are module-local: the plugin's public exports are the
-  // Config and apply(). The probe needs both to know what the route fields ARE,
-  // so it asks the module itself rather than restating the list.
-  source += '\nmodule.exports.ROLES = ROLES\nmodule.exports.ROUTE_KEYS = ROUTE_KEYS\n'
+  // ROUTE_KEYS and ROLE_LABELS are module-local: the plugin's public exports
+  // are the Config and apply(). The probe asks the module for them instead of
+  // restating either list.
+  source += '\nmodule.exports.ROUTE_KEYS = ROUTE_KEYS\nmodule.exports.ROLE_LABELS = ROLE_LABELS\n'
   const module = { exports: {} }
   vm.runInNewContext(source, {
     module, schemaStub: z, console, Date, Error, Map, Math, Object, Promise, RegExp, Set, String,
@@ -55,35 +56,24 @@ function loadRouter(z) {
 }
 
 async function main() {
-  const installedCore = installedCoreVersion(harnessRequire)
-  if (installedCore !== undefined) {
-    const judged = await judgeCore(harnessRequire, installedCore)
-    if (judged.verdict === 'unjudged') {
-      process.stderr.write(`router_schema_probe: cannot judge the installed harness ${installedCore}: ${judged.detail}\n`)
-      process.exit(2)
-    }
-    if (judged.verdict === 'refused') {
-      process.stderr.write(
-        `router_schema_probe: the installed harness ${judged.detail};`
-        + ' validating against it would prove nothing about a supported core\n')
-      process.exit(2)
-    }
-  }
+  const installedCore = await requireSupportedCore(harnessRequire, 'router_schema_probe')
 
   let z
   try {
     z = (await import(pathToFileURL(harnessRequire.resolve('@deepseek-ai/schemastery')).href)).default
   } catch (error) {
     process.stderr.write(`router_schema_probe: the harness ships no usable schemastery: ${String(error?.message ?? error)}\n`)
-    process.exit(2)
+    process.exit(EXIT_NO_HARNESS)
   }
 
-  const { Config, ROLES, ROUTE_KEYS: exportedKeys } = (() => {
-    const mod = loadRouter(z)
-    return { Config: mod.Config, ROLES: mod.ROLES, ROUTE_KEYS: mod.ROUTE_KEYS }
-  })()
+  const { Config, ROUTE_KEYS: moduleRouteKeys, ROLE_LABELS: roleLabels } = loadRouter(z)
 
-  const routeKeys = ROLES.flatMap((role) => [`${role}Primary`, `${role}Fallback`]).sort()
+  // The module's own list is the source of truth for which fields there are;
+  // nothing here rebuilds it from ROLES.
+  const routeKeys = moduleRouteKeys.slice().sort()
+  // The slot vocabulary the module's own route fields use (the card declares
+  // the same two), derived from those fields rather than restated.
+  const slots = [...new Set(routeKeys.map((key) => key.endsWith('Primary') ? 'Primary' : 'Fallback'))]
   const fields = Config.dict ?? {}
   const volatile = Object.entries(fields)
     .filter(([, schema]) => schema?.meta?.volatile === true)
@@ -97,9 +87,6 @@ async function main() {
   const expected = routeKeys.join(', ')
   if (volatile.join(', ') !== expected) {
     problems.push(`the live (meta.volatile) fields are [${volatile.join(', ')}], expected the route fields [${expected}]`)
-  }
-  if (exportedKeys !== undefined && exportedKeys.slice().sort().join(', ') !== expected) {
-    problems.push('the exported ROUTE_KEYS disagree with ROLES')
   }
   for (const key of routeKeys) {
     const description = descriptions[key]
@@ -149,14 +136,16 @@ async function main() {
     harness,
     installedCore,
     routeKeys,
+    slots,
+    roleLabels,
     volatile,
     descriptions,
     problems,
   }, null, 2) + '\n')
-  process.exit(problems.length === 0 ? 0 : 1)
+  process.exit(problems.length === 0 ? 0 : EXIT_PROBLEM)
 }
 
 main().catch((error) => {
   process.stderr.write(`router_schema_probe: ${String(error?.stack ?? error)}\n`)
-  process.exit(2)
+  process.exit(EXIT_PROBLEM)
 })

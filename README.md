@@ -168,7 +168,8 @@ runs team-only on the **Agent Teams** bundle the harness ships as a **Beta**
 card, *Agent Teams* under **Plugins → Official**. Turn it on there yourself,
 or let a full install do it for you (below).
 
-**Upgrading from 0.6.1** is one cutover, done before the first 0.2.0 boot.
+**Upgrading from 0.6.1** — or from any 0.5.x, which the installer still
+migrates (see below) — is one cutover, done before the first 0.2.0 boot.
 First finish or archive the RigorQuant studies in progress: resuming a session
 started on the 0.1.7 harness is not promised. Then:
 
@@ -176,7 +177,7 @@ started on the 0.1.7 harness is not promised. Then:
 2. Install the harness pinned to the release this range was tested on:
 
    ```sh
-   npm i -g @deepseek-ai/dsh@0.2.0-rc.2   # or @deepseek-ai/dsh@next
+   npm i -g @deepseek-ai/dsh@0.2.0-rc.2
    ```
 
    npm `latest` now points at `0.2.0-rc.2` too, so an unqualified install

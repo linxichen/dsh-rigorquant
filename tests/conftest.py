@@ -361,28 +361,31 @@ def tex_available():
 
 # ── harness probes (shared by test_harness_compat and test_repo_consistency) ──
 #
-# Several probes validate the package against an INSTALLED harness and exit 2
-# when there is no core they can judge. These are those exits, with the reason
-# the suite reports. A refused core belongs here: the row and schema probes
-# have nothing to validate against either. The one test whose SUBJECT is the
-# refusal (`test_the_probe_refuses_a_harness_outside_the_declared_range`) pins
-# both answers with a version-shadowed harness and must not use this helper.
-NO_HARNESS_REASONS = (
-    ("cannot locate an installed harness",
-     "no DSH install to validate against"),
-    ("predates @deepseek-ai/dsh-agent-preset",
-     "the installed DSH predates declared presets"),
-    ("is outside the range this package supports",
-     "the installed DSH is outside the range this package supports"),
-    ("cannot judge the installed harness",
-     "the installed DSH cannot be judged by its own compatibility gate"),
-)
+# The probes in tests/ validate the package against an INSTALLED harness. They
+# share an exit contract (tests/harness_locator.cjs): 0 = green, 1 = a real
+# problem, 2 = the installed core is REFUSED, 3 = nothing to validate against.
+# The suite switches on the CODE, never on the probes' wording, so a reworded
+# message cannot silently turn a failure into a skip.
+#
+# Both no-harness exits skip the row and schema tests: 3 (nothing installed)
+# and 2 (a core is installed but this package refuses it — there is still
+# nothing here to validate a row schema against). The refusal itself is pinned
+# by `test_the_probe_refuses_a_harness_outside_the_declared_range`, which
+# shadows the core version and asserts both answers; it does not use this
+# helper.
+EXIT_REFUSED = 2
+EXIT_NO_HARNESS = 3
 
 
 def require_harness(out):
-    """Skip the calling test when a probe had no core it could validate against."""
-    if out.returncode != 2:
+    """Skip the calling test when a probe had nothing to validate against.
+
+    Both no-harness exits skip: code 3 (nothing installed) and code 2 (a core
+    is installed but this package refuses it — there is still nothing here to
+    validate the row schemas against). The decision is made on the CODE; the
+    probe's message is only carried into the skip reason.
+    """
+    if out.returncode not in (EXIT_REFUSED, EXIT_NO_HARNESS):
         return
-    for needle, reason in NO_HARNESS_REASONS:
-        if needle in out.stderr:
-            pytest.skip(reason)
+    lines = [line for line in out.stderr.strip().splitlines() if line.strip()]
+    pytest.skip(lines[-1] if lines else "no DSH core this package supports")

@@ -9,13 +9,17 @@ DSH 0.2.0-rc.2's compatibility gate reads a bundle's `peerDependencies`
 before it loads it and **skips a bundle whose range the running core does not
 satisfy**. RigorQuant 0.6.1 declared `>=0.1.7-rc.2 <0.1.8`, so on 0.2.0 it
 would have mounted nowhere — no preset, no router, no team guard, and no error
-a user could see. From 0.7.0 RigorQuant requires `>=0.2.0-rc.2 <0.2.1`,
-restates that range under the manifest's own `engines.dsh`, and declares
-`dsh.manifestVersion: 1`. 0.6.1 is the last release for the 0.1.7-rc.2 line.
-Alongside the range, the release takes up four mechanisms the core serves
-natively: the timed `ask_user_question`, manifest display metadata, the
-declarative manifest fields, and per-field descriptions for the harness's
-generated settings page. Recorded as Decision 26 in `docs/architecture.md`.
+a user could see. From 0.7.0 RigorQuant requires `>=0.2.0-rc.2 <0.2.1`:
+`peerDependencies` is the enforced range (the loader and `dsh plugin add` read
+it), `install.sh` refuses a core at EITHER end before copying anything, and
+`engines.dsh` plus `dsh.manifestVersion: 1` state the same contract in the
+manifest's own fields — which this core reads for nothing yet, so they are
+documentation, not a fifth mechanism. 0.6.1 is the last release for the
+0.1.7-rc.2 line. Alongside the range, the release takes up four mechanisms the
+core serves natively: the timed `ask_user_question`, manifest display
+metadata, field descriptions for the harness's generated settings page, and
+the declarative manifest dialect. Recorded as Decision 26 in
+`docs/architecture.md`.
 
 ## Why
 

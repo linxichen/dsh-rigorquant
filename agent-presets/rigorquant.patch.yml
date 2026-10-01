@@ -313,7 +313,8 @@
           # later as an `answer_to_pending_question` user message. The timeout is
           # stated rather than inherited so the framework's choice is pinned;
           # the orchestrator passes `timeout: -1` per call only when no further
-          # step is possible without the answer (see the persona and Step 0).
+          # step is possible without the answer (see the persona and Step 1's
+          # study-root resolution).
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
             config:

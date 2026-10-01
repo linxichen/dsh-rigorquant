@@ -5,15 +5,29 @@
 // the installed harness, which core version it is, and whether this package
 // supports that core. Keeping them here means the probes cannot disagree about
 // what "the installed harness" means, and there is exactly one place that
-// calls the harness's own compatibility gate.
+// calls the harness's own compatibility gate — and one place that decides the
+// exit codes the Python tests switch on.
 
 const { readFileSync, existsSync, realpathSync } = require('node:fs')
-const { createRequire } = require('node:module')
 const { pathToFileURL } = require('node:url')
 const { join, resolve, dirname } = require('node:path')
 const { execFileSync } = require('node:child_process')
 
 const REPO = resolve(__dirname, '..')
+
+/**
+ * Exit codes every probe shares. The Python side switches on the CODE, never
+ * on the wording of a message:
+ *   0  the probe's verdict is green
+ *   1  the probe found a real problem
+ *   2  the installed core is REFUSED (a supported core exists and this is not it)
+ *   3  nothing to validate against at all (no harness, no gate, no preset package)
+ * A refusal is not "no harness": one test asserts the refusal, so the two
+ * cases must be distinguishable without reading prose.
+ */
+const EXIT_PROBLEM = 1
+const EXIT_REFUSED = 2
+const EXIT_NO_HARNESS = 3
 
 /** Locate the `@deepseek-ai` directory of the installed DSH. */
 function findHarnessModules() {
@@ -44,6 +58,13 @@ function resolveHarness(argument, env = process.env) {
   return named === undefined || named === '' ? findHarnessModules() : resolve(named)
 }
 
+/** This package's own manifest, read once. */
+let manifest
+function ownManifest() {
+  if (manifest === undefined) manifest = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
+  return manifest
+}
+
 /** The version of the core this harness directory belongs to, or undefined. */
 function installedCoreVersion(harnessRequire) {
   try {
@@ -56,7 +77,7 @@ function installedCoreVersion(harnessRequire) {
 /** The `@deepseek-ai/dsh` range this package declares, read from its manifest. */
 function declaredRange() {
   try {
-    return JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')).peerDependencies['@deepseek-ai/dsh']
+    return ownManifest().peerDependencies['@deepseek-ai/dsh']
   } catch {
     return undefined
   }
@@ -77,7 +98,7 @@ async function judgeCore(harnessRequire, version) {
   } catch (error) {
     return { verdict: 'unjudged', detail: String(error?.message ?? error) }
   }
-  const issue = evaluate(JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')), {}, version)
+  const issue = evaluate(ownManifest(), {}, version)
   if (issue === undefined) return { verdict: 'supported' }
   return {
     verdict: 'refused',
@@ -85,4 +106,41 @@ async function judgeCore(harnessRequire, version) {
   }
 }
 
-module.exports = { REPO, declaredRange, findHarnessModules, installedCoreVersion, judgeCore, resolveHarness }
+/**
+ * The one gate every probe passes before it validates anything: judge the
+ * installed core and exit with the shared code when there is nothing this
+ * package can be validated against.
+ *
+ * @param harnessRequire - resolver anchored at the harness being probed.
+ * @param prefix - the calling probe's diagnostic prefix.
+ * @returns the installed core version, or undefined when the harness has none.
+ */
+async function requireSupportedCore(harnessRequire, prefix) {
+  const version = installedCoreVersion(harnessRequire)
+  if (version === undefined) return undefined
+  const judged = await judgeCore(harnessRequire, version)
+  if (judged.verdict === 'unjudged') {
+    process.stderr.write(`${prefix}: cannot judge the installed harness ${version}: ${judged.detail}\n`)
+    process.exit(EXIT_NO_HARNESS)
+  }
+  if (judged.verdict === 'refused') {
+    process.stderr.write(
+      `${prefix}: the installed harness ${judged.detail};`
+      + ' validating against it would prove nothing about a supported core\n')
+    process.exit(EXIT_REFUSED)
+  }
+  return version
+}
+
+module.exports = {
+  EXIT_NO_HARNESS,
+  EXIT_PROBLEM,
+  EXIT_REFUSED,
+  REPO,
+  declaredRange,
+  findHarnessModules,
+  installedCoreVersion,
+  judgeCore,
+  requireSupportedCore,
+  resolveHarness,
+}

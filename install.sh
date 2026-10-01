@@ -17,6 +17,12 @@ PROFILE="${DSH_PROFILE:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
 MIN_DSH_VERSION="0.2.0-rc.2"
+# EXCLUSIVE ceiling, the other half of the same range. `dsh plugin add` is gated
+# by the manifest's peerDependencies, but a full install has to refuse a core
+# above the range for the same reason it refuses one below it: the loader skips
+# a bundle built for another core, silently. Pinned equal to package.json's
+# range by tests/test_repo_consistency.py.
+MAX_DSH_VERSION="0.2.1"
 # The optional bundle that carries Agent Teams — the harness's Beta "Agent
 # Teams" card on the Plugins page. RigorQuant runs team-only, so a full install
 # enables it and raises the team service's lifetime member cap
@@ -54,7 +60,8 @@ usage() {
   cat <<EOF
 Usage: $0 [--skill-only] [--uninstall] [--profile <name>] [--version] [--help]
 
-  Full install requires DSH >= $MIN_DSH_VERSION; --skill-only does not.
+  Full install requires DSH >= $MIN_DSH_VERSION and < $MAX_DSH_VERSION;
+  --skill-only does not.
 
   (no args)      Install everything: the shared compute lane under
                  \$DSH_HOME/share/rigorquant, and the plugin (the declared
@@ -140,10 +147,25 @@ NODE
 
 require_dsh_version() {
   actual="$DSH_CORE_VERSION"
-  if [ -z "$actual" ] || ! version_at_least "$actual" "$MIN_DSH_VERSION"; then
-    printf 'error: dsh-rigorquant requires dsh >= %s (found %s)\n' \
-      "$MIN_DSH_VERSION" "${actual:-unknown}" >&2
+  if [ -z "$actual" ]; then
+    printf 'error: dsh-rigorquant installs onto dsh >= %s and < %s, and the installed CLI reported no version\n' \
+      "$MIN_DSH_VERSION" "$MAX_DSH_VERSION" >&2
+    exit 2
+  fi
+  # BOTH bounds, because the failure they prevent is the same at each end: the
+  # loader skips a bundle whose peer range the running core does not satisfy,
+  # leaving a profile that boots with no RigorQuant and no error. A core above
+  # the ceiling is as unsupported as one below the floor.
+  if ! version_at_least "$actual" "$MIN_DSH_VERSION"; then
+    printf 'error: dsh-rigorquant requires dsh >= %s and < %s (found %s)\n' \
+      "$MIN_DSH_VERSION" "$MAX_DSH_VERSION" "$actual" >&2
     printf '       upgrade the DSH CLI before installing the full preset.\n' >&2
+    exit 2
+  fi
+  if version_at_least "$actual" "$MAX_DSH_VERSION"; then
+    printf 'error: dsh-rigorquant requires dsh >= %s and < %s (found %s)\n' \
+      "$MIN_DSH_VERSION" "$MAX_DSH_VERSION" "$actual" >&2
+    printf '       this release is not tested on a newer core; install a release that is.\n' >&2
     exit 2
   fi
 }

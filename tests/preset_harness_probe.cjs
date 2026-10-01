@@ -22,7 +22,12 @@
 // paths); `RQ_HARNESS_MODULES` names the harness directory when no argument
 // does. The child list is read from the `@deepseek-ai/dsh-agent-preset`
 // row's `config.plugins`, the declaration itself (Decision 25). The row's own
-// `config` is validated too. Exit code 0 = every enabled row validates.
+// `config` is validated too.
+//
+// Exit codes are the shared probe contract in ./harness_locator.cjs: 0 = every
+// enabled row validates, 1 = a real problem (a row, a missing composition),
+// 2 = the installed core is refused, 3 = nothing to validate against. The
+// Python tests switch on the code, never on this file's wording.
 //
 // Only Node and the installed harness are required; `js-yaml` is resolved from
 // the harness install, so this probe adds no dependency to this repository.
@@ -34,7 +39,10 @@ const { createRequire } = require('node:module')
 const { pathToFileURL } = require('node:url')
 const { join, resolve } = require('node:path')
 
-const { REPO, declaredRange, installedCoreVersion, judgeCore, resolveHarness } = require('./harness_locator.cjs')
+const {
+  EXIT_NO_HARNESS, EXIT_PROBLEM, EXIT_REFUSED,
+  REPO, declaredRange, requireSupportedCore, resolveHarness,
+} = require('./harness_locator.cjs')
 
 // The range this package declares comes from its manifest (`declaredRange`),
 // and the COMPARISON belongs to the harness: `main` runs the harness's own
@@ -52,11 +60,11 @@ const composition = presetArg === undefined
 const harness = resolveHarness(harnessArg)
 if (harness === undefined) {
   process.stderr.write('preset_harness_probe: cannot locate an installed harness; pass its @deepseek-ai directory\n')
-  process.exit(2)
+  process.exit(EXIT_NO_HARNESS)
 }
 if (!existsSync(composition)) {
   process.stderr.write(`preset_harness_probe: no composition at ${composition}\n`)
-  process.exit(2)
+  process.exit(EXIT_PROBLEM)
 }
 
 const harnessRequire = createRequire(join(harness, '__probe__.cjs'))
@@ -66,7 +74,7 @@ try {
   // Declared presets arrived in 0.1.7; an older harness is outside the
   // package's `peerDependencies` range, not a failed row.
   process.stderr.write(`preset_harness_probe: the installed harness predates ${PRESET_PACKAGE}; this package requires dsh ${declaredRange()}\n`)
-  process.exit(2)
+  process.exit(EXIT_NO_HARNESS)
 }
 
 // The running core must be one this package supports. Validating every row
@@ -79,8 +87,6 @@ try {
 // from the harness beyond its own compatibility gate: an out-of-range or
 // half-installed tree is refused with a reason rather than by a stack trace
 // from a missing YAML reader.
-const installedCore = installedCoreVersion(harnessRequire)
-
 /** Parse the composition's declared preset row out of the composition file. */
 function readComposition() {
   const yaml = harnessRequire('js-yaml')
@@ -112,7 +118,7 @@ function readComposition() {
     .filter((row) => row?.name === PRESET_PACKAGE)
   if (declared.length !== 1) {
     process.stderr.write(`preset_harness_probe: expected one ${PRESET_PACKAGE} row in ${composition}, found ${declared.length}\n`)
-    process.exit(2)
+    process.exit(EXIT_PROBLEM)
   }
   return declared[0]
 }
@@ -123,20 +129,7 @@ let skipped = 0
 let rows = []
 
 async function main() {
-if (installedCore !== undefined) {
-  const judged = await judgeCore(harnessRequire, installedCore)
-  if (judged.verdict === 'unjudged') {
-    process.stderr.write(
-      `preset_harness_probe: cannot judge the installed harness ${installedCore}: ${judged.detail}\n`)
-    process.exit(2)
-  }
-  if (judged.verdict === 'refused') {
-    process.stderr.write(
-      `preset_harness_probe: the installed harness ${judged.detail};`
-      + ' validating against it would prove nothing about a supported core\n')
-    process.exit(2)
-  }
-}
+await requireSupportedCore(harnessRequire, 'preset_harness_probe')
 
 const preset = readComposition()
 rows = [{ label: `preset ${preset.config?.id}`, id: preset.id, name: preset.name, disabled: false, config: preset.config ?? {}, group: false }]
@@ -218,9 +211,9 @@ main()
     process.stdout.write(
       `\n${composition}\n${rows.length} rows; ${failed} hard failure(s); ${skipped} without an exported Config\n`,
     )
-    process.exit(failed === 0 ? 0 : 1)
+    process.exit(failed === 0 ? 0 : EXIT_PROBLEM)
   })
   .catch((error) => {
     process.stderr.write(`preset_harness_probe: ${String(error?.stack ?? error)}\n`)
-    process.exit(2)
+    process.exit(EXIT_PROBLEM)
   })

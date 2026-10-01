@@ -100,7 +100,14 @@ relative to the **study root** unless prefixed otherwise.
 2. The repo root contains `studies/*/study.json` → a multi-study repo. Read
    the roster (each study's `slug` from its `study.json`); if the user named
    a study, continue it; otherwise ask ONE question: continue which study, or
-   create a new one (new slug).
+   create a new one (new slug). That ask is timed too, and it needs a fallback
+   because there is no study to work on until it is answered: on `pending`,
+   continue the study whose `study.json` was modified most recently, record in
+   `journal.md` that the choice is provisional and was not confirmed, and get
+   on with the round. The later `answer_to_pending_question` message decides:
+   if it names another study, switch to it explicitly (the previous study's
+   record stays as it was; no silent rewrite), and if it asks for a new slug,
+   create it in Mode B and move nothing.
 3. Neither → a new study. Ask ONE `ask_user_question` (recommended default
    first), then never again:
    - **Mode A — one study per repo:** study root = repo root. Recommended
