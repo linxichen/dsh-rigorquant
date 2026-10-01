@@ -8,7 +8,7 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
-## [0.7.0] - Unreleased
+## [0.7.0] - 2026-10-01
 
 RigorQuant on DSH 0.2.0-rc.2, and on the four native mechanisms that release
 serves: a timed unattended ask, manifest display metadata, field descriptions
@@ -43,7 +43,8 @@ could see.
 
 ### Changed
 - **The harness range is `>=0.2.0-rc.2 <0.2.1`**, enforced by
-  `peerDependencies` and by `install.sh` (`MIN_DSH_VERSION`), restated under
+  `peerDependencies` and by `install.sh`, which refuses a core at EITHER end
+  (`MIN_DSH_VERSION`/`MAX_DSH_VERSION`) before copying anything, restated under
   `engines.dsh`, stated in both READMEs, and pinned by
   `test_repo_consistency.py`.
 - **The manifest declares its dialect**: `dsh.manifestVersion: 1`, beside
