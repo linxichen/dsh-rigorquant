@@ -13,9 +13,13 @@
 // whatever was staged. A write the Host refuses (`set`/`unset` resolving
 // `false`) is a failed save, shown under the form.
 //
-// rc.2's Plugins page generates no form for a row's config (the
+// The Plugins page generates no form for a row's config (the
 // `plugins.row.config` slot renders only what a plugin registers), so without
-// this card the routes could be edited only by hand in the profile patch.
+// this card the routes could be edited only by hand in the profile patch. The
+// harness's Settings page is a DIFFERENT surface: `SettingsForms` generates one
+// from the row's schema (which is why the router's Config describes its route
+// fields), and that page cannot pick from the live model catalog, express
+// "inherit", or clear one role's override — this card's whole job.
 //
 // Shipped in the shell's client-bundle format, because that is what the browser
 // half is REQUIRED to be: the web shell appends this file as a classic

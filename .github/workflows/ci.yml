@@ -18,11 +18,18 @@ jobs:
 
       # The compile gate is not optional: a validator that cannot build the
       # stage-4 artifacts would skip its own strongest check in CI.
+      #
+      # texlive-pictures carries pgf, which `beamer.cls` requires
+      # (pgfmath.sty); base + recommended alone leave the deck uncompilable,
+      # and `--no-install-recommends` means nothing pulls it in for us. A
+      # machine with a full MacTeX hides the omission, which is why every run
+      # before this one failed with a missing pgfmath.sty.
       - name: Install a TeX engine
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
+            texlive-latex-base texlive-latex-recommended texlive-fonts-recommended \
+            texlive-pictures
 
       - name: Sync the pinned compute lane
         run: uv sync --frozen --project env

@@ -37,7 +37,8 @@ SERVICE_PROVIDERS = {
     # Sub-namespaces are gated: Cordis throws without an explicit inject entry.
     "remote.session": "@deepseek-ai/dsh-api-session-controller",
     "remote.settings": "@deepseek-ai/dsh-api-remotes",
-    # `configForms` replaced the settings scope service on DSH 0.1.7.
+    # `configForms` replaced the settings scope service on DSH 0.1.7 and is
+    # still the settings seam on 0.2.0.
     "configForms": "@deepseek-ai/dsh-client-ui-settings",
 }
 # The card registers into the Plugins page's `plugins.bundle.config` ring,

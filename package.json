@@ -1,7 +1,8 @@
 {
   "name": "dsh-rigorquant",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "RigorQuant for DeepSeek Harness: session-scoped unattended, context-isolated multi-agent research for empirical/computational mathematics with a four-part pre-implementation check battery and a jacobian/Lean escalation lane.",
+  "icon": "./icon.svg",
   "license": "MIT",
   "bin": {
     "dsh-rigorquant": "./install.sh"
@@ -25,7 +26,9 @@
     "docs/",
     "dsh/",
     "env/",
+    "icon.svg",
     "install.sh",
+    "locale/",
     "mcp/",
     "tests/"
   ],
@@ -34,9 +37,11 @@
     "./client": "./dsh/client.js",
     "./sync": "./dsh/sync.js",
     "./team": "./dsh/team.js",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {
+    "manifestVersion": 1,
     "bundle": {
       "patch": [
         "./cordis.patch.yml",
@@ -59,7 +64,10 @@
   "dependencies": {
     "@deepseek-ai/schemastery": "*"
   },
+  "engines": {
+    "dsh": ">=0.2.0-rc.2 <0.2.1"
+  },
   "peerDependencies": {
-    "@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.1.8"
+    "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.2.1"
   }
 }

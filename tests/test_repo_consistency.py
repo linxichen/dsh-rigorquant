@@ -14,10 +14,12 @@ import subprocess
 
 import pytest
 
-from conftest import PRESET_PATCH, REPO, SKILL_DIR, composition_rows, is_disabled, preset_children, top_level_rows
+from conftest import (PRESET_PATCH, REPO, SKILL_DIR, composition_rows, is_disabled,
+                      preset_children, require_harness, top_level_rows)
 
 SKILL_SCRIPTS = ("rq_check.py", "provision-lean.sh")
 ROUTER_PROBE = REPO / "tests/router_probe.cjs"
+ROUTER_SCHEMA_PROBE = REPO / "tests/router_schema_probe.cjs"
 
 
 def tracked_files():
@@ -97,21 +99,34 @@ def test_install_script_installs_everything_the_runtime_needs():
 
 
 def test_native_agent_options_floor_is_declared_and_enforced():
-    """The mount-time floor cannot be installed into an older DSH.
+    """The mount-time RANGE cannot be installed outside, at either end.
 
-    Decision 25: the preset is a declared `@deepseek-ai/dsh-agent-preset`
-    row, the routes are `.volatile()` profile config, and the card edits them
-    through `configForms` -- none of which exists before 0.1.7-rc.2.
+    Decision 25 (carried forward by Decision 26): the preset is a declared
+    `@deepseek-ai/dsh-agent-preset` row, the routes are `.volatile()` profile
+    config, the card edits them through `configForms`, and the unattended
+    intake ask uses the timed `ask_user_question` mode -- none of which exists
+    before 0.2.0-rc.2. The ceiling is not decoration: on a newer core the loader
+    SKIPS this bundle, so a profile would boot with no RigorQuant and no error,
+    which is the same silent failure the floor prevents.
 
-    One floor, stated in several places: a reader who finds an older number
-    in any of them learns the wrong minimum. The bundle install path
-    (`dsh plugin add`) is gated by `peerDependencies` instead
-    (test_the_package_requires_the_rc2_harness_line).
+    The range is stated in several places: a reader who finds a different number
+    in any of them learns the wrong contract. `install.sh` enforces both bounds
+    and the manifest's `peerDependencies` carries the same pair; this test ties
+    the two together so neither can move alone.
     """
-    floor = "0.1.7-rc.2"
+    floor = "0.2.0-rc.2"
+    ceiling = "0.2.1"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
+    assert "MAX_DSH_VERSION=\"%s\"" % ceiling in install
     assert "version_at_least" in install
+    # Both bounds are actually consulted, not merely declared.
+    assert install.count("version_at_least \"$actual\"") == 2, (
+        "install.sh declares a two-sided range but compares only one side")
+    pkg = json.loads((REPO / "package.json").read_text())
+    assert pkg["peerDependencies"]["@deepseek-ai/dsh"] == ">=%s <%s" % (floor, ceiling), (
+        "install.sh enforces [%s, %s) while the manifest declares %s"
+        % (floor, ceiling, pkg["peerDependencies"]["@deepseek-ai/dsh"]))
     stale = "0.1.5-alpha.2"
     for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
         text = path.read_text()
@@ -146,7 +161,7 @@ def test_preset_persona_row_uses_the_prefix_suffix_split():
     assert "const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'" in team
 
 
-FLOOR = "0.1.7-rc.2"
+FLOOR = "0.2.0-rc.2"
 
 
 def _stub_dsh_env(tmp_path, version=FLOOR):
@@ -158,7 +173,7 @@ def _stub_dsh_env(tmp_path, version=FLOOR):
     Returns (env, dsh_home); dsh_home does not exist yet.
     """
     fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
+    fake_bin.mkdir(parents=True)
     fake_dsh = fake_bin / "dsh"
     fake_dsh.write_text(
         "#!/bin/sh\n"
@@ -179,7 +194,7 @@ def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
     to reject the nearest harness this release cannot run on, not merely some
     ancient tag.
     """
-    env, dsh_home = _stub_dsh_env(tmp_path, version="0.1.7-rc.1")
+    env, dsh_home = _stub_dsh_env(tmp_path, version="0.2.0-rc.1")
     result = subprocess.run(
         [str(REPO / "install.sh"), "--profile", "upgrade-test"],
         cwd=REPO,
@@ -192,25 +207,52 @@ def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
     assert not dsh_home.exists(), "the old runtime guard must run before copying"
 
 
-def test_installer_accepts_the_minimum_dsh_version(tmp_path):
-    """The prerelease floor itself is supported, not merely later stable tags."""
-    env, dsh_home = _stub_dsh_env(tmp_path)
-    result = subprocess.run(
-        [str(REPO / "install.sh"), "--profile", "upgrade-test"],
-        cwd=REPO,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert "Installed compute lane" in result.stdout
-    assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file()
+def test_installer_accepts_every_version_inside_the_range(tmp_path):
+    """The whole supported range installs, floor and stable release alike."""
+    for version in (FLOOR, "0.2.0"):
+        env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
+        result = subprocess.run(
+            [str(REPO / "install.sh"), "--profile", "upgrade-test"],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (version, result.stdout, result.stderr)
+        assert "Installed compute lane" in result.stdout, version
+        assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file(), version
+
+
+def test_installer_rejects_a_dsh_above_the_supported_range(tmp_path):
+    """A newer core is the same silent failure as an older one.
+
+    The loader skips a bundle whose peer range the running core does not
+    satisfy, so a full install onto 0.2.1+ would land the lane and enable the
+    Team bundle while the plugin itself mounted nowhere. The guard therefore
+    checks the ceiling too, before copying anything.
+    """
+    for version in ("0.2.1", "0.3.0"):
+        env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
+        result = subprocess.run(
+            [str(REPO / "install.sh"), "--profile", "upgrade-test"],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 2, (version, result.stdout, result.stderr)
+        assert "requires dsh >= %s" % FLOOR in result.stderr, version
+        assert "< 0.2.1" in result.stderr, (
+            "the refusal must name the ceiling it enforced: %s" % result.stderr)
+        assert not dsh_home.exists(), (
+            "the range guard must run before copying (%s)" % version)
 
 
 # ── the Agent Teams bundle: enabling, the cap override, uninstall ──────────
 #
 # RigorQuant runs team-only, so install.sh enables the one Agent Teams bundle
-# DSH 0.1.7 ships (the Beta "Agent Teams" card) and raises the team service's
+# DSH 0.1.7 and later ship (the Beta "Agent Teams" card) and raises the team
+# service's
 # lifetime member cap under a marker in the profile's user patch (Decisions
 # 24 and 25, docs/adr/0001-rigorquant-on-agent-teams.md); the full
 # enable/idempotent/uninstall/no-dsh coverage lives in
@@ -521,11 +563,164 @@ def test_the_package_requires_the_rc2_harness_line():
     """The bundle refuses harness versions outside the tested line.
 
     The compatibility gate matches `peerDependencies` with
-    `includePrerelease`, so the rc floor itself satisfies the range and 0.1.8
-    does not.
+    `includePrerelease`, so the rc floor itself satisfies the range and 0.2.1
+    does not. The same range is restated declaratively under `engines.dsh`,
+    the manifest's own (not-yet-enforced) compatibility field.
     """
     pkg = json.loads((REPO / "package.json").read_text())
-    assert pkg["peerDependencies"] == {"@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.1.8"}
+    assert pkg["peerDependencies"] == {"@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.2.1"}
+    assert pkg["engines"] == {"dsh": ">=0.2.0-rc.2 <0.2.1"}
+
+
+def test_the_manifest_declares_its_format_version():
+    """`dsh.manifestVersion` is the manifest format's own axis.
+
+    It is independent of the npm package version and the Session format
+    version, and it is the one field a future reader uses to tell which
+    manifest dialect it is reading.
+    """
+    pkg = json.loads((REPO / "package.json").read_text())
+    assert pkg["dsh"]["manifestVersion"] == 1
+
+
+def test_the_bundle_carries_native_display_metadata():
+    """The Plugins page reads title, description and icon without activating.
+
+    `dsh` resolves `<package>/locale/en.json` (and other locales) plus the
+    manifest's top-level `icon`, so a bundle card and the Settings plugin
+    inventory show the product name, a one-line description and artwork
+    instead of falling back to the npm name and the panel's default art. The
+    locale document's `meta` object is the shipped shape; the icon is an SVG
+    contained in the package root and named by `icon`.
+    """
+    pkg = json.loads((REPO / "package.json").read_text())
+    assert pkg["icon"] == "./icon.svg"
+    assert (REPO / "icon.svg").is_file()
+    assert (REPO / "icon.svg").stat().st_size <= 256 * 1024
+    # The icon needs no export: the reader resolves it as a path relative to
+    # the manifest. The locale documents DO: they resolve as modules.
+    export = "./locale/*.json"
+    assert pkg["exports"][export] == export, (
+        "the locale documents are not reachable through the package exports")
+    assert "locale/" in pkg["files"]
+    assert "./icon.svg" not in pkg["exports"], (
+        "the icon is read from the manifest's directory, not through exports")
+    locales = {}
+    for name in ("en.json", "zh.json"):
+        locales[name] = json.loads((REPO / "locale" / name).read_text())["meta"]
+        for field in ("title", "description"):
+            assert isinstance(locales[name][field], str) and locales[name][field] != "", (
+                "%s has no %s" % (name, field))
+    assert locales["en.json"] != locales["zh.json"], (
+        "the two locale documents are identical: a copy is not a translation")
+    assert re.search(r"[\u4e00-\u9fff]", locales["zh.json"]["description"]), (
+        "locale/zh.json carries no Chinese text")
+    assert locales["en.json"]["title"] == locales["zh.json"]["title"], (
+        "the product name must read the same in every locale")
+
+
+def test_the_preset_asks_the_user_in_the_harnesss_timed_mode():
+    """DSH 0.2.0 grew `timed` mode on `ask_user_question`.
+
+    A RigorQuant study runs unattended, so an unanswered question must return
+    `pending` instead of parking the round: the row states the mode and the
+    wait explicitly, the persona teaches the pending contract, and the skill
+    names what happens at intake and at the escalation gate.
+    """
+    rows = dict(composition_rows(preset_children()))
+    rows.update(top_level_rows(preset_children()))
+    body = rows["tool-ask-user"]
+    assert "name: '@deepseek-ai/dsh-tool-ask-user'" in body
+    assert re.search(r"^\s+mode: timed\s*$", body, re.MULTILINE), (
+        "the ask-user row does not select the harness's timed mode")
+    pin = re.search(r"^\s+timeout: (\d+)\s*$", body, re.MULTILINE)
+    assert pin, "the ask-user row does not pin the wait"
+    prefix = _persona_prefix()
+    for phrase in ("timed mode", "pending", "answer_to_pending_question",
+                   "timeout: -1"):
+        assert phrase in prefix, "the persona omits %r" % phrase
+    skill = (SKILL_DIR / "SKILL.md").read_text()
+    assert "`mode: timed`" in skill and "answer_to_pending_question" in skill
+    # The wait is one number in two places. A test that accepted any digits
+    # would let a preset edit leave the skill stating a wait nobody uses.
+    assert "`timeout: %s`" % pin.group(1) in skill, (
+        "SKILL.md states a different wait than the preset row's timeout: %s"
+        % pin.group(1))
+    assert "provisional" in skill, (
+        "the intake fallback on a pending answer is not recorded as provisional")
+
+
+def test_the_router_config_holds_up_against_the_real_schemastery():
+    """The generated settings page is only as good as the real builder says.
+
+    `SettingsForms.volatileForm` keeps ONLY `meta.volatile` subtrees and
+    renders each kept field's `meta.description`, so the router row's live
+    fields — and the text beside them — are a schema property, not a source
+    string. `router_probe.cjs` deliberately stubs the builder to test routing,
+    which means it cannot see `.description()` disturbing `.volatile()`, a lost
+    default, or a field that stopped being a cell. This probe loads the
+    harness's own schemastery and checks exactly those, then the string half
+    below pins what a person reads: no description on a field the form drops,
+    and one description per ROUTE field naming its role and slot.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to validate the router schema")
+    out = subprocess.run([node, str(ROUTER_SCHEMA_PROBE)], cwd=REPO,
+                         capture_output=True, text=True)
+    require_harness(out)
+    assert out.returncode == 0, "%s\n%s" % (out.stdout, out.stderr)
+    verdict = json.loads(out.stdout)
+    assert verdict["ok"] is True and verdict["problems"] == [], verdict["problems"]
+    assert len(verdict["volatile"]) == 16
+    for key in verdict["volatile"]:
+        assert verdict["descriptions"][key], "%s renders bare" % key
+    # The two fields `volatileForm` drops must not claim a description: text
+    # there would never render and would misstate what the native page shows.
+    assert "presetId" not in verdict["descriptions"] or \
+        verdict["descriptions"]["presetId"] is None
+
+
+def test_the_router_and_the_card_name_the_same_roles_and_slots():
+    """Two surfaces describe one model route, so they cannot name it differently.
+
+    `dsh/index.js` carries `ROLE_LABELS` for the settings page the harness
+    generates; `dsh/client.js` carries the card's locale copy and its two slot
+    names. The browser half cannot import a Node module, so the agreement is
+    pinned here rather than shared: every router label is the leading name of
+    the card's `role.<role>` string, both know the same role set, and the card's
+    slot vocabulary is the one the route fields are built from.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to validate the router schema")
+    out = subprocess.run([node, str(ROUTER_SCHEMA_PROBE)], cwd=REPO,
+                         capture_output=True, text=True)
+    require_harness(out)
+    assert out.returncode == 0, "%s\n%s" % (out.stdout, out.stderr)
+    verdict = json.loads(out.stdout)
+
+    client = (REPO / "dsh" / "client.js").read_text()
+    # The card ships two dictionaries; the router's labels are English, so the
+    # comparison is against the `en` copy (the `zh` one is a translation, not a
+    # second vocabulary).
+    english = client[client.index("  en: {"):client.index("  zh: {")]
+    card = dict(re.findall(r"'role\.([\w-]+)': '([^']+)'", english))
+    labels = verdict["roleLabels"]
+    assert set(card) == set(labels), (
+        "the card and the router disagree about which roles exist: %s vs %s"
+        % (sorted(card), sorted(labels)))
+    for role, label in labels.items():
+        assert card[role].startswith(label), (
+            "the card calls %s %r while the router's settings page calls it %r"
+            % (role, card[role], label))
+
+    slots = re.search(r"const SLOTS = \[([^\]]+)\]", client)
+    assert slots, "the card no longer declares its slots"
+    card_slots = [slot.strip().strip("'") for slot in slots.group(1).split(",")]
+    assert sorted(card_slots) == verdict["slots"], (
+        "the card's slot names %s are not the route fields' %s"
+        % (card_slots, verdict["slots"]))
 
 
 def _persona_prefix():
@@ -782,21 +977,21 @@ def test_both_readmes_install_sections_carry_the_beta_toggle_and_the_cap():
     for name, heading, words in (
         ("README.md", "Install", ("Beta", "Official", "cordis.patch.yml",
                                   "member cap to 64", "experimental",
-                                  "0.1.7-rc.2")),
+                                  "0.2.0-rc.2")),
         ("README.zh-CN.md", "安装", ("Beta", "官方", "cordis.patch.yml",
-                                    "提高到 64", "实验性", "0.1.7-rc.2")),
+                                    "提高到 64", "实验性", "0.2.0-rc.2")),
     ):
         _pin_section_words(name, heading, words)
 
 
-def test_both_readmes_carry_the_0_1_7_operator_facts():
-    """Issue #32: what an operator moving to DSH 0.1.7-rc.2 has to know.
+def test_both_readmes_carry_the_0_2_0_operator_facts():
+    """Issue #32's facts, moved to DSH 0.2.0-rc.2.
 
     The upgrade is one cutover, so the Install section carries the operator
-    sequence (the CLI pinned to rc.2 -- npm `latest` is 0.1.5-rc.3, so an
-    unqualified `npm i -g` installs a harness this release refuses), Coding
-    Tools as the picker's gate, 0.5.0 as the last release for the 0.1.6
-    alpha, and finishing or archiving studies first. Routing says an
+    sequence (the CLI pinned to rc.2; npm `latest` now points at the same
+    core, so the pin is reproducibility rather than a workaround), Coding
+    Tools as the picker's gate, 0.6.1 as the last release for the 0.1.7
+    harness, and finishing or archiving studies first. Routing says an
     account-only sign-in routes to `deepseek-account` on account quota; the
     team section says the roster's model column is the selection, not the
     route; the deployment notes say scheduled tasks are neither used nor
@@ -804,16 +999,16 @@ def test_both_readmes_carry_the_0_1_7_operator_facts():
     """
     for name, pins in (
         ("README.md", (
-            ("Install", ("stop dsh", "npm i -g @deepseek-ai/dsh@0.1.7-rc.2", "npm `latest`",
-                         "./install.sh", "Coding Tools", "0.5.0", "last release",
+            ("Install", ("stop dsh", "npm i -g @deepseek-ai/dsh@0.2.0-rc.2", "npm `latest`",
+                         "./install.sh", "Coding Tools", "0.6.1", "last release",
                          "finish or archive")),
             ("Role-routed models", ("deepseek-account", "account quota")),
             ("Deployment notes", ("scheduled tasks",)),
             ("Compute lane", ("rq_escalate", "at runtime")),
         )),
         ("README.zh-CN.md", (
-            ("安装", ("停止 dsh", "npm i -g @deepseek-ai/dsh@0.1.7-rc.2", "npm 的 `latest`",
-                      "./install.sh", "代码工作工具", "0.5.0", "最后一个版本", "完成或归档")),
+            ("安装", ("停止 dsh", "npm i -g @deepseek-ai/dsh@0.2.0-rc.2", "npm 的 `latest`",
+                      "./install.sh", "代码工作工具", "0.6.1", "最后一个版本", "完成或归档")),
             ("角色模型路由", ("deepseek-account", "账号额度")),
             ("部署须知", ("定时任务",)),
             ("计算通道", ("rq_escalate", "运行时")),
@@ -970,7 +1165,10 @@ def test_router_routes_live_on_its_own_volatile_config():
     for gone in ("settings.register", "rigorquant-models", "settings.get(",
                  "SettingsSchema", "const NS"):
         assert gone not in router, "dsh/index.js still names %r" % gone
-    assert "choiceSchema.default(void 0).volatile()" in router
+    assert ".default(void 0).volatile()" in router, (
+        "a route field stopped being volatile")
+    assert "routeDescription(role, slot)" in router, (
+        "the route fields lost the per-field description the generated page renders")
     assert "ROUTE_KEYS = ROLES.flatMap((role) => [`${role}Primary`, `${role}Fallback`])" in router
 
 
@@ -1009,10 +1207,11 @@ def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
             f"{role}.md must state its own role name up front")
 
 
-# One line, verbatim in every persona (issue #29). On rc.2, `spawn_teammate`
-# prefixes each teammate's first prompt with a reminder to call `list_agents`
-# and message other teammates (`tool-agent-team/src/index.ts:196-203` at
-# `dsh-v0.1.7-rc.2`), and rq-team's guard refuses both.
+# One line, verbatim in every persona (issue #29). The harness prefixes each
+# teammate's first prompt with a reminder to call `list_agents` and message
+# other teammates (`tool-agent-team/src/index.ts:196-203` at
+# `dsh-v0.1.7-rc.2`; the Agent Teams packages are byte-identical on
+# 0.2.0-rc.2), and rq-team's guard refuses both.
 TEAM_REMINDER_LINE = (
     "The harness's team reminder does not apply to you: you are roster-blind "
     "and message only `lead`, so never call `list_agents` or message another "
@@ -1231,7 +1430,7 @@ def test_npm_ignore_excludes_python_bytecode():
         assert "__pycache__" in text and "*.pyc" in text
 
 
-def test_the_npm_package_ships_no_untracked_doc():
+def test_the_npm_package_ships_no_untracked_doc(tmp_path):
     """package.json whitelists docs/, so npm packs whatever sits there.
 
     0.6.0 went to npm with an untracked point-in-time upgrade study that
@@ -1243,7 +1442,11 @@ def test_the_npm_package_ships_no_untracked_doc():
     npm = shutil.which("npm")
     if npm is None:
         pytest.skip("npm is required to list the packed files")
-    out = subprocess.run([npm, "pack", "--dry-run", "--json", "--ignore-scripts"],
+    # A dry-run pack needs no registry, so it gets its own cache: the user's
+    # npm cache is user state (a root-owned one fails with EPERM and would
+    # report a package defect that does not exist).
+    out = subprocess.run([npm, "pack", "--dry-run", "--json", "--ignore-scripts",
+                          "--cache", str(tmp_path / "npm-cache")],
                          cwd=REPO, capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     packed = {f["path"] for f in json.loads(out.stdout)[0]["files"]}

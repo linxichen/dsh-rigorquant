@@ -820,12 +820,15 @@ toggle disarms live agents and a reload recomposes them exactly once.
 
 Recorded as an ADR: `docs/adr/0002-declared-preset-on-dsh-0.1.7.md`.
 
-**Harness.** From 0.6.0 the harness range is `>=0.1.7-rc.2 <0.1.8`, and the
-**required floor is now `DSH ≥ 0.1.7-rc.2`**, enforced by `peerDependencies`
+**Harness.** From 0.6.0 the harness range was `>=0.1.7-rc.2 <0.1.8`, moving the
+**required floor to `DSH ≥ 0.1.7-rc.2`**, enforced by `peerDependencies`
 and by `install.sh`, stated in both READMEs, and pinned by
 `test_repo_consistency.py`. There is no compatibility
 with 0.1.6, and 0.5.0 is the last release for alpha.2. The release is one
 cutover, installed together with the harness upgrade.
+
+*(Superseded by Decision 26: the floor is now `DSH ≥ 0.2.0-rc.2`, and 0.6.1 is
+the last release for this line.)*
 
 **Preset.** `rigorquant` is a declared `@deepseek-ai/dsh-agent-preset` row in
 the bundle's own patch file. The directory copy is gone, and so is the
@@ -858,11 +861,84 @@ Amends:
   lane only.
 - **24:** one Team bundle; the move pill retires; the floor is raised.
 
+## Decision 26 — DSH 0.2.0-rc.2: the same architecture, four native surfaces taken up (0.7.0)
+
+Recorded as an ADR: `docs/adr/0003-rigorquant-on-dsh-0.2.0.md`.
+
+**Harness.** From 0.7.0 the harness range is `>=0.2.0-rc.2 <0.2.1`, and the
+**required floor is now `DSH ≥ 0.2.0-rc.2`**, enforced by `peerDependencies`
+and by `install.sh` — which refuses a core at EITHER end of the range, because
+the loader skips an out-of-range bundle at both — restated declaratively under
+`engines.dsh`, stated in both READMEs, and pinned by
+`test_repo_consistency.py`. This is not cosmetic: the
+CLI's compatibility gate reads a bundle's `peerDependencies` *before* it loads
+it, and **skips a bundle the running core does not satisfy**, so on 0.2.0 the
+old range would have mounted the plugin nowhere, silently. 0.6.1 is the last
+release for the 0.1.7-rc.2 line; nothing is backported.
+
+**What moved.** Almost nothing RigorQuant uses. 0.2.0-rc.2's package inventory
+is the 0.1.7-rc.2 one plus telemetry, desktop analytics, a session-log settings
+page and an opt-in schedule bundle; the declared-preset loader, persona,
+tools, system prompt, settings forms, Agent Teams service, MCP client and home
+paths are byte-identical between the two cores. The migration is therefore one
+cutover to the new range, not a rewrite.
+
+**Native surfaces taken up.** Four, each replacing work the plugin would
+otherwise do itself or leaving a native surface bare:
+
+- **Timed `ask_user_question`.** `dsh-tool-ask-user` grew a `Config`
+  (`mode: legacy | timed`, `timeout`). The preset selects `timed` with an
+  explicit wait, so the unattended intake ask returns `pending` instead of
+  parking the round, and the answer arrives later as an
+  `answer_to_pending_question` user message. The persona and the skill state
+  the contract: pending is neither an answer nor permission; `timeout: -1` is
+  for a step that cannot proceed at all without the answer.
+- **Display metadata read without activation.** `locale/en.json`,
+  `locale/zh.json` and `icon.svg` give the Plugins page, bundle details and the
+  Settings plugin inventory a title, description and artwork, resolved from the
+  manifest before the plugin runs. No host code and no client bundle is
+  involved.
+- **Declarative manifest metadata.** `dsh.manifestVersion: 1` and
+  `engines.dsh` state the manifest dialect and the runtime range beside the
+  enforced `peerDependencies`, so a reader learns the contract from the
+  manifest rather than from a crash. This core enforces neither field yet:
+  they are documentation with a machine-readable shape, and the range they
+  describe is enforced by `peerDependencies` and by `install.sh`.
+- **Field descriptions for the generated settings page, on the fields that
+  page keeps.** `SettingsForms` projects a row's schema through `volatileForm`,
+  which keeps only `meta.volatile` subtrees, so the sixteen route fields carry
+  one description each — naming the role and the slot — and a non-volatile
+  field carries none. `description()` clones the schema, so every route field
+  keeps `meta.volatile` and a saved route still lives in the profile layer;
+  the card stays the rich editor.
+
+**Kept as they are.** The declared preset, the routing card on the harness's
+own config forms and settings-draft helpers, the `rq_escalate` lane that mounts
+`dsh-mcp-client` into one agent scope, the Team guard, `present`, the goal
+tools, the harness's spill and the base bundle's `llm-retry` were already the
+native mechanisms for their jobs; 0.2.0 changes none of them.
+
+**Considered and rejected.** Keeping 0.1.7 support alongside 0.2.0 (two harness
+generations for an experimental dependency, and no period in which both are
+tested); dropping the routing card for the harness's auto-generated Settings
+page (that form cannot pick from the model catalog or express "inherit", which
+is the card's whole job); adopting the opt-in experimental schedule bundle to
+restart rounds (it would replace the explicit human rearm the unattended
+contract is built on); and a native per-agent MCP mount helper or a
+plugin-registered settings namespace (neither exists on this core).
+
+Amends:
+- **20:** the harness range.
+- **25:** the floor and the last-release statement; the architecture itself
+  stands.
+
 ## Repo map
 
 ```
-package.json                dsh.bundle manifest; peerDependencies pin the harness
-                            range (>=0.1.7-rc.2 <0.1.8)
+package.json                dsh.bundle manifest; dsh.manifestVersion + engines.dsh
+                            and peerDependencies pin the harness range
+                            (>=0.2.0-rc.2 <0.2.1); icon + locale/ are the
+                            bundle's native display metadata
 agent-presets/rigorquant.patch.yml  the declared preset (persona + child rows)
 agent-presets/rigorquant/   the rigorquant skill and its sibling skills
   skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
@@ -875,9 +951,11 @@ dsh/                        host halves: rq-model-router (routes as volatile
 cordis.patch.yml            bundle patch: skill layer + router + team + lane sync
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring (mounted by rq_escalate)
+locale/en.json, locale/zh.json  native bundle display metadata (title, description)
+icon.svg                    native bundle artwork, read from the manifest
 docs/architecture.md        this record
 docs/adr/                   ADR 0001 (Agent Teams), ADR 0002 (declared preset
-                            on DSH 0.1.7)
+                            on DSH 0.1.7), ADR 0003 (DSH 0.2.0)
 docs/hard-lessons-…md       the run record the skill cites
 docs/showcase.html          the showcase page
 tests/                      the validator's suite; a forged study must FAIL

@@ -357,3 +357,35 @@ def tex_available():
     if shutil.which("pdflatex") or shutil.which("tectonic") or Path("/Library/TeX/texbin/pdflatex").exists():
         return True
     pytest.skip("no TeX engine available")
+
+
+# ── harness probes (shared by test_harness_compat and test_repo_consistency) ──
+#
+# The probes in tests/ validate the package against an INSTALLED harness. They
+# share an exit contract (tests/harness_locator.cjs): 0 = green, 1 = a real
+# problem, 2 = the installed core is REFUSED, 3 = nothing to validate against.
+# The suite switches on the CODE, never on the probes' wording, so a reworded
+# message cannot silently turn a failure into a skip.
+#
+# Both no-harness exits skip the row and schema tests: 3 (nothing installed)
+# and 2 (a core is installed but this package refuses it — there is still
+# nothing here to validate a row schema against). The refusal itself is pinned
+# by `test_the_probe_refuses_a_harness_outside_the_declared_range`, which
+# shadows the core version and asserts both answers; it does not use this
+# helper.
+EXIT_REFUSED = 2
+EXIT_NO_HARNESS = 3
+
+
+def require_harness(out):
+    """Skip the calling test when a probe had nothing to validate against.
+
+    Both no-harness exits skip: code 3 (nothing installed) and code 2 (a core
+    is installed but this package refuses it — there is still nothing here to
+    validate the row schemas against). The decision is made on the CODE; the
+    probe's message is only carried into the skip reason.
+    """
+    if out.returncode not in (EXIT_REFUSED, EXIT_NO_HARNESS):
+        return
+    lines = [line for line in out.stderr.strip().splitlines() if line.strip()]
+    pytest.skip(lines[-1] if lines else "no DSH core this package supports")

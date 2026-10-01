@@ -8,6 +8,73 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.7.0] - Unreleased
+
+RigorQuant on DSH 0.2.0-rc.2, and on the four native mechanisms that release
+serves: a timed unattended ask, manifest display metadata, field descriptions
+for the settings page the harness generates, and the manifest's own declaration
+of the range it is built for (Decision 26,
+`docs/adr/0003-rigorquant-on-dsh-0.2.0.md`). It requires DSH
+`>=0.2.0-rc.2 <0.2.1` and drops 0.1.7: **0.6.1 is the last release for the
+0.1.7-rc.2 line**, and nothing is backported. The release amends Decisions 20
+(the harness range) and 25 (the floor, and the last-release statement).
+
+### Upgrading
+Install it together with the harness, before the first 0.2.0 boot. Finish or
+archive studies in progress first: resuming a 0.1.7 session is not promised.
+Then stop dsh, run `npm i -g @deepseek-ai/dsh@0.2.0-rc.2` (npm `latest` now
+points at that same core, so the pin is what keeps it there), run
+`./install.sh`, and pick RigorQuant in the web app. The architecture did not
+change with the version: the declared preset, the routing card, the
+escalation lane and the Team guard all carry over, and a profile keeps its
+saved routes.
+
+An operator on **any 0.5.x or 0.6.x release upgrades straight to 0.7.0**:
+`install.sh` still performs the migrations those releases needed (removing the
+retired Agent Teams web bundle, carrying `settings.yaml` routes into the
+router row, and deleting the pre-0.6.0 directory preset), so there is no
+intermediate release to install first.
+
+### Why the range had to move
+0.2.0-rc.2's compatibility gate reads `peerDependencies` before loading a
+bundle and **skips** a bundle its range excludes. With the old range the
+plugin would have mounted nowhere on 0.2.0 — silently, with no error a user
+could see.
+
+### Changed
+- **The harness range is `>=0.2.0-rc.2 <0.2.1`**, enforced by
+  `peerDependencies` and by `install.sh` (`MIN_DSH_VERSION`), restated under
+  `engines.dsh`, stated in both READMEs, and pinned by
+  `test_repo_consistency.py`.
+- **The manifest declares its dialect**: `dsh.manifestVersion: 1`, beside
+  `engines.dsh` and the enforced `peerDependencies` range. This core enforces
+  neither manifest field yet: they are the contract in machine-readable form,
+  and `install.sh` refuses a core outside the range at EITHER end — a newer
+  core fails to load the bundle exactly as an older one does.
+- **The bundle ships native display metadata**: `locale/en.json` and
+  `locale/zh.json` (`meta.title`, `meta.description`) plus `icon.svg`, read by
+  the Plugins page, bundle details and the Settings plugin inventory without
+  activating the plugin.
+- **The router `Config` describes its route fields**, one description each,
+  naming the role and the slot, so the settings page the harness generates
+  renders meaning instead of one generic line. The descriptions sit only on
+  the sixteen fields that page keeps (`volatileForm` drops everything else:
+  `presetId` and `degradeTtlMs` carry none), and `description()` clones the
+  schema, leaving every route field's `volatile` metadata and live cell intact
+  (`tests/router_schema_probe.cjs`).
+- **Every preset row was re-validated against 0.2.0-rc.2's own schemas**
+  before the range changed; no child row needed a config change.
+
+### Added
+- **The unattended ask is timed.** The preset's `tool-ask-user` row selects
+  the harness's new `mode: timed` with an explicit `timeout`, so a question
+  the user has not answered returns `pending` instead of parking the round.
+  Pending is neither an answer nor permission: the persona and the skill say
+  so, intake records a provisional choice and honors the later
+  `answer_to_pending_question` user message, the escalation gate stays open
+  while its install is unauthorized, and `timeout: -1` is reserved for a step
+  no further work can route around.
+
 ## [0.6.1] - Unreleased
 
 **Use 0.6.1, not 0.6.0.** A `dsh-rigorquant@0.6.0` reached npm on 2026-09-25

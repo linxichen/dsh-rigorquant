@@ -154,39 +154,47 @@ task no other teammate owns (the one its brief names, which it claims).
 
 ## Install
 
-Requires DSH `>=0.1.7-rc.2 <0.1.8` (Decision 25,
-`docs/adr/0002-declared-preset-on-dsh-0.1.7.md`). The preset is a declared
+Requires DSH `>=0.2.0-rc.2 <0.2.1` (Decision 26,
+`docs/adr/0003-rigorquant-on-dsh-0.2.0.md`). The preset is a declared
 `@deepseek-ai/dsh-agent-preset` row, the routes are the router row's own
-profile config, and the card edits them through the Plugins page's config
-forms; none of that exists on an older harness, and the installer refuses one.
-**0.5.0 is the last release for the 0.1.6 alpha harness**: nothing is
-backported, so stay on 0.5.0 if you cannot move the harness yet.
+profile config, the card edits them through the Plugins page's config forms,
+and the unattended intake ask uses the harness's timed `ask_user_question`
+mode; none of that exists on an older harness, and the installer refuses one.
+**0.6.1 is the last release for the 0.1.7-rc.2 harness**: nothing is
+backported, so stay on 0.6.1 if you cannot move the harness yet.
 
 That range is a prerelease and the team layer is experimental: this release
 runs team-only on the **Agent Teams** bundle the harness ships as a **Beta**
 card, *Agent Teams* under **Plugins → Official**. Turn it on there yourself,
 or let a full install do it for you (below).
 
-**Upgrading from 0.5.0** is one cutover, done before the first 0.1.7 boot.
+**Upgrading from 0.6.1** — or from any 0.5.x, which the installer still
+migrates (see below) — is one cutover, done before the first 0.2.0 boot.
 First finish or archive the RigorQuant studies in progress: resuming a session
-started on the 0.1.6 harness is not promised. Then:
+started on the 0.1.7 harness is not promised. Then:
 
 1. Stop dsh (every running process, the web app included).
 2. Install the harness pinned to the release this range was tested on:
 
    ```sh
-   npm i -g @deepseek-ai/dsh@0.1.7-rc.2   # or @deepseek-ai/dsh@next
+   npm i -g @deepseek-ai/dsh@0.2.0-rc.2
    ```
 
-   Never an unqualified `npm i -g`: npm `latest` is still `0.1.5-rc.3`.
+   npm `latest` now points at `0.2.0-rc.2` too, so an unqualified install
+   happens to land on this core; the pin is what keeps it there.
 3. Run `./install.sh` (or `npx dsh-rigorquant`) before starting dsh. It
-   carries your saved routes and a saved RigorQuant default over from the old
+   carries your saved routes and a saved RigorQuant default over from an old
    `settings.yaml`. If dsh already booted once, re-running it recovers them
    from `settings.yaml.imported`.
 4. Start the web app and pick **RigorQuant** in the new-session picker. If
    the picker is missing, switch **Coding Tools** back on in General
    Settings: it is the picker's only gate, on by default, and off only if you
    or Desktop onboarding switched it off.
+
+The bundle card itself now carries native display metadata: `locale/en.json`
+and `locale/zh.json` give the Plugins page and the Settings plugin inventory a
+title and description, and `icon.svg` gives them artwork — read from the
+manifest without activating the plugin.
 
 Fan-out is bounded by the host: eight live children per root
 (`maxActiveSubagents`, **Plugins → Subagent**). A literature-heavy study that
@@ -239,7 +247,7 @@ distribution (docs/architecture.md Decisions 22 and 25). This path neither
 enables Agent Teams nor carries saved routes over; the installer does both:
 
 ```sh
-dsh --version                 # must be >= 0.1.7-rc.2 and < 0.1.8
+dsh --version                 # must be >= 0.2.0-rc.2 and < 0.2.1
 dsh plugin --profile web add dsh-rigorquant
 ```
 
@@ -291,10 +299,11 @@ RigorQuant's own machinery, and installing RigorQuant changes none of them:
   a human to be able to see. Certification itself reads the study record,
   never the session (`docs/architecture.md` Decision 19).
 
-- **Scheduled tasks are neither used nor guarded.** DSH 0.1.7 ships
-  scheduled tasks (and their time context) disabled. RigorQuant does not use
-  them, and its per-call guards do not cover them: a scheduled task you
-  enable yourself runs outside the team's hub-and-spoke rules.
+- **Scheduled tasks are neither used nor guarded.** DSH 0.2.0 keeps scheduled
+  tasks in an **opt-in experimental bundle**, which a standard profile does
+  not mount. RigorQuant does not use them, and its per-call guards do not
+  cover them: a scheduled task you install and enable yourself runs outside
+  the team's hub-and-spoke rules.
 
 ## Compute lane (one-time)
 
@@ -342,7 +351,7 @@ fallback for one forced retry, and recovers on the next success or after 10
 minutes. An agent outside a RigorQuant team (another preset, or with no Team
 membership at all) is never touched.
 
-**Signed in with a DeepSeek account only?** DSH 0.1.7 splits DeepSeek into
+**Signed in with a DeepSeek account only?** The harness splits DeepSeek into
 `deepseek-official` (API key) and `deepseek-account` (account sign-in). When
 the official route is not routable (no API key) and the account route is, the
 shipped defaults above move to the same model ids on `deepseek-account`, and
@@ -387,6 +396,14 @@ gate is not itself tested is a framework that certifies whatever it is handed.
 uv sync --frozen --project env
 uv run --frozen --project env python -m pytest tests/ -q
 ```
+
+The composition is validated against the **installed** harness: the probes
+resolve it from `RQ_HARNESS_MODULES`, else from the `dsh` on PATH. On a machine
+with no harness, or with a core this release does not support, those checks say
+which case it is and skip — and one test pins the refusal itself, so a green
+run can never be read as a validation against the wrong core. To verify a
+release, install its target core (or point `RQ_HARNESS_MODULES` at that
+install's `@deepseek-ai` directory) and re-run the command above.
 
 ### Pre-commit coverage gate (validator ≥95%)
 
