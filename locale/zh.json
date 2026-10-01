@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "RigorQuant",
+    "description": "面向实证与计算数学的无人值守、上下文隔离多智能体研究：声明式 RigorQuant 预设、按角色路由的模型及其插件页配置卡，以及由编排者运行时挂载的 jacobian/Lean 升级通道。"
+  }
+}

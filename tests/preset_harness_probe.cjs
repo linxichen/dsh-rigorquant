@@ -29,36 +29,18 @@
 
 'use strict'
 
-const { readFileSync, existsSync, realpathSync } = require('node:fs')
+const { readFileSync, existsSync } = require('node:fs')
 const { createRequire } = require('node:module')
 const { pathToFileURL } = require('node:url')
-const { join, resolve, dirname } = require('node:path')
-const { execFileSync } = require('node:child_process')
+const { join, resolve } = require('node:path')
 
-const REPO = resolve(__dirname, '..')
+const { REPO, declaredRange, installedCoreVersion, judgeCore, resolveHarness } = require('./harness_locator.cjs')
 
-/** Locate the `@deepseek-ai` directory of the installed DSH. */
-function findHarnessModules() {
-  const candidates = []
-  try {
-    const bin = execFileSync('sh', ['-c', 'command -v dsh'], { encoding: 'utf8' }).trim()
-    if (bin !== '') {
-      const real = realpathSync(bin)
-      // <pkg>/lib/bin.js → <pkg>/node_modules/@deepseek-ai
-      const pkgRoot = resolve(dirname(real), '..')
-      candidates.push(join(pkgRoot, 'node_modules', '@deepseek-ai'))
-    }
-  } catch {
-    // No dsh on PATH: fall through to the module-path probe.
-  }
-  for (const base of require.main?.paths ?? []) {
-    if (base.endsWith(join('node_modules', '@deepseek-ai'))) candidates.push(base)
-  }
-  for (const dir of candidates) {
-    if (dir !== undefined && existsSync(dir)) return dir
-  }
-  return undefined
-}
+// The range this package declares comes from its manifest (`declaredRange`),
+// and the COMPARISON belongs to the harness: `main` runs the harness's own
+// `evaluatePluginCompatibility`, the same function the CLI's install gate and
+// the profile loader call, so a prerelease rule or a range-syntax nuance can
+// never disagree between this probe and the thing it predicts.
 
 const PRESET_PACKAGE = '@deepseek-ai/dsh-agent-preset'
 
@@ -67,8 +49,7 @@ const composition = presetArg === undefined
   ? join(REPO, 'agent-presets', 'rigorquant.patch.yml')
   : resolve(presetArg)
 
-const harnessDir = harnessArg ?? process.env.RQ_HARNESS_MODULES
-const harness = harnessDir === undefined || harnessDir === '' ? findHarnessModules() : resolve(harnessDir)
+const harness = resolveHarness(harnessArg)
 if (harness === undefined) {
   process.stderr.write('preset_harness_probe: cannot locate an installed harness; pass its @deepseek-ai directory\n')
   process.exit(2)
@@ -84,44 +65,81 @@ try {
 } catch {
   // Declared presets arrived in 0.1.7; an older harness is outside the
   // package's `peerDependencies` range, not a failed row.
-  process.stderr.write(`preset_harness_probe: the installed harness predates ${PRESET_PACKAGE}; this package requires dsh >=0.1.7-rc.2 <0.1.8\n`)
+  process.stderr.write(`preset_harness_probe: the installed harness predates ${PRESET_PACKAGE}; this package requires dsh ${declaredRange()}\n`)
   process.exit(2)
 }
-const yaml = harnessRequire('js-yaml')
 
-// `!!js` is the composition plane's escape hatch for values only the boot
-// environment can produce (platform switches). The probe evaluates them with
-// `process` and a `baseUrl` standing in for the profile root, which is what a
-// declared preset's children see, and substitutes an opaque marker when
-// evaluation is impossible, so a row is still reached.
-const JsTag = new yaml.Type('tag:yaml.org,2002:js', {
-  kind: 'scalar',
-  resolve: (data) => typeof data === 'string',
-  construct: (data) => {
-    try {
-      // eslint-disable-next-line no-new-func
-      return new Function('process', 'baseUrl', `return (${data})`)(process, 'file:///profile-root/')
-    } catch {
-      return `<js:${data}>`
-    }
-  },
-})
-const doc = yaml.load(readFileSync(composition, 'utf8'), {
-  schema: yaml.DEFAULT_SCHEMA.extend([JsTag]),
-})
+// The running core must be one this package supports. Validating every row
+// against a harness OUTSIDE the manifest's range would report a green run for
+// a core whose bundle loader would skip the whole bundle -- the exact failure
+// the range exists to prevent. Exit 2 (the "no usable harness" path) rather
+// than 1, so a caller skips instead of reporting a failed row.
+//
+// The judgment runs before the composition is parsed, so it needs nothing
+// from the harness beyond its own compatibility gate: an out-of-range or
+// half-installed tree is refused with a reason rather than by a stack trace
+// from a missing YAML reader.
+const installedCore = installedCoreVersion(harnessRequire)
 
-// The patch is a list of patch entries; the preset is the one `insert`ed row
-// naming the preset package.
-const declared = (Array.isArray(doc) ? doc : [])
-  .flatMap((entry) => (Array.isArray(entry?.insert) ? entry.insert : []))
-  .filter((row) => row?.name === PRESET_PACKAGE)
-if (declared.length !== 1) {
-  process.stderr.write(`preset_harness_probe: expected one ${PRESET_PACKAGE} row in ${composition}, found ${declared.length}\n`)
-  process.exit(2)
+/** Parse the composition's declared preset row out of the composition file. */
+function readComposition() {
+  const yaml = harnessRequire('js-yaml')
+  // `!!js` is the composition plane's escape hatch for values only the boot
+  // environment can produce (platform switches). The probe evaluates them with
+  // `process` and a `baseUrl` standing in for the profile root, which is what a
+  // declared preset's children see, and substitutes an opaque marker when
+  // evaluation is impossible, so a row is still reached.
+  const JsTag = new yaml.Type('tag:yaml.org,2002:js', {
+    kind: 'scalar',
+    resolve: (data) => typeof data === 'string',
+    construct: (data) => {
+      try {
+        // eslint-disable-next-line no-new-func
+        return new Function('process', 'baseUrl', `return (${data})`)(process, 'file:///profile-root/')
+      } catch {
+        return `<js:${data}>`
+      }
+    },
+  })
+  const doc = yaml.load(readFileSync(composition, 'utf8'), {
+    schema: yaml.DEFAULT_SCHEMA.extend([JsTag]),
+  })
+
+  // The patch is a list of patch entries; the preset is the one `insert`ed row
+  // naming the preset package.
+  const declared = (Array.isArray(doc) ? doc : [])
+    .flatMap((entry) => (Array.isArray(entry?.insert) ? entry.insert : []))
+    .filter((row) => row?.name === PRESET_PACKAGE)
+  if (declared.length !== 1) {
+    process.stderr.write(`preset_harness_probe: expected one ${PRESET_PACKAGE} row in ${composition}, found ${declared.length}\n`)
+    process.exit(2)
+  }
+  return declared[0]
 }
-const preset = declared[0]
 
-const rows = [{ label: `preset ${preset.config?.id}`, id: preset.id, name: preset.name, disabled: false, config: preset.config ?? {}, group: false }]
+let failed = 0
+let skipped = 0
+/** Every row reached, filled in by {@link main} once the core is judged. */
+let rows = []
+
+async function main() {
+if (installedCore !== undefined) {
+  const judged = await judgeCore(harnessRequire, installedCore)
+  if (judged.verdict === 'unjudged') {
+    process.stderr.write(
+      `preset_harness_probe: cannot judge the installed harness ${installedCore}: ${judged.detail}\n`)
+    process.exit(2)
+  }
+  if (judged.verdict === 'refused') {
+    process.stderr.write(
+      `preset_harness_probe: the installed harness ${judged.detail};`
+      + ' validating against it would prove nothing about a supported core\n')
+    process.exit(2)
+  }
+}
+
+const preset = readComposition()
+rows = [{ label: `preset ${preset.config?.id}`, id: preset.id, name: preset.name, disabled: false, config: preset.config ?? {}, group: false }]
 const walk = (list, path) => {
   for (const [index, row] of (list ?? []).entries()) {
     const label = path === '' ? `row ${index + 1}` : `${path} > row ${index + 1}`
@@ -135,10 +153,6 @@ const walk = (list, path) => {
 }
 walk(preset.config?.plugins, '')
 
-let failed = 0
-let skipped = 0
-
-async function main() {
 for (const row of rows) {
   if (row.group === true) continue
   const suffix = row.disabled ? ' [disabled]' : ''

@@ -2,7 +2,7 @@
 //
 // The router row's own profile config maps every RigorQuant role to a primary
 // model and a per-role fallback model, each with its own reasoning effort
-// (Decision 25: DSH 0.1.7 has no plugin-registered settings namespace for
+// (Decision 25: the harness has no plugin-registered settings namespace for
 // the routes to live in). Each `<role>Primary`/`<role>Fallback` field is
 // `.volatile()`, so a saved route reaches the next request without a
 // remount. No native per-role model row remains under Agent Teams — a
@@ -12,7 +12,7 @@
 // wins over it. The `agent/request` waterfall remains the small policy
 // overlay that makes live config and fallback possible.
 //
-// Account fallback: DSH 0.1.7-rc.2 splits DeepSeek into `deepseek-official`
+// Account fallback: the harness splits DeepSeek into `deepseek-official`
 // (API key) and `deepseek-account` (account sign-in). When the official
 // route is not routable but the account route is, the SHIPPED matrix moves
 // to the same model ids on `deepseek-account`; a saved route is never moved.
@@ -109,6 +109,35 @@ const SHIPPED = Object.freeze({
   adversaryFallback: DEFAULT_FALLBACK,
 })
 
+/** The human name of every role, for text a person reads. */
+const ROLE_LABELS = Object.freeze({
+  root: 'Root orchestrator',
+  explorer: 'Explorer',
+  offgrid: 'OffGridThinker',
+  doublechecker: 'DoubleChecker',
+  adversary: 'Adversary',
+  'lit-line': 'Literature line',
+  'lit-adversary': 'Literature adversary',
+  'doc-adversary': 'Document adversary',
+})
+
+/**
+ * One route field's description.
+ *
+ * The harness's own settings page is generated from this schema
+ * (`SettingsForms` projects a row's Config, and `volatileForm` keeps exactly
+ * the `meta.volatile` fields), so a description here is the only text a person
+ * editing the row natively ever sees: it has to say WHICH role and WHICH slot,
+ * not merely what a choice object is. The card remains the rich editor.
+ * @param role - one of {@link ROLES}.
+ * @param slot - `Primary` or `Fallback`.
+ */
+function routeDescription(role, slot) {
+  const inherits = SHIPPED[`${role}${slot}`] === undefined
+  return `${ROLE_LABELS[role]} — ${slot.toLowerCase()} route: provider and model, with an optional `
+    + `reasoning-effort level. Unset ${inherits ? 'inherits the session route' : 'takes the shipped tier'}.`
+}
+
 /** Flat on purpose: every field is a whole choice object the card writes
  *  whole, and a volatile field must sit at a fixed object path. The shipped
  *  matrix is NOT a schema default: a default would make a saved route and an
@@ -119,7 +148,10 @@ const SHIPPED = Object.freeze({
 const Config = z.object({
   presetId: z.string().default('rigorquant'),
   degradeTtlMs: z.number().default(600000),
-  ...Object.fromEntries(ROUTE_KEYS.map((key) => [key, choiceSchema.default(void 0).volatile()])),
+  ...Object.fromEntries(ROLES.flatMap((role) => ['Primary', 'Fallback'].map((slot) => [
+    `${role}${slot}`,
+    choiceSchema.description(routeDescription(role, slot)).default(void 0).volatile(),
+  ]))),
 })
 
 function isRecord(value) {

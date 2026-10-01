@@ -58,6 +58,11 @@ function loadHostModule(modulePath) {
     required() { return this },
     default() { return this },
     min() { return this },
+    // The real builder's `description()` clones the schema and leaves every
+    // other modifier -- including `.volatile()` -- intact. The router
+    // describes its fields for the harness's generated settings form, so the
+    // stub has to answer the call; the probe never renders that text.
+    description() { return this },
     volatile() { return this },
   }
   const schemaStub = {
@@ -124,7 +129,8 @@ async function main() {
     'zai::glm-5.3-flash': [],
     'stub-provider::stub-model': ['low'],
   }
-  // The model catalog as rc.2 builds it: every registered provider, and the
+  // The model catalog as 0.1.7-rc.2 builds it (unchanged on 0.2.0-rc.2):
+  // every registered provider, and the
   // models each lists. The API-key route lists its catalog with or without a
   // key; the account route lists nothing until an account is signed in.
   // `catalog` is the scenario: which providers list models, and whether the
@@ -529,9 +535,10 @@ async function main() {
   )
   assert(warnings.length === warned, 'an unrelated route warns nothing')
 
-  // ---- The three catalogs (issue #25). rc.2 splits DeepSeek into
-  // `deepseek-official` (API key) and `deepseek-account` (account sign-in),
-  // with the same model ids. Every scenario above ran on the API-key catalog.
+  // ---- The three catalogs (issue #25). The harness splits DeepSeek into
+  // `deepseek-official` (API key) and `deepseek-account` (account sign-in)
+  // since 0.1.7-rc.2, with the same model ids, and 0.2.0-rc.2 is unchanged.
+  // Every scenario above ran on the API-key catalog.
   const onAccount = (route) => ({ ...route, provider: 'deepseek-account' })
   saved = {}
 
@@ -544,7 +551,7 @@ async function main() {
     'API-key only: the shipped primary stays on deepseek-official',
   )
 
-  // (2) Account only. The official route still lists its catalog (rc.2
+  // (2) Account only. The official route still lists its catalog (the core
   // advertises it with or without a key), but no key is configured; the
   // account route lists models. The shipped matrix moves to the same ids on
   // `deepseek-account`, primary and fallback alike.

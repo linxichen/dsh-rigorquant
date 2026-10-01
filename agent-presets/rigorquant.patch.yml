@@ -1,5 +1,6 @@
 # The `rigorquant` agent preset, declared (docs/adr/0002-declared-preset-on-dsh-0.1.7.md,
-# Decision 25). DSH 0.1.7 ignores directory presets; a preset exists
+# Decision 25; carried forward by docs/adr/0003-rigorquant-on-dsh-0.2.0.md,
+# Decision 26). DSH ignores directory presets; a preset exists
 # because some bundle declares a `@deepseek-ai/dsh-agent-preset` row. This file
 # is that row, in the shape of web-app's `presets/standard.patch.yml`, and
 # package.json lists it after `cordis.patch.yml` in `dsh.bundle.patch`.
@@ -13,9 +14,9 @@
 # Child `baseUrl` is the PROFILE root (`file://$DSH_HOME/profiles/<profile>/`),
 # not this package. No child may resolve a path from it.
 #
-# The package requires DSH `>=0.1.7-rc.2 <0.1.8` (package.json
-# `peerDependencies`); `@deepseek-ai/dsh-agent-preset` does not exist before
-# 0.1.7, so no older harness can load this row.
+# The package requires DSH `>=0.2.0-rc.2 <0.2.1` (package.json
+# `peerDependencies`, restated declaratively under `engines.dsh`); the CLI
+# skips a bundle whose range the running core does not satisfy.
 - insert:
     # An override by id (a patch keyed `preset-rigorquant` in the profile, or
     # an edit saved from the Web preset editor) replaces this row's WHOLE
@@ -95,6 +96,17 @@
                 other study work, call `get_goal`, then `update_goal` with action
                 `resume` and its exact `goal_id` and `revision`. Rounds do not continue
                 autonomously across restarts; checkpoint state and resume explicitly.
+
+                ASKING, stated precisely: `ask_user_question` runs in the harness's
+                timed mode. A batch you ask returns `pending` when the user has not
+                answered within the wait: pending is neither an answer nor permission.
+                Keep working on steps that do not depend on it, never re-ask the same
+                question, and never read pending as consent. The reply arrives later as
+                a user message carrying JSON with `kind: "answer_to_pending_question"`
+                and the original `callId`; match it to that open decision, record it in
+                the journal, then proceed on what it gates. Pass `timeout: -1` only when
+                no further step is possible without the answer — an install or an
+                authorization only the user can give.
 
                 When a tool result is spilled (a bounded preview plus a locator), read
                 the full result back by its locator; never re-run the tool to see it.
@@ -294,8 +306,19 @@
 
           # ── remaining model-facing rows ─────────────────────────────
 
+          # DSH 0.2.0 added `timed` mode to this tool (its Config grew
+          # `mode`/`timeout`). RigorQuant takes it: a study runs unattended, so
+          # a question the user has not answered within the wait returns
+          # `pending` instead of parking the round, and the answer arrives
+          # later as an `answer_to_pending_question` user message. The timeout is
+          # stated rather than inherited so the framework's choice is pinned;
+          # the orchestrator passes `timeout: -1` per call only when no further
+          # step is possible without the answer (see the persona and Step 0).
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
+            config:
+              mode: timed
+              timeout: 300
 
           - id: tool-todo
             name: '@deepseek-ai/dsh-tool-todo'

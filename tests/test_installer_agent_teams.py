@@ -1,4 +1,4 @@
-"""install.sh on DSH 0.1.7-rc.2 (Decisions 24 and 25; issues #12 and #30).
+"""install.sh on DSH 0.2.0-rc.2 (Decisions 24, 25 and 26; issues #12 and #30).
 
 Full install must: enable the ONE Team bundle rc.2 publishes
 (`@deepseek-ai/dsh-experimental-agent-team-profile`, pinned to the core) when
@@ -39,10 +39,10 @@ import pytest
 
 from conftest import REPO
 
-FLOOR = "0.1.7-rc.2"
+FLOOR = "0.2.0-rc.2"
 TEAM_BUNDLE = "@deepseek-ai/dsh-experimental-agent-team-profile"
 # Retired in 0.1.7: the harness removed this package from its workspace, and
-# npm has no build of it for any 0.1.7 core.
+# npm has no build of it for any 0.1.7-or-later core.
 WEB_BUNDLE = "@deepseek-ai/dsh-experimental-agent-team-web-profile"
 # What npm really holds for the web bundle (dist-tags on 2026-09-24).
 WEB_BUNDLE_PUBLISHED = ("0.1.5-alpha.2", "0.1.5-rc.3", "0.1.6-alpha.2")

@@ -357,3 +357,32 @@ def tex_available():
     if shutil.which("pdflatex") or shutil.which("tectonic") or Path("/Library/TeX/texbin/pdflatex").exists():
         return True
     pytest.skip("no TeX engine available")
+
+
+# ── harness probes (shared by test_harness_compat and test_repo_consistency) ──
+#
+# Several probes validate the package against an INSTALLED harness and exit 2
+# when there is no core they can judge. These are those exits, with the reason
+# the suite reports. A refused core belongs here: the row and schema probes
+# have nothing to validate against either. The one test whose SUBJECT is the
+# refusal (`test_the_probe_refuses_a_harness_outside_the_declared_range`) pins
+# both answers with a version-shadowed harness and must not use this helper.
+NO_HARNESS_REASONS = (
+    ("cannot locate an installed harness",
+     "no DSH install to validate against"),
+    ("predates @deepseek-ai/dsh-agent-preset",
+     "the installed DSH predates declared presets"),
+    ("is outside the range this package supports",
+     "the installed DSH is outside the range this package supports"),
+    ("cannot judge the installed harness",
+     "the installed DSH cannot be judged by its own compatibility gate"),
+)
+
+
+def require_harness(out):
+    """Skip the calling test when a probe had no core it could validate against."""
+    if out.returncode != 2:
+        return
+    for needle, reason in NO_HARNESS_REASONS:
+        if needle in out.stderr:
+            pytest.skip(reason)

@@ -16,16 +16,16 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="${DSH_PROFILE:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
-MIN_DSH_VERSION="0.1.7-rc.2"
+MIN_DSH_VERSION="0.2.0-rc.2"
 # The optional bundle that carries Agent Teams — the harness's Beta "Agent
 # Teams" card on the Plugins page. RigorQuant runs team-only, so a full install
 # enables it and raises the team service's lifetime member cap
 # (docs/adr/0001-rigorquant-on-agent-teams.md).
 TEAM_BUNDLE_HOST="@deepseek-ai/dsh-experimental-agent-team-profile"
 # DSH 0.1.7 folded the team panel into that one bundle and dropped the
-# separate web bundle; npm has no build of it for a 0.1.7 core, and a profile
-# that still lists it cannot resolve it. A full install therefore removes it
-# from the profile, whoever enabled it (Decision 25).
+# separate web bundle; npm has no build of it for a 0.1.7-or-later core, and a
+# profile that still lists it cannot resolve it. A full install therefore
+# removes it from the profile, whoever enabled it (Decision 25).
 RETIRED_WEB_BUNDLE="@deepseek-ai/dsh-experimental-agent-team-web-profile"
 # The router's roles, in the order of dsh/index.js's ROLES (pinned equal by
 # tests/test_installer_agent_teams.py). A saved route ports only when its key
@@ -44,7 +44,7 @@ TEAM_PATCH_MARK_END='# <<< dsh-rigorquant END <<<'
 # neither, which is the case the `file:` decision below deliberately separates.
 is_git_checkout() { [ -d "$HERE/.git" ] || [ -f "$HERE/.git" ]; }
 
-# The version the installed CLI reports, e.g. `0.1.7-rc.2`, read once for the
+# The version the installed CLI reports, e.g. `0.2.0-rc.2`, read once for the
 # whole run: it gates the install (require_dsh_version) and pins the Agent Teams
 # bundle to the core it is published in lockstep with
 # (install_agent_teams). Empty when `dsh --version` cannot answer at all.
@@ -92,6 +92,14 @@ done
 # Compare semver, including prerelease identifiers, without relying on GNU
 # `sort -V` (the installer also runs on macOS). DSH is a Node application, so
 # node is already a deployment prerequisite whenever `dsh` is present.
+#
+# This is the one place a range comparison is written by hand, and it is
+# deliberately not the harness's `evaluatePluginCompatibility`: the installer
+# runs BEFORE it knows the harness tree is sound (a partial install, a profile
+# whose node_modules is broken, an old CLI without that export), so it must
+# gate on the CLI's own `--version` without resolving anything out of the
+# install it is about to repair. The probes, which only ever run against a
+# tree they can resolve, use the harness's gate instead.
 version_at_least() {
   actual="$1" minimum="$2"
   node - "$actual" "$minimum" <<'NODE'
@@ -141,11 +149,13 @@ require_dsh_version() {
 }
 
 # The full distribution is only mountable on the harness it was written
-# against (Decision 25): the preset is a declared `@deepseek-ai/dsh-agent-preset`
-# row, the router's routes are `.volatile()` profile config, and the card
-# edits them through `configForms` — none of which exists before 0.1.7-rc.2.
-# Fail before copying anything when the installed CLI is older; a missing CLI
-# keeps the historical warning and can be installed later.
+# against (Decision 25, carried forward by Decision 26): the preset is a
+# declared `@deepseek-ai/dsh-agent-preset` row, the router's routes are
+# `.volatile()` profile config, the card edits them through `configForms`, and
+# the unattended intake ask uses the timed `ask_user_question` mode — none of
+# which exists before 0.2.0-rc.2. Fail before copying anything when the
+# installed CLI is older; a missing CLI keeps the historical warning and can be
+# installed later.
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
   DSH_CORE_VERSION="$(dsh --version 2>/dev/null || true)"
   require_dsh_version

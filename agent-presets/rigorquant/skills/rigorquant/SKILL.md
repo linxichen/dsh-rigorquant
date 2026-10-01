@@ -108,6 +108,16 @@ relative to the **study root** unless prefixed otherwise.
    - **Mode B — multiple studies per repo:** study root = `studies/<slug>/`.
      Recommended when the repo also holds other code or several research
      topics.
+
+   The ask is **timed** (`ask_user_question`'s `mode: timed`, `timeout: 300`).
+   A `pending` result means the user has not answered within the wait — it is
+   neither an answer nor permission. Take the recommended mode so the study
+   can start, record in `journal.md` that the intake choice is provisional and
+   unconfirmed, and continue. The answer arrives later as a user message whose
+   JSON carries `kind: "answer_to_pending_question"` and the original `callId`;
+   honor it then, and if it names the other mode, migrate explicitly (move the
+   study, update `study.json` and its references) rather than silently
+   rewriting history.
 4. Create the study: `study.json` (schema in lifecycle.md), the folders
    below, and a `.gitignore` containing `interim/` and `.lock` — in Mode B
    inside the study folder; in Mode A append `/interim/` (anchored, so it
@@ -490,7 +500,11 @@ asking whenever a claim meets the trigger: it mounts the jacobian MCP lane
 `escalation open: <claim>` / `escalation closed: <claim> — <verdict>` in
 `journal.md`; after a restart, call `rq_escalate` again while an escalation is
 still open. Installing and provisioning are **approval-gated**, never
-automatic:
+automatic. These asks are timed: a `pending` result is not an answer and not
+permission — record the open request in `journal.md`, keep the claim open, and
+continue on the lane's non-gated fallback until the answer arrives as an
+`answer_to_pending_question` user message. Pass `timeout: -1` only when the
+study cannot take any further step without that answer:
 
 - `rq_escalate` returns an error → ask the user, then run
   `npx -y jacobian@0.12.0 upgrade`, verify with

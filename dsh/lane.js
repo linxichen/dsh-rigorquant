@@ -6,10 +6,11 @@
 // spawn jacobian on every mount. Instead the orchestrator calls `rq_escalate`
 // when a claim meets the escalation trigger, and this module mounts one
 // `dsh-mcp-client` instance into the target agent's own scope — the caller's,
-// or a named teammate's. rc.2 announces the new tools on that agent's next
-// request, so no restart is needed. Precedent: `browser-use-runtime/src/mcp.ts`
-// at `dsh-v0.1.7-rc.2`, which mounts the same client per agent scope with
-// `failOnStartupError: true`.
+// or a named teammate's. Dynamic tool updates then announce the new tools on
+// that agent's next request, so no restart is needed. Precedent: the
+// browser-use runtime's `src/mcp.ts` at `dsh-v0.1.7-rc.2`, which mounts the
+// same client per agent scope with `failOnStartupError: true` (the MCP client
+// package is byte-identical on 0.2.0-rc.2).
 //
 // The lane lives until the agent's scope is disposed; there is no off switch.
 // A restart disposes it, and the skill tells the orchestrator to mount it

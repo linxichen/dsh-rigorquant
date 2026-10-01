@@ -138,35 +138,41 @@ RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到
 
 ## 安装
 
-需要 DSH `>=0.1.7-rc.2 <0.1.8`（决策 25，
-`docs/adr/0002-declared-preset-on-dsh-0.1.7.md`）。preset 是一个声明式的
+需要 DSH `>=0.2.0-rc.2 <0.2.1`（决策 26，
+`docs/adr/0003-rigorquant-on-dsh-0.2.0.md`）。preset 是一个声明式的
 `@deepseek-ai/dsh-agent-preset` 行，路由是路由器那一行自己的 profile 配置，卡片
-通过插件页的配置表单编辑它们——更早的宿主上这些都不存在，安装脚本会直接拒绝。
-**0.5.0 是支持 0.1.6 alpha 宿主的最后一个版本**：不做任何回移，暂时无法升级宿主
-的话，请留在 0.5.0。
+通过插件页的配置表单编辑它们，无人值守的入口提问使用宿主 `ask_user_question` 的
+定时模式——更早的宿主上这些都不存在，安装脚本会直接拒绝。
+**0.6.1 是支持 0.1.7-rc.2 宿主的最后一个版本**：不做任何回移，暂时无法升级宿主
+的话，请留在 0.6.1。
 
 这个版本范围是预发布版，团队层还是**实验性**的：本版本只跑在宿主以 **Beta**
 卡片形式提供的 **Agent Teams** bundle 上——即 **插件 → 官方** 下带 **Beta**
 标记的 *智能体团队（Agent Teams）* 卡片。你可以在那里自行开启，也可以交给完整
 安装去做（见下）。
 
-**从 0.5.0 升级**是一次性切换，要在 0.1.7 第一次启动之前完成。先把进行中的
-RigorQuant 研究完成或归档：在 0.1.6 宿主上开始的会话，不保证能在新版上恢复。然后：
+**从 0.6.1 升级**是一次性切换，要在 0.2.0 第一次启动之前完成。先把进行中的
+RigorQuant 研究完成或归档：在 0.1.7 宿主上开始的会话，不保证能在新版上恢复。然后：
 
 1. 停止 dsh（所有正在运行的进程，包括 web 应用）。
 2. 安装钉在本版本范围所测试版本上的宿主：
 
    ```sh
-   npm i -g @deepseek-ai/dsh@0.1.7-rc.2   # 或 @deepseek-ai/dsh@next
+   npm i -g @deepseek-ai/dsh@0.2.0-rc.2   # 或 @deepseek-ai/dsh@next
    ```
 
-   不要执行不带版本的 `npm i -g`：npm 的 `latest` 仍是 `0.1.5-rc.3`。
+   npm 的 `latest` 现在也指向 `0.2.0-rc.2`，所以不带版本的安装恰好会落到这个
+   core 上；钉住版本才是让它留在那里的保障。
 3. 在启动 dsh 之前运行 `./install.sh`（或 `npx dsh-rigorquant`）。它会把你在旧
    `settings.yaml` 里保存的路由，以及保存过的 RigorQuant 默认 preset 迁移过来。
    若 dsh 已经启动过一次，重新运行它会从 `settings.yaml.imported` 中找回它们。
 4. 启动 web 应用，在新会话选择器里选 **RigorQuant**。若选择器不见了，请在通用
    设置中重新打开 **代码工作工具**（Coding Tools）：它是选择器唯一的开关，默认
    开启，只有你自己或桌面端引导把它关掉时才会关闭。
+
+bundle 卡片本身现在带有宿主的原生展示元数据：`locale/en.json` 与
+`locale/zh.json` 为插件页和设置里的插件清单提供标题与描述，`icon.svg` 提供图标
+——这些都直接从 manifest 读取，无需激活插件。
 
 扇出受宿主限制：每个 root 同时最多 8 个存活子代理（`maxActiveSubagents`，
 **插件 → Subagent**）。文献密集的研究若要让 4 条文献线与探索者并行，可在那里调高。
@@ -194,7 +200,7 @@ docs/adr/0001-rigorquant-on-agent-teams.md）。
 Agent Teams，也不迁移保存过的路由；这两件事由安装脚本完成：
 
 ```sh
-dsh --version                 # 必须 >= 0.1.7-rc.2 且 < 0.1.8
+dsh --version                 # 必须 >= 0.2.0-rc.2 且 < 0.2.1
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 
@@ -249,9 +255,9 @@ RigorQuant 也不会改变其中任何一件：
   看见，这正是决策 19 的冻结写入规则需要人类能看到的东西。认证本身只读研究记录，
   从不读会话（docs/architecture.md 决策 19）。
 
-- **定时任务既不使用，也不受守卫约束。** DSH 0.1.7 发布时定时任务（及其时间
-  上下文）是关闭的。RigorQuant 不使用它们，它的逐次调用守卫也不覆盖它们：你自己
-  开启的定时任务会跑在团队的枢纽-辐条规则之外。
+- **定时任务既不使用，也不受守卫约束。** DSH 0.2.0 把定时任务放进可选的**实验性
+  bundle**，标准 profile 不会挂载它。RigorQuant 不使用它们，它的逐次调用守卫也不
+  覆盖它们：你自己安装并开启的定时任务会跑在团队的枢纽-辐条规则之外。
 
 ## 计算通道（一次性）
 
@@ -292,7 +298,7 @@ gitignore）下一次性建好 venv——venv 与 uv 缓存都放在那里，这
 `1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。不属于 RigorQuant 团队的智能体
 （其他 preset，或完全没有 Team 成员身份）一律不受影响。
 
-**只用 DeepSeek 账号登录？** DSH 0.1.7 把 DeepSeek 拆成 `deepseek-official`
+**只用 DeepSeek 账号登录？** 宿主把 DeepSeek 拆成 `deepseek-official`
 （API key）与 `deepseek-account`（账号登录）。当官方路由不可路由（没有 API key）
 而账号路由可路由时，上表的默认配置会改用 `deepseek-account` 上同名的模型，这些
 请求计入你的账号额度，而不是某个 API key。你自己保存的路由永远不会被改动。
@@ -334,6 +340,13 @@ studies/                    每项研究一个文件夹（Mode B；各 checkout 
 uv sync --frozen --project env
 uv run --frozen --project env python -m pytest tests/ -q
 ```
+
+组合校验针对的是**已安装**的宿主：各探针先从 `RQ_HARNESS_MODULES` 解析它，否则
+用 PATH 上的 `dsh`。在没装宿主的机器上、或宿主版本不在本版本支持范围内时，这些
+检查会说明属于哪种情况并跳过——并且有一个测试专门钉住"拒绝"这件事，所以绿色的
+测试结果永远不会被误读成"已经对着错误的 core 校验过了"。要验证一个发布版本，请
+安装它的目标 core（或把 `RQ_HARNESS_MODULES` 指向该安装的 `@deepseek-ai` 目录）
+后重新运行上面的命令。
 
 ### 提交前覆盖率闸门（校验器 ≥95%）
 
