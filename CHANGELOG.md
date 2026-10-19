@@ -8,6 +8,114 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-19
+
+RigorQuant on DSH 0.2.1-rc.2, and on the five native limits that release
+serves without a line of plugin code. It requires DSH
+`>=0.2.1-rc.2 <0.2.2-0` and drops 0.2.0: **0.7.0 is the last release for the
+0.2.0-rc.2 harness**, and nothing is backported. The release amends Decisions
+20 (the harness range) and 25 and 26 (the floor and the last-release
+statement) and records Decision 27
+(`docs/adr/0004-rigorquant-on-dsh-0.2.1.md`).
+
+### Upgrading
+Finish or archive the RigorQuant studies in progress first: resuming a session
+started on the 0.2.0-rc.2 harness is not promised. Then stop dsh, run
+`npm i -g @deepseek-ai/dsh@0.2.1-rc.2` (npm `latest` now points at that same
+core, so the pin is what keeps it there), run `./install.sh`, and pick
+RigorQuant in the web app. If the picker is missing, switch Coding Tools back
+on in General Settings.
+
+0.7.0 already mounted on 0.2.1-rc.2 — see below — so this is a re-validation
+release, not a fix for a plugin that suddenly stopped loading. The
+architecture did not change with the version: the declared preset, the routing
+card, the escalation lane and the Team guard all carry over, and a profile
+keeps its saved routes. An operator on any 0.5.x, 0.6.x or 0.7.x release
+upgrades straight to 0.8.0: `install.sh` still performs the migrations those
+releases needed and re-pins the Agent Teams bundle to the running core's
+version.
+
+### Why the range moved
+The 0.7.0 band, `>=0.2.0-rc.2 <0.2.1`, **already admitted 0.2.1-rc.2**. The
+compatibility gate matches a declared range with `includePrerelease`, so
+`<0.2.1` excludes 0.2.1 stable, not a prerelease of 0.2.1: 0.7.0 mounted on
+the new core without ever claiming it, and nothing reported it. The ceiling
+that was supposed to keep 0.2.1 out was the ceiling that let its release
+candidates in.
+
+The new band also has to work on 0.2.1-rc.2's gate, which reads `engines.dsh`
+**alone** and ignores `peerDependencies` when it is present. So the manifest,
+`install.sh` and the tests state one band; `peerDependencies` stays equal to
+`engines.dsh` (a test asserts it), and the harness locator reads the gate's
+renamed issue field (`requirements`, formerly `peers`) instead of printing
+`(undefined)`.
+
+`<0.2.2-0` is deliberate: with `includePrerelease`, both `<=0.2.1` and
+`<0.2.2` would readmit `0.2.2-rc.1`, the same bug one minor version up. The
+`-0` sentinel is the smallest 0.2.2 prerelease, so every 0.2.2 prerelease is
+excluded while 0.2.1 stable and its release candidates are admitted.
+
+### Changed
+- **The harness range is `>=0.2.1-rc.2 <0.2.2-0`**, enforced by
+  `engines.dsh` (the field this core's gate reads) and by `install.sh`, which
+  refuses a core at EITHER end (`MIN_DSH_VERSION`/`MAX_DSH_VERSION`) before
+  copying anything, restated in `peerDependencies`, stated in both READMEs,
+  and pinned by `test_repo_consistency.py`. **0.7.0 is the last release for
+  the 0.2.0-rc.2 harness**; nothing is backported.
+- **Five native limits are pinned in the preset** (Decision 27,
+  `docs/token-efficiency.md`): `tool-skill` catalog descriptions at 160
+  characters; `tool-fs` `readMaxBytes: 24576` plus `readLimit: 1200`;
+  `tool-fs-search` `globMaxResults: 60` plus `grepMaxMatches: 120`;
+  `tool-goal` `blockedAfterConsecutiveRounds: 3`; and `agent-instructions`
+  `maxBytes: 8192` with `AGENTS.md` only. Each is bounded where it enters the
+  prompt: a durable skill catalog, an unbounded `read` the spill policy
+  skips, paged search results, the documented blocked-round rule, and a
+  workspace guide that otherwise reaches all eight members.
+- **The Team message contract is restated in the skill.** 0.2.1's
+  `send_message` returns `{sent: true}` (was
+  `{messageId, status: "accepted" | "queued"}`) and carries teammate identity
+  in a required `team:identity` runtime context. The L3 rule now says a failed
+  send is an error, a successful result means stored rather than processed,
+  and a message is never resent. No plugin code changed: the guards read the
+  same tool names and arguments as before.
+
+### Added
+- **`working_directory` is denied to teammates.** 0.2.1 ships it as a
+  host-plane tool; a teammate that switches cwd can write outside the scratch
+  directory its brief names and its validator checks. It joins
+  `EVERY_TEAMMATE_DENY`; the Lead keeps the tool.
+- **A verdict regression for the band.** The suite loads the installed
+  harness's own `evaluatePluginCompatibility` and asserts the real manifest
+  accepts `0.2.1-rc.2` and `0.2.1` and refuses `0.2.2-rc.1`, `0.2.2` and
+  `0.2.0-rc.2`. A string-equality test of the declared range cannot catch a
+  prerelease-ordering mistake, which is exactly what the old ceiling was.
+- **Decision 27, ADR 0004 and `docs/token-efficiency.md`** record the hop:
+  the false-green ceiling, the engines-only gate, the dead keys, the message
+  contract, the five limits and their measured basis, the deferred
+  follow-ups, and the native mechanisms considered and rejected.
+
+### Removed
+- **`maxPendingMessagesPerMember`** is gone from the `agent-team` row in
+  `cordis.patch.yml`, from the installer's marked block, and from the tests
+  that pinned it. 0.2.1's `agentTeams` `Config` no longer declares it (the
+  mailbox moved onto the journal/session projection), so the key had become a
+  silent no-op. `maxMembers: 64`, `maxTasks: 256`, `maxMessageBytes: 65536`
+  and `disposalTimeoutMs: 5000` stay.
+- **`backgroundMode: one-shot`** is gone from the two disabled
+  `tool-subagent-codex` / `tool-subagent-claude-code` rows. 0.2.1's
+  `dsh-tool-subagent` Config dropped `backgroundMode`, `enableRunInBackground`,
+  `persona` and `toolFilter` and added `agentPreset`/`allowedAgentPresets`; a
+  disabled row is never imported, so the key had become documentation of a
+  dead API. The rows keep `provider`, `toolName` and `maxDepth`, and stay
+  disabled for the reasons that disabled them.
+
+### Fixed
+- **The refusal path reads the right gate field.** `tests/harness_locator.cjs`
+  now reads `issue.requirements ?? issue.peers`: 0.2.1 renamed the field, so
+  the old read printed `(undefined)` and the one pre-existing failure in the
+  target-harness baseline (`1 failed / 397 passed`) disappears without
+  weakening the refusal check.
+
 ## [0.7.0] - 2026-10-01
 
 RigorQuant on DSH 0.2.0-rc.2, and on the four native mechanisms that release

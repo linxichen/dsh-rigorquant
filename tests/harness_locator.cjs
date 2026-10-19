@@ -100,9 +100,13 @@ async function judgeCore(harnessRequire, version) {
   }
   const issue = evaluate(ownManifest(), {}, version)
   if (issue === undefined) return { verdict: 'supported' }
+  // 0.2.0-rc.2 named the unmet requirements `peers`; 0.2.1-rc.2 renamed the
+  // field to `requirements` (and now reads `engines.dsh` alone when it is
+  // declared). Reading both keeps one locator for the whole corridor.
+  const unmet = issue.requirements ?? issue.peers
   return {
     verdict: 'refused',
-    detail: `${issue.runtimeVersion} is outside the range this package supports (${JSON.stringify(issue.peers)})`,
+    detail: `${issue.runtimeVersion} is outside the range this package supports (${JSON.stringify(unmet)})`,
   }
 }
 

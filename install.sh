@@ -16,13 +16,18 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="${DSH_PROFILE:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
-MIN_DSH_VERSION="0.2.0-rc.2"
+MIN_DSH_VERSION="0.2.1-rc.2"
 # EXCLUSIVE ceiling, the other half of the same range. `dsh plugin add` is gated
-# by the manifest's peerDependencies, but a full install has to refuse a core
+# by the manifest's compatibility field, but a full install has to refuse a core
 # above the range for the same reason it refuses one below it: the loader skips
-# a bundle built for another core, silently. Pinned equal to package.json's
-# range by tests/test_repo_consistency.py.
-MAX_DSH_VERSION="0.2.1"
+# a bundle built for another core, silently. The ceiling is written as the
+# prerelease-EXCLUSIVE `<0.2.2-0`: `0.2.2-0` is the lowest possible 0.2.2
+# prerelease, so this ceiling refuses every 0.2.2 prerelease AND 0.2.2 final,
+# while admitting 0.2.1 final and its prereleases. Pinned equal to
+# package.json's `engines.dsh` and `peerDependencies` pair by
+# tests/test_repo_consistency.py (on 0.2.1-rc.2 the loader reads `engines.dsh`
+# alone; install.sh has to agree with it).
+MAX_DSH_VERSION="0.2.2-0"
 # The optional bundle that carries Agent Teams — the harness's Beta "Agent
 # Teams" card on the Plugins page. RigorQuant runs team-only, so a full install
 # enables it and raises the team service's lifetime member cap
@@ -50,7 +55,7 @@ TEAM_PATCH_MARK_END='# <<< dsh-rigorquant END <<<'
 # neither, which is the case the `file:` decision below deliberately separates.
 is_git_checkout() { [ -d "$HERE/.git" ] || [ -f "$HERE/.git" ]; }
 
-# The version the installed CLI reports, e.g. `0.2.0-rc.2`, read once for the
+# The version the installed CLI reports, e.g. `0.2.1-rc.2`, read once for the
 # whole run: it gates the install (require_dsh_version) and pins the Agent Teams
 # bundle to the core it is published in lockstep with
 # (install_agent_teams). Empty when `dsh --version` cannot answer at all.
@@ -171,11 +176,11 @@ require_dsh_version() {
 }
 
 # The full distribution is only mountable on the harness it was written
-# against (Decision 25, carried forward by Decision 26): the preset is a
+# against (Decision 25, carried forward by Decisions 26 and 27): the preset is a
 # declared `@deepseek-ai/dsh-agent-preset` row, the router's routes are
 # `.volatile()` profile config, the card edits them through `configForms`, and
 # the unattended intake ask uses the timed `ask_user_question` mode — none of
-# which exists before 0.2.0-rc.2. Fail before copying anything when the
+# which exists before 0.2.1-rc.2. Fail before copying anything when the
 # installed CLI is older; a missing CLI keeps the historical warning and can be
 # installed later.
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
@@ -334,34 +339,69 @@ NODE
     fi
   fi
 
-  # Append the cap override under our marker, unless it is already there
-  # (idempotent: a second run of an already-installed profile writes
-  # nothing). A freshly-initialized patch file is a bare `[]`; a block
-  # sequence cannot follow a flow-style empty array in the same YAML
-  # document, so that placeholder is replaced rather than appended after.
+  # Write the cap override under our marker. A freshly-initialized patch file is
+  # a bare `[]`; a block sequence cannot follow a flow-style empty array in the
+  # same YAML document, so that placeholder is replaced rather than appended
+  # after. On a profile that already carries our block the rewrite is
+  # SURGICAL: it removes only the dead `maxPendingMessagesPerMember` key that
+  # 0.7.0 wrote and 0.2.1-rc.2's Config no longer accepts, merging this run's
+  # newly enabled bundles into the existing `# rq-enabled-bundles:` record.
+  # Everything else inside the block is left byte-for-byte as it is -- an
+  # operator's saved cap edit (a raised `maxTasks`), a row the ConfigEditor
+  # saved after ours, the record itself -- and a block that already lacks the
+  # dead key with nothing new to record is not written at all, so a second run
+  # prints nothing and changes nothing.
   written="$(node - "$patch_file" "$enabled" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" <<'NODE'
 const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs')
 const { dirname } = require('node:path')
 const [patchFile, enabled, markBegin, markEnd] = process.argv.slice(2)
 const content = existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : ''
-if (content.includes(markBegin)) process.exit(0)
-const block = [
+const runEnabled = enabled.trim() === '' ? [] : enabled.trim().split(/\s+/)
+// The one line 0.8.0 removes; every other line in the block is operator- or
+// harness-owned and survives the migration untouched.
+const DEAD_KEY = /^\s*maxPendingMessagesPerMember\s*:\s*\d+\s*$/
+const freshBlock = (record) => [
   markBegin,
-  // Trimmed: with nothing stale, the shell passes a trailing space.
-  '# rq-enabled-bundles: ' + enabled.trim(),
+  // Trimmed: with nothing recorded the record line is the bare prefix.
+  '# rq-enabled-bundles: ' + record.trim(),
   '- id: agent-team',
   '  config:',
   '    maxMembers: 64',
   '    maxTasks: 256',
-  '    maxPendingMessagesPerMember: 64',
   '    maxMessageBytes: 65536',
   '    disposalTimeoutMs: 5000',
   markEnd,
-  '',
 ].join('\n')
+const begin = content.indexOf(markBegin)
+const end = begin === -1 ? -1 : content.indexOf(markEnd, begin)
+if (begin !== -1 && end !== -1) {
+  const regionStart = begin + markBegin.length
+  const region = content.slice(regionStart, end)
+  let nextRegion = region.split('\n').filter((line) => !DEAD_KEY.test(line)).join('\n')
+  // Merge (never recompute) the record: the absent/stale lists of this run
+  // cannot know what an older install enabled, and --uninstall relies on it.
+  const oldRecord = region.match(/^# rq-enabled-bundles:\s*(.*)$/m)
+  const oldNames = oldRecord === null ? [] : oldRecord[1].trim().split(/\s+/).filter(Boolean)
+  const added = runEnabled.filter((name) => !oldNames.includes(name))
+  if (added.length > 0) {
+    const record = '# rq-enabled-bundles: ' + [...oldNames, ...added].join(' ')
+    // The region normally opens with a newline right after the BEGIN marker;
+    // keep that shape when a record line has to be inserted.
+    nextRegion = oldRecord === null
+      ? '\n' + record + nextRegion.replace(/^\n/, '')
+      : nextRegion.replace(oldRecord[0], record)
+  }
+  if (nextRegion === region) process.exit(0)
+  writeFileSync(patchFile, content.slice(0, regionStart) + nextRegion + content.slice(end))
+  process.stdout.write(markBegin + nextRegion + markEnd)
+  process.exit(0)
+}
+// An unpaired BEGIN marker is not a region this script can safely rewrite.
+if (begin !== -1) process.exit(0)
+const block = freshBlock(runEnabled.join(' '))
 const next = /\[\]\s*$/.test(content)
-  ? content.replace(/\[\]\s*$/, '') + block
-  : (content === '' || content.endsWith('\n') ? content : content + '\n') + block
+  ? content.replace(/\[\]\s*$/, '') + block + '\n'
+  : (content === '' || content.endsWith('\n') ? content : content + '\n') + block + '\n'
 mkdirSync(dirname(patchFile), { recursive: true })
 writeFileSync(patchFile, next)
 process.stdout.write(block)

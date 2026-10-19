@@ -14,9 +14,10 @@
 # Child `baseUrl` is the PROFILE root (`file://$DSH_HOME/profiles/<profile>/`),
 # not this package. No child may resolve a path from it.
 #
-# The package requires DSH `>=0.2.0-rc.2 <0.2.1` (package.json
-# `peerDependencies`, restated declaratively under `engines.dsh`); the CLI
-# skips a bundle whose range the running core does not satisfy.
+# The package requires DSH `>=0.2.1-rc.2 <0.2.2-0` (package.json
+# `engines.dsh`, restated under `peerDependencies` and enforced by `install.sh`);
+# on 0.2.1-rc.2 the loader reads `engines.dsh` alone and skips a bundle whose
+# range the running core does not satisfy.
 - insert:
     # An override by id (a patch keyed `preset-rigorquant` in the profile, or
     # an edit saved from the Web preset editor) replaces this row's WHOLE
@@ -119,7 +120,16 @@
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
-              maxBytes: 65536
+              # 0.2.1's Config dropped `dshHome`, and the two user-global roots
+              # the core always probes ($DSH_HOME/AGENTS.md and
+              # ~/.agents/AGENTS.md) still apply -- these keys cannot switch
+              # them off. They bound the WORKSPACE/PROJECT chain only: AGENTS.md
+              # is the one candidate, 8 KiB is enough for the repo rules under
+              # the token budget, and no local candidate file is injected
+              # (Decision 27 token limits).
+              maxBytes: 8192
+              instructionFileCandidates: ['AGENTS.md']
+              localInstructionFileCandidates: []
 
           # ── shell ───────────────────────────────────────────────────
 
@@ -135,11 +145,25 @@
 
           - id: tool-fs
             name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              # A study's artifacts are meant to be read whole; the harness
+              # default (51,200 B) spends context on huge logs, and the skill
+              # tells the orchestrator to slice large records. 24 KiB is the
+              # retained detail the spill locator cannot replace, and 1,200
+              # lines bounds a pathological single file (Decision 27).
+              readMaxBytes: 24576
+              readLimit: 1200
 
           - id: tool-fs-search
             name: '@deepseek-ai/dsh-tool-fs-search'
             config:
+              # Every hit is context. A study's tree is mostly prose and code;
+              # 60 globs and 120 grep matches cover a real search without
+              # flooding a round (Decision 27). Over-cap glob results stay
+              # unsampled rather than silently truncated.
               sampleOverCapGlobResults: false
+              globMaxResults: 60
+              grepMaxMatches: 120
 
           # ── background jobs ─────────────────────────────────────────
 
@@ -150,6 +174,12 @@
 
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
+            config:
+              # The skill list is part of every step's context; 160 characters
+              # of catalog description per skill keeps the index readable
+              # without turning it into a second copy of the SKILL.md bodies
+              # (Decision 27).
+              catalogDescriptionMaxLength: 160
 
           # ── goals ───────────────────────────────────────────────────
 
@@ -161,6 +191,13 @@
 
           - id: tool-goal
             name: '@deepseek-ai/dsh-tool-goal'
+            config:
+              # Matches the framework's documented rule (SKILL.md/lifecycle):
+              # after THREE consecutive blocked rounds the loop stops and waits
+              # for the human rearm instead of burning another round on the
+              # same wall. Decision 27 pins the harness's own loop guard to
+              # that documented limit.
+              blockedAfterConsecutiveRounds: 3
 
           # ── plan mode ───────────────────────────────────────────────
 
@@ -255,7 +292,6 @@
                 config:
                   provider: codex
                   toolName: subagent_codex
-                  backgroundMode: one-shot
                   maxDepth: provider-managed
 
               - id: tool-subagent-claude-code
@@ -264,7 +300,6 @@
                 config:
                   provider: claude-code
                   toolName: subagent_claude_code
-                  backgroundMode: one-shot
                   maxDepth: provider-managed
 
               # The workflow engine and its model-facing tool are DISABLED

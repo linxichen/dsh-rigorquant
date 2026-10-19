@@ -111,8 +111,12 @@ const GUARD_TEXT = 'RigorQuant team guard: armed'
 const PERSONA_DIR = fileURLToPath(new URL('./personas/', import.meta.url))
 
 /** Every teammate is denied these regardless of tier: the orchestrator-owned
- * study goal (Decision 10), todo, and the unattended-contract tools. */
-const EVERY_TEAMMATE_DENY = ['create_goal', 'update_goal', 'get_goal', 'todo_write', 'ask_user_question', 'exit_plan_mode']
+ * study goal (Decision 10), todo, the unattended-contract tools, and the
+ * 0.2.1 host-plane `working_directory` tool (Decision 27, seam S7). A
+ * teammate's working directory is its own scratch dir, fixed when the Team
+ * spawns it; letting a teammate switch it would break the own-scratch-dir
+ * contract that keeps two producers from writing into each other's tree. */
+const EVERY_TEAMMATE_DENY = ['create_goal', 'update_goal', 'get_goal', 'todo_write', 'ask_user_question', 'exit_plan_mode', 'working_directory']
 const WEB_DENY = ['web_search', 'web_fetch']
 /** Blind roles: no other agent's results, so no web AND no skill (the
  * rigorquant skill carries the working procedure, not raw derivation). */
