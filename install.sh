@@ -180,9 +180,11 @@ require_dsh_version() {
 # declared `@deepseek-ai/dsh-agent-preset` row, the router's routes are
 # `.volatile()` profile config, the card edits them through `configForms`, and
 # the unattended intake ask uses the timed `ask_user_question` mode — none of
-# which exists before 0.2.1-rc.2. Fail before copying anything when the
-# installed CLI is older; a missing CLI keeps the historical warning and can be
-# installed later.
+# which exists before 0.2.0-rc.2 — and the floor sits at 0.2.1-rc.2 because
+# that is the only line this release is validated on (0.7.0 is the last
+# release for 0.2.0-rc.2). Fail before copying anything when the installed CLI
+# is older; a missing CLI keeps the historical warning and can be installed
+# later.
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
   DSH_CORE_VERSION="$(dsh --version 2>/dev/null || true)"
   require_dsh_version
@@ -380,7 +382,9 @@ if (begin !== -1 && end !== -1) {
   let nextRegion = region.split('\n').filter((line) => !DEAD_KEY.test(line)).join('\n')
   // Merge (never recompute) the record: the absent/stale lists of this run
   // cannot know what an older install enabled, and --uninstall relies on it.
-  const oldRecord = region.match(/^# rq-enabled-bundles:\s*(.*)$/m)
+  // `[ \t]*`, not `\s*`: an empty record is the bare prefix plus a space, and
+  // `\s*` would run past the newline and read the agent-team row as names.
+  const oldRecord = region.match(/^# rq-enabled-bundles:[ \t]*(.*)$/m)
   const oldNames = oldRecord === null ? [] : oldRecord[1].trim().split(/\s+/).filter(Boolean)
   const added = runEnabled.filter((name) => !oldNames.includes(name))
   if (added.length > 0) {
@@ -388,7 +392,7 @@ if (begin !== -1 && end !== -1) {
     // The region normally opens with a newline right after the BEGIN marker;
     // keep that shape when a record line has to be inserted.
     nextRegion = oldRecord === null
-      ? '\n' + record + nextRegion.replace(/^\n/, '')
+      ? '\n' + record + '\n' + nextRegion.replace(/^\n/, '')
       : nextRegion.replace(oldRecord[0], record)
   }
   if (nextRegion === region) process.exit(0)
@@ -584,7 +588,7 @@ const begin = content.indexOf(markBegin)
 const end = begin === -1 ? -1 : content.indexOf(markEnd, begin)
 if (begin === -1 || end === -1) process.exit(0)
 const block = content.slice(begin, end)
-const enabledMatch = block.match(/^# rq-enabled-bundles:\s*(.*)$/m)
+const enabledMatch = block.match(/^# rq-enabled-bundles:[ \t]*(.*)$/m)
 // Only the lines this installer wrote go: the markers, the record, and the
 // `agent-team` row. The END marker is a trailing comment, so a row the
 // ConfigEditor of the harness saved later sits between the markers and must

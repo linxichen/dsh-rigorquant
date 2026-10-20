@@ -986,7 +986,7 @@ which is why the tests that pinned them are inverted in the same release.
 `working_directory`, a model-facing tool that changes the session's working
 directory. A teammate's scratch directory is part of its brief and its
 evidence contract; no pre-0.2.1 teammate had the tool, and none may acquire it
-by upgrading the host. It joins `EVERY_TEAMMATE_DENY`; the Lead keeps it.
+by upgrading the host. It joins `EVERY_TEAMMATE_DENY`; the orchestrator keeps it.
 
 **The Team message contract is restated.** 0.2.1's `send_message` returns
 `{sent: true}` (was `{messageId, status: "accepted" | "queued"}`), awaits
@@ -1015,7 +1015,7 @@ host already serves, each with a purpose and a measured basis
   blocked-round rule an explicit pin rather than a host default.
 - `agent-instructions.maxBytes: 8192`, `instructionFileCandidates: ['AGENTS.md']`,
   `localInstructionFileCandidates: []` — bounds a research repo's agent guide,
-  which otherwise enters **all eight** members' prompts, and drops the
+  which otherwise enters **all eight** agents' prompts, and drops the
   `CLAUDE*` variant duplication.
 
 The larger token opportunities are dynamic and stay deferred until a real

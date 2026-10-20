@@ -41,7 +41,7 @@ the bounded-result limits and defers the structural changes.
 | `read` ≤ 24,576 bytes, ≤ 1,200 lines | `tool-fs.readMaxBytes` / `readLimit` (defaults 51,200 / 2,000) | one read could inject ≈ 12.8 k tokens; spill **skips** `read` and the pruner only runs after a compaction trigger → the largest read loses ≈ 6.7 k tokens | the main evidence-reading tool is otherwise unbounded until compaction |
 | `glob` ≤ 60 results, `grep` ≤ 120 matches | `tool-fs-search.globMaxResults` / `grepMaxMatches` (defaults 100 / 250) | ≈ 40–52 % fewer search-result bytes | exploration fan-out returns pages, not dumps |
 | `blockedAfterConsecutiveRounds: 3` | `tool-goal.blockedAfterConsecutiveRounds` (default 3) | correctness pin, ≈ 0 tokens saved directly | makes the documented blocked rule explicit instead of a host default |
-| Instructions ≤ 8,192 bytes, `AGENTS.md` only | `agent-instructions.maxBytes` / `instructionFileCandidates` / `localInstructionFileCandidates` (were 65,536 and the default candidate list) | worst case 64 KiB ≈ 16 k tokens injected into **all eight** members; typical 0 with no large repo guide | bounds a research repo's agent guide; drops `CLAUDE*` variant duplication |
+| Instructions ≤ 8,192 bytes, `AGENTS.md` only | `agent-instructions.maxBytes` / `instructionFileCandidates` / `localInstructionFileCandidates` (were 65,536 and the default candidate list) | worst case 64 KiB ≈ 16 k tokens injected into **all eight** agents (orchestrator and teammates); typical 0 with no large repo guide | bounds a research repo's agent guide; drops `CLAUDE*` variant duplication |
 
 Each limit is a row config in `agent-presets/rigorquant.patch.yml`; none needs
 plugin code. Their combined always-on effect is small (≈ 0.3–0.5 k tokens per

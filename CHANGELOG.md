@@ -70,7 +70,7 @@ excluded while 0.2.1 stable and its release candidates are admitted.
   `maxBytes: 8192` with `AGENTS.md` only. Each is bounded where it enters the
   prompt: a durable skill catalog, an unbounded `read` the spill policy
   skips, paged search results, the documented blocked-round rule, and a
-  workspace guide that otherwise reaches all eight members.
+  workspace guide that otherwise reaches all eight agents.
 - **The Team message contract is restated in the skill.** 0.2.1's
   `send_message` returns `{sent: true}` (was
   `{messageId, status: "accepted" | "queued"}`) and carries teammate identity
@@ -83,7 +83,7 @@ excluded while 0.2.1 stable and its release candidates are admitted.
 - **`working_directory` is denied to teammates.** 0.2.1 ships it as a
   host-plane tool; a teammate that switches cwd can write outside the scratch
   directory its brief names and its validator checks. It joins
-  `EVERY_TEAMMATE_DENY`; the Lead keeps the tool.
+  `EVERY_TEAMMATE_DENY`; the orchestrator keeps the tool.
 - **A verdict regression for the band.** The suite loads the installed
   harness's own `evaluatePluginCompatibility` and asserts the real manifest
   accepts `0.2.1-rc.2` and `0.2.1` and refuses `0.2.2-rc.1`, `0.2.2` and

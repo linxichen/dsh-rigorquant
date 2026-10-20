@@ -107,7 +107,8 @@ def test_native_agent_options_floor_is_declared_and_enforced():
     `@deepseek-ai/dsh-agent-preset` row, the routes are `.volatile()` profile
     config, the card edits them through `configForms`, and the unattended
     intake ask uses the timed `ask_user_question` mode -- none of which exists
-    before 0.2.1-rc.2. The ceiling is not decoration: on a newer core the loader
+    before 0.2.0-rc.2 -- and the floor is 0.2.1-rc.2, the one line this release
+    is validated on. The ceiling is not decoration: on a newer core the loader
     SKIPS this bundle, so a profile would boot with no RigorQuant and no error,
     which is the same silent failure the floor prevents.
 
@@ -932,8 +933,11 @@ def test_hard_lesson_l3_keeps_freeze_and_hash_and_adopts_the_brief_rule():
                  "Do not send follow-up messages to a settled"):
         assert gone not in text, "L3 still carries the retired rule %r" % gone
     skill = " ".join((SKILL_DIR / "SKILL.md").read_text().split())
-    assert "resending a message whose send already returned an error" in skill
-    assert "resending a queued message" not in skill
+    # The anti-pattern is resending a send that SUCCEEDED (it is stored); a
+    # failed send stored nothing, so resending it is the repair, not the sin.
+    assert "resending a message whose send already succeeded" in skill
+    for gone in ("resending a queued message", "whose send already returned an error"):
+        assert gone not in skill, "SKILL.md's L3 anti-pattern still says %r" % gone
 
 
 def test_the_brief_contract_names_task_snapshot_and_role_only_description():
@@ -1714,6 +1718,30 @@ def test_every_decision_reference_resolves():
                     offenders.append("%s:%d: Decision %s" % (src.relative_to(REPO), n, num))
     assert not offenders, (
         "references to decisions architecture.md never records:\n" + "\n".join(offenders))
+
+
+def test_every_seam_reference_resolves():
+    """A `seam SN` cited in code or tests must be a row of ADR 0004's ledger.
+
+    Comments name host seams by number (`seam S3`) the way they name
+    decisions; the label is only meaningful while the ledger records it, and
+    the ledger lists every seam the differential found, so its numbers run
+    from S1 with no gap.
+    """
+    adr = (REPO / "docs/adr/0004-rigorquant-on-dsh-0.2.1.md").read_text()
+    known = [int(n) for n in re.findall(r"^\| S(\d+) ", adr, re.MULTILINE)]
+    assert known == list(range(1, len(known) + 1)), (
+        "ADR 0004's seam ledger is not S1..SN in order: %s" % known)
+    offenders = []
+    for f in tracked_files():
+        if not f.endswith((".js", ".cjs", ".py", ".yml", ".sh", ".md")):
+            continue
+        for n, line in enumerate((REPO / f).read_text().splitlines(), 1):
+            for num in re.findall(r"\bseams? S(\d+)\b", line):
+                if int(num) not in known:
+                    offenders.append("%s:%d: seam S%s" % (f, n, num))
+    assert not offenders, (
+        "references to seams ADR 0004's ledger never records:\n" + "\n".join(offenders))
 
 
 def test_the_shipped_procedure_names_every_teammate_role():

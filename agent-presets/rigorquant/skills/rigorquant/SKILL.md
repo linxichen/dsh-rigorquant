@@ -561,7 +561,7 @@ rounds, or the team's lifetime teammate cap) → checkpoint + report. Schema and
   landed (L2); waiting on a report instead of reading the verdict once.
 - Editing a document under adversarial audit, sending a teammate a follow-up
   about an artifact under audit, or resending a message whose send already
-  returned an error (L3) — freeze on audit, hash-bound briefs and verdicts.
+  succeeded (L3) — freeze on audit, hash-bound briefs and verdicts.
 - Certifying your own repair in `status` before an independent verdict lands
   (L4); status prose that no verdict file or frozen hash backs.
 - Trusting orchestrator-produced tables/scripts/status without a second

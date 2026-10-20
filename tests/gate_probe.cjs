@@ -23,35 +23,32 @@
 // The Python tests skip on 3, never on the wording.
 
 const { readFileSync } = require('node:fs')
-const { createRequire } = require('node:module')
-const { pathToFileURL } = require('node:url')
 const { join } = require('node:path')
 
-const { REPO, resolveHarness } = require('./harness_locator.cjs')
+const {
+  EXIT_NO_HARNESS, REPO, exitNoHarness, harnessRequireFor, installedCoreVersion,
+  loadCompatibilityGate, resolveHarness, unmetRequirements,
+} = require('./harness_locator.cjs')
 
+const PREFIX = 'gate_probe'
 const PROBED_VERSIONS = [
   '0.2.0-rc.2', '0.2.1-rc.2', '0.2.1', '0.2.2-rc.1', '0.2.2', '0.3.0',
 ]
 
-const fail = (message) => {
-  process.stderr.write(`gate_probe: ${message}\n`)
-  process.exit(3)
-}
-
 async function main() {
+  // No `requireSupportedCore` here on purpose: this probe's job is to report
+  // the gate's verdict on versions this package refuses.
   const harness = resolveHarness(undefined)
-  if (harness === undefined) fail('cannot locate an installed harness')
-  const harnessRequire = createRequire(join(harness, '__gate_probe__.cjs'))
+  if (harness === undefined) exitNoHarness(PREFIX, 'cannot locate an installed harness')
+  const harnessRequire = harnessRequireFor(harness, PREFIX)
 
+  const coreVersion = installedCoreVersion(harnessRequire)
+  if (coreVersion === undefined) exitNoHarness(PREFIX, `the harness at ${harness} has no @deepseek-ai/dsh`)
   let evaluate
-  let coreVersion
   try {
-    ({ evaluatePluginCompatibility: evaluate } = await import(
-      pathToFileURL(harnessRequire.resolve('@deepseek-ai/dsh-app-boot')).href))
-    coreVersion = JSON.parse(
-      readFileSync(harnessRequire.resolve('@deepseek-ai/dsh/package.json'), 'utf8')).version
+    evaluate = await loadCompatibilityGate(harnessRequire)
   } catch (error) {
-    fail(`cannot import the installed compatibility gate: ${String(error?.message ?? error)}`)
+    exitNoHarness(PREFIX, `cannot import the installed compatibility gate: ${String(error?.message ?? error)}`)
   }
 
   const named = process.env.RQ_GATE_MANIFEST
@@ -60,7 +57,7 @@ async function main() {
   try {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
   } catch (error) {
-    fail(`cannot read the manifest at ${manifestPath}: ${String(error?.message ?? error)}`)
+    exitNoHarness(PREFIX, `cannot read the manifest at ${manifestPath}: ${String(error?.message ?? error)}`)
   }
 
   const verdicts = {}
@@ -68,8 +65,7 @@ async function main() {
     const issue = evaluate(manifest, {}, version)
     verdicts[version] = issue === undefined
       ? { verdict: 'accepted' }
-      // 0.2.1+ renamed the issue's field `peers` -> `requirements`.
-      : { verdict: 'refused', requirements: issue.requirements ?? issue.peers }
+      : { verdict: 'refused', requirements: unmetRequirements(issue) }
   }
 
   // Which field decides: an open engines.dsh plus an impossible peer range is
@@ -86,6 +82,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(`gate_probe: ${String(error?.stack ?? error)}\n`)
-  process.exit(3)
+  process.stderr.write(`${PREFIX}: ${String(error?.stack ?? error)}\n`)
+  process.exit(EXIT_NO_HARNESS)
 })

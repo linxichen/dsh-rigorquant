@@ -111,7 +111,7 @@ native token limits the host already serves. Recorded as Decision 27 in
   mechanism if that path is ever revived.
 - **The teammate deny list.** `working_directory` joins `create_goal`,
   `update_goal`, `get_goal`, `todo_write`, `ask_user_question` and
-  `exit_plan_mode`. The Lead keeps the tool: cwd changes are an orchestrator
+  `exit_plan_mode`. The orchestrator keeps the tool: cwd changes are its
   decision, not a teammate capability.
 - **The skill's send rule.** `references/protocol.md` (L3) and the sentence
   that cites it in `SKILL.md` now describe the 0.2.1 result. The never-resend
@@ -128,6 +128,33 @@ native token limits the host already serves. Recorded as Decision 27 in
   fields, the installer pair, the removed keys' absence, the five configs,
   and the teammate deny set. The refusal-path fix in the harness locator
   clears the one pre-existing failure the target harness produced.
+
+## Seam ledger
+
+The host differential compared the installed `@deepseek-ai` trees of
+0.2.0-rc.2 (old) and 0.2.1-rc.2 (new) and recorded sixteen seams. Line
+references are into each package's `lib/index.js` unless another file is
+named. Every seam is listed, including those that need no change, so a later
+hop can see what was checked as well as what moved.
+
+| Seam | Old → new (evidence) | Disposition |
+| --- | --- | --- |
+| S1 ceiling `<0.2.1` admits `0.2.1-rc.2` | `dsh-app-boot` :300 → :277, `includePrerelease: true` in both | **Fixed**: band `>=0.2.1-rc.2 <0.2.2-0`; `gate_probe.cjs` judges the real manifest with the installed gate |
+| S2 `engines.dsh` decides alone; issue field `peers` → `requirements` | `dsh-app-boot` :286-313 → :279-299, :333-335 | **Fixed**: both fields equal (asserted); the locator reads either field |
+| S3 `agentTeams` drops `maxPendingMessagesPerMember` | `dsh-experimental-agent-team` :1688-1694 → :1438-1443 | **Fixed**: key removed from the row and the installer block; a 0.7.0 block is migrated surgically |
+| S4 `tool-subagent` drops `backgroundMode`, `enableRunInBackground`, `persona`, `toolFilter` | `dsh-tool-subagent` :252-270 → :311-324 | **Fixed**: `backgroundMode` removed from the two disabled rows; all four pinned absent |
+| S5 `dsh-client-ui-slots`, `-client-store`, `-client-ui-primitives` no longer installed | present in old tree → absent; the browser still gets `ui-slots` from the shell's module map (`dsh-web-frontend` dist) | No change: `dsh/client.js` requires only `react` (client bundle probe) |
+| S6 `ConfigFormController` loses `persistence` and snapshot `mode` | `dsh-client-ui-settings/lib/client.js` :1086-1131 → :1080-1119 | No change: the card reads only `status`, `writable`, `value`, `user`. A remote page can now write where it stayed memory-only; **unverified live** |
+| S7 new host-plane `working_directory` tool and runtime-context orders | absent in old `dsh-base/cordis.patch.yml` → :166-170; `dsh-tool-working-directory` :17 | **Fixed**: joins `EVERY_TEAMMATE_DENY` |
+| S8 `dsh-agent-instructions` drops `dshHome`; adds a `~/.agents` root | :25-32 → :25-31, :60-88 | No change possible: the row cannot switch the two user-global roots off, so a machine's `~/.agents/AGENTS.md` now reaches every agent (deduplicated against `$DSH_HOME/AGENTS.md`). The preset's instructions limit bounds only the project chain |
+| S9 settings and client services the card consumes | `settingsSchema` methods, `configForms.get`, the `plugins.bundle.config` slot, `settings.describe`, `remote.session.modelCatalog` | Verified intact by name and line; no change |
+| S10 `dsh-web-app` injects `webStartup` (was `webRuntime`) | :181 → :33, :149 | No change: RigorQuant's rows inject neither |
+| S11 restart-required signal for bundle enable and disable | new `ResolutionRestartRequired`, `recomputeProfile` (`dsh-app-boot` :1264, :1563) | No change: `dsh plugin add` still reconciles `dsh.profile.bundles` (real CLI); the runbook already stops dsh first |
+| S12 session event vocabulary grows | `dsh-session` :56 keeps `SESSION_FORMAT_VERSION = 4` | No change: the router reads only `assistant/message`, whose emit site is unchanged |
+| S13 preset registry `list()` gains `isDefault` and `broken`; `select` schema tightens | `dsh-agent-preset-registry` :723 → :717 | No change: RigorQuant uses only `composedPreset` and the unchanged `{default, selectedDefault}` row config |
+| S14 `send_message` returns `{sent:true}` (was `{messageId, status}`) | `dsh-experimental-tool-agent-team` :149-156 → :151-155 | **Fixed**: the L3 send rule in `protocol.md` and `SKILL.md`; tool names and `spawn_teammate` params unchanged |
+| S15 repo-side: the locator printed `issue.peers` | `tests/harness_locator.cjs` | **Fixed** with S2 |
+| S16 verified unchanged | timed `ask_user_question`, persona sections, skill provider ranks, `workflow-ptc`, `tool-workflow`, compaction option names, team service methods, the bundle patch dialect (byte-identical), icon and locale resolution | Regression anchors; no change |
 
 ## Considered and rejected
 

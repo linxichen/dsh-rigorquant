@@ -5,10 +5,11 @@
 // the installed harness, which core version it is, and whether this package
 // supports that core. Keeping them here means the probes cannot disagree about
 // what "the installed harness" means, and there is exactly one place that
-// calls the harness's own compatibility gate — and one place that decides the
-// exit codes the Python tests switch on.
+// loads the harness's own compatibility gate and reads its verdict — and one
+// place that decides the exit codes the Python tests switch on.
 
 const { readFileSync, existsSync, realpathSync } = require('node:fs')
+const { createRequire } = require('node:module')
 const { pathToFileURL } = require('node:url')
 const { join, resolve, dirname } = require('node:path')
 const { execFileSync } = require('node:child_process')
@@ -58,6 +59,23 @@ function resolveHarness(argument, env = process.env) {
   return named === undefined || named === '' ? findHarnessModules() : resolve(named)
 }
 
+/**
+ * A resolver anchored at the harness directory, so `@deepseek-ai/*` resolves
+ * the way it does for the harness itself. `probe` only names the anchor file.
+ */
+function harnessRequireFor(harness, probe) {
+  return createRequire(join(harness, `__${probe}__.cjs`))
+}
+
+/**
+ * Report that a probe has nothing to validate against and exit with the
+ * shared code; the Python side skips on the code, never on the wording.
+ */
+function exitNoHarness(prefix, message) {
+  process.stderr.write(`${prefix}: ${message}\n`)
+  process.exit(EXIT_NO_HARNESS)
+}
+
 /** This package's own manifest, read once. */
 let manifest
 function ownManifest() {
@@ -74,13 +92,34 @@ function installedCoreVersion(harnessRequire) {
   }
 }
 
-/** The `@deepseek-ai/dsh` range this package declares, read from its manifest. */
+/**
+ * The `@deepseek-ai/dsh` range this package declares, read from its manifest.
+ * `engines.dsh` first: it is the field a 0.2.1 gate reads alone, and the
+ * manifest keeps the peer range equal to it.
+ */
 function declaredRange() {
-  try {
-    return ownManifest().peerDependencies['@deepseek-ai/dsh']
-  } catch {
-    return undefined
+  const manifest = ownManifest()
+  return manifest.engines?.dsh ?? manifest.peerDependencies?.['@deepseek-ai/dsh']
+}
+
+/** The harness's own `evaluatePluginCompatibility`; throws when it cannot load. */
+async function loadCompatibilityGate(harnessRequire) {
+  const { evaluatePluginCompatibility } = await import(
+    pathToFileURL(harnessRequire.resolve('@deepseek-ai/dsh-app-boot')).href)
+  if (typeof evaluatePluginCompatibility !== 'function') {
+    throw new Error('@deepseek-ai/dsh-app-boot exports no evaluatePluginCompatibility')
   }
+  return evaluatePluginCompatibility
+}
+
+/**
+ * The unmet requirements a gate issue names. 0.2.0-rc.2 called the field
+ * `peers`; 0.2.1-rc.2 renamed it `requirements` (and now reads `engines.dsh`
+ * alone when it is declared). Reading both keeps one locator for the whole
+ * corridor.
+ */
+function unmetRequirements(issue) {
+  return issue.requirements ?? issue.peers
 }
 
 /**
@@ -93,20 +132,15 @@ function declaredRange() {
 async function judgeCore(harnessRequire, version) {
   let evaluate
   try {
-    ({ evaluatePluginCompatibility: evaluate } = await import(
-      pathToFileURL(harnessRequire.resolve('@deepseek-ai/dsh-app-boot')).href))
+    evaluate = await loadCompatibilityGate(harnessRequire)
   } catch (error) {
     return { verdict: 'unjudged', detail: String(error?.message ?? error) }
   }
   const issue = evaluate(ownManifest(), {}, version)
   if (issue === undefined) return { verdict: 'supported' }
-  // 0.2.0-rc.2 named the unmet requirements `peers`; 0.2.1-rc.2 renamed the
-  // field to `requirements` (and now reads `engines.dsh` alone when it is
-  // declared). Reading both keeps one locator for the whole corridor.
-  const unmet = issue.requirements ?? issue.peers
   return {
     verdict: 'refused',
-    detail: `${issue.runtimeVersion} is outside the range this package supports (${JSON.stringify(unmet)})`,
+    detail: `${issue.runtimeVersion} is outside the range this package supports (${JSON.stringify(unmetRequirements(issue))})`,
   }
 }
 
@@ -142,9 +176,13 @@ module.exports = {
   EXIT_REFUSED,
   REPO,
   declaredRange,
+  exitNoHarness,
   findHarnessModules,
+  harnessRequireFor,
   installedCoreVersion,
   judgeCore,
+  loadCompatibilityGate,
   requireSupportedCore,
   resolveHarness,
+  unmetRequirements,
 }

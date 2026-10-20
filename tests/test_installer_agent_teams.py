@@ -585,6 +585,33 @@ def test_rerunning_repairs_a_stale_marked_block_from_the_previous_release(tmp_pa
     assert TEAM_BUNDLE not in _manifest_bundles(dsh_home, "rq-team")
 
 
+@pytest.mark.parametrize("record_line", ["# rq-enabled-bundles: \n", "# rq-enabled-bundles:\n", ""],
+                         ids=["empty-record", "bare-prefix", "no-record"])
+def test_a_repin_merges_into_an_empty_or_missing_record_without_eating_the_row(tmp_path, record_line):
+    """A 0.7.0 install on a profile whose Team bundle was already on wrote the
+    record as the bare prefix plus a trailing space. Re-pinning a stale bundle
+    after the core upgrade then merges into that record: the merge must read
+    the record line alone (not run on into `- id: agent-team`), and a block
+    with no record at all must gain one on its own line."""
+    _needs_yaml()
+    env, dsh_home, _ = _stub_dsh_env(tmp_path)
+    block = STALE_BLOCK.replace("# rq-enabled-bundles: %s\n" % TEAM_BUNDLE, record_line)
+    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base", TEAM_BUNDLE],
+                  dependencies={TEAM_BUNDLE: "0.1.6-alpha.2"},
+                  patch=PATCH_TEMPLATE.replace("[]\n", "") + block)
+
+    result = _install(env, "rq-team")
+    assert result.returncode == 0, result.stderr
+    assert "Re-pinned the Agent Teams bundle" in result.stdout
+    patch = _patch_text(dsh_home, "rq-team")
+    records = re.findall(r"^# rq-enabled-bundles:.*$", patch, re.M)
+    assert records == ["# rq-enabled-bundles: %s" % TEAM_BUNDLE], patch
+    assert re.search(r"^- id: agent-team$", patch, re.M), "the merge ate the agent-team row:\n" + patch
+    rows = _patch_rows(tmp_path, dsh_home, "rq-team")
+    assert _config_row(rows, "agent-team")["config"]["maxTasks"] == 512
+    assert _config_row(rows, "harness-saved-row") is not None
+
+
 def test_uninstall_removes_the_marker_and_disables_the_bundle_it_enabled(tmp_path):
     env, dsh_home, log_path = _stub_dsh_env(tmp_path)
     install_result = _install(env, "rq-team")
