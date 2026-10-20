@@ -8,6 +8,7 @@ class is unenforced consistency between files. These are those checks.
 
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -175,6 +176,54 @@ def test_preset_persona_row_uses_the_prefix_suffix_split():
     # sections in issue #11) writes a teammate's persona to this same slot.
     team = (REPO / "dsh/team.js").read_text()
     assert "const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'" in team
+
+
+# The prompt variables 0.2.1-rc.2 registers (`dsh-agent-loop`); 0.2.0-rc.2
+# also had `cwd`, which 0.2.1 replaced with a WORKING_DIRECTORY runtime context.
+PROMPT_VARIABLES = {"provider", "model"}
+
+
+def _registered_prompt_variables():
+    """The `systemPrompt.variable(name, ...)` names the installed harness registers,
+    or None when there is no harness to read."""
+    node = shutil.which("node")
+    if node is None:
+        return None
+    out = subprocess.run(
+        [node, "-e", "const h = require('./tests/harness_locator.cjs').resolveHarness();"
+                     "if (h) process.stdout.write(h)"],
+        cwd=REPO, capture_output=True, text=True)
+    harness = out.stdout.strip()
+    if out.returncode != 0 or not harness or not os.path.isdir(harness):
+        return None
+    names = set()
+    for lib in sorted(pathlib.Path(harness).glob("*/lib/index.js")):
+        names.update(re.findall(r"systemPrompt\.variable\(\s*[\"'](\w+)[\"']", lib.read_text()))
+    return names or None
+
+
+def test_every_prompt_variable_the_preset_uses_is_registered():
+    """An unregistered `{{name}}` fails EVERY turn, not just the mount.
+
+    `dsh-system-prompt` throws `unknown prompt variable "{{cwd}}" in section
+    "deployment:persona-suffix"` while assembling the request, so the preset
+    mounts, the picker shows it healthy, and the first message fails. 0.8.0
+    shipped exactly that: the persona suffix kept `{{cwd}}` after 0.2.1-rc.2
+    stopped registering it. Schema validation cannot see this; the variables
+    must be checked against what the core registers.
+    """
+    used = set(re.findall(r"\{\{(\w+)\}\}", PRESET_PATCH.read_text()))
+    assert used <= PROMPT_VARIABLES, (
+        "the preset references prompt variables 0.2.1-rc.2 does not register: %s"
+        % sorted(used - PROMPT_VARIABLES))
+    registered = _registered_prompt_variables()
+    if registered is None:
+        pytest.skip("no installed harness to read prompt-variable registrations from")
+    if "cwd" in registered:
+        pytest.skip("the installed harness predates 0.2.1 (it still registers `cwd`)")
+    assert used <= registered, (
+        "the preset references prompt variables the installed core does not register: %s"
+        % sorted(used - registered))
 
 
 FLOOR = "0.2.1-rc.2"
@@ -868,7 +917,9 @@ def test_the_router_and_the_card_name_the_same_roles_and_slots():
 
 def _persona_prefix():
     preset = preset_children()
-    m = re.search(r"prefix: >-\n(.*?)\n    suffix:", preset, re.DOTALL)
+    # The folded scalar runs until the first non-blank line at the key's own
+    # indentation or less (the persona row has no suffix since 0.8.0).
+    m = re.search(r"prefix: >-\n((?:[ ]{5,}.*\n|[ ]*\n)*)", preset)
     assert m, "the persona row lost its prefix"
     return " ".join(m.group(1).split())
 

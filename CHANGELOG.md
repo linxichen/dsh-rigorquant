@@ -108,6 +108,15 @@ excluded while 0.2.1 stable and its release candidates are admitted.
   disabled row is never imported, so the key had become documentation of a
   dead API. The rows keep `provider`, `toolName` and `maxDepth`, and stay
   disabled for the reasons that disabled them.
+- **The persona `suffix`** (`Your working directory is {{cwd}}.`) is gone.
+  0.2.1 stopped registering the `cwd` prompt variable (only `provider` and
+  `model` remain), and `dsh-system-prompt` throws on an unknown variable while
+  it assembles the request, so every RigorQuant turn failed with `unknown
+  prompt variable "{{cwd}}" in section "deployment:persona-suffix"` while
+  the preset still mounted and looked healthy. The core's own
+  `WORKING_DIRECTORY` runtime context now states the directory. A test checks
+  every variable the preset uses against the ones the installed core
+  registers.
 
 ### Fixed
 - **The refusal path reads the right gate field.** `tests/harness_locator.cjs`

@@ -47,6 +47,11 @@
               # (rendered before first-party guidance) and an optional `suffix`
               # (rendered after it). The single `text` key this preset used through
               # 0.1.2 no longer exists and its absence rejects the whole mount.
+              # No suffix: it only stated the working directory through the
+              # `cwd` prompt variable, which 0.2.1-rc.2 retired (only `provider`
+              # and `model` remain), so the reference failed every turn. The
+              # core's WORKING_DIRECTORY runtime context now states the
+              # directory (seam S7).
               prefix: >-
                 You are RigorQuant, the root orchestrator of an unattended mathematical
                 research framework for empirical and computational work: economics,
@@ -115,7 +120,6 @@
                 When a RigorQuant study begins, load the `rigorquant` skill and follow
                 its operating procedure (workspace layout, registry schema, tolerances,
                 escalation triggers, anti-patterns, lifecycle).
-              suffix: Your working directory is {{cwd}}.
 
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
