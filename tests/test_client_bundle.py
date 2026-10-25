@@ -42,12 +42,23 @@ SERVICE_PROVIDERS = {
     "configForms": "@deepseek-ai/dsh-client-ui-settings",
 }
 # The card registers into the Plugins page's `plugins.bundle.config` ring,
-# keyed by this bundle's package name. 0.1.6 retired `settings.plugin.item`:
-# a card registered there renders nowhere, silently.
-RINGS = ["plugins.bundle.config"]
-CARDS = [PLUGIN_ID]
+# keyed by this bundle's package name, and into the settings shell's
+# `settings.section` ring as its own nav row; the model badge registers into
+# the conversation header's `conversation.session.header.actions` ring. 0.1.6
+# retired `settings.plugin.item`: a card registered there renders nowhere,
+# silently.
+RINGS = ["plugins.bundle.config", "settings.section",
+         "conversation.session.header.actions"]
+SECTION_ID = "rigorquant"
+BADGE_ID = "rq-model"
+CARDS = [PLUGIN_ID, SECTION_ID, BADGE_ID]
 RETIRED_RING = "settings.plugin.item"
-RING_OWNERS = ["@deepseek-ai/dsh-client-ui-plugin-manager"]
+# ui-plugin-manager declares `plugins.bundle.config`; ui-settings-general (the
+# settings shell) declares `settings.section`; ui-conversation declares the
+# conversation header rings.
+RING_OWNERS = ["@deepseek-ai/dsh-client-ui-plugin-manager",
+               "@deepseek-ai/dsh-client-ui-settings-general",
+               "@deepseek-ai/dsh-client-ui-conversation"]
 # The router row's entry id: `configForms` serves the row's config under it.
 ROUTER_ROW = "rq-model-router"
 
@@ -140,9 +151,12 @@ def test_card_waits_for_session_remote_before_failing(verdict):
 def test_apply_mounts_the_card_ring(verdict):
     """Registering is necessary, not sufficient: apply must survive mount.
 
-    The plugin contributes one thing, the routing card
-    (plugins.bundle.config). Decision 25 removed everything else: the Team
-    service has no browser Remotes left to read the board through.
+    The plugin contributes the routing card, mounted twice: on the bundle's
+    Plugins page (plugins.bundle.config) and as its own Settings section
+    (settings.section); and the model badge in a subagent conversation's
+    header (conversation.session.header.actions). Decision 25 removed
+    everything else: the Team service has no browser Remotes left to read the
+    board through.
     """
     assert "mountError" not in verdict, verdict.get("mountError")
     assert verdict["mounted"]
@@ -161,6 +175,54 @@ def test_card_registers_on_the_bundle_config_slot_keyed_by_the_package(verdict):
     """
     assert verdict["cardSlot"] == "plugins.bundle.config"
     assert verdict["cardKey"] == verdict["id"] == PLUGIN_ID
+
+
+def test_card_is_its_own_settings_section(verdict):
+    """The routes are reachable from the Settings nav, not only the Plugins page.
+
+    Inside the Plugins page the card sits behind the bundle's own page, two
+    clicks deep and easy to miss; a `settings.section` entry is a first-level
+    nav row beside Models and Plugins. The shell reads `id`, `order` and a
+    label thunk, and orders rows ascending, so the order must come after the
+    built-ins (plugins is 15, agent presets 20).
+    """
+    assert verdict["section"] == {
+        "id": SECTION_ID, "order": 30, "label": "nav", "locale": ROUTER_ROW,
+    }
+    source = (REPO / manifest()["exports"]["./client"]).read_text()
+    assert source.count("nav: 'RigorQuant',") == 2  # en and zh copy
+
+
+def test_the_settings_section_renders_the_full_form(verdict):
+    """The shell passes a section only `{ close }`: no `view`.
+
+    The card answers `view: 'summary'` with one line of text, so a section
+    that forwarded the shell's props unchanged would draw a sentence and no
+    controls. The section pins the page view.
+    """
+    assert "sectionRenderError" not in verdict, verdict.get("sectionRenderError")
+    assert verdict["sectionRootType"] == "div"
+    assert verdict["sectionButtons"] == ["save"]
+
+
+def test_subagent_header_shows_the_model_the_last_request_used(verdict):
+    """An addressed subagent conversation hides the model picker.
+
+    The badge is its only statement of the model. It must show
+    `modelSelection.lastUsed` (the request header the agent loop logs after
+    the router's `agent/request` waterfall), not `next`, which keeps the
+    spawn-time selection the router overrides. Nothing renders in an ordinary
+    conversation, whose picker already shows the model, or before the first
+    request.
+    """
+    badge = verdict["badge"]
+    assert "renderError" not in badge, badge.get("renderError")
+    assert (badge["id"], badge["order"]) == (BADGE_ID, -30)
+    assert badge["ordinary"] is None
+    assert badge["beforeFirstRequest"] is None
+    assert badge["subagent"]["text"] == "deepseek-flash · low"
+    assert "deepseek-official / deepseek-flash (low)" in badge["subagent"]["title"]
+    assert badge["noEffort"]["text"] == "m"
 
 
 def test_the_retired_settings_slot_is_gone(verdict):

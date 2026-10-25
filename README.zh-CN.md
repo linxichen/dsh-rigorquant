@@ -142,7 +142,7 @@ RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到
 需要 DSH `>=0.2.1-rc.2 <0.2.2-0`（决策 27，
 `docs/adr/0004-rigorquant-on-dsh-0.2.1.md`）。preset 是一个声明式的
 `@deepseek-ai/dsh-agent-preset` 行，路由是路由器那一行自己的 profile 配置，卡片
-通过插件页的配置表单编辑它们，无人值守的入口提问使用宿主 `ask_user_question` 的
+通过宿主的配置表单编辑它们（设置里自成一栏 **RigorQuant**，插件页的 bundle 页面上也有同一张表单），无人值守的入口提问使用宿主 `ask_user_question` 的
 定时模式——更早的宿主上这些都不存在，安装脚本会直接拒绝。
 **0.7.0 是 0.2.0-rc.2 版 harness 的最后一个版本**：不做任何回移，暂时无法升级
 宿主的话，请留在 0.7.0。（0.6.1 曾是 0.1.7-rc.2 的最后一个版本，原因相同。）
@@ -222,7 +222,7 @@ dsh plugin --profile web add github:linxichen/dsh-rigorquant
 的移除始终是显式操作（`./install.sh --uninstall`）。
 
 **安装脚本（完整框架）**——计算通道，以及插件（声明式 preset、角色模型路由器及其
-插件页卡片）：
+设置里的路由卡片）：
 
 ```sh
 git clone https://github.com/linxichen/dsh-rigorquant

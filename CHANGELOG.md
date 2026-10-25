@@ -80,6 +80,22 @@ excluded while 0.2.1 stable and its release candidates are admitted.
   same tool names and arguments as before.
 
 ### Added
+- **RigorQuant has its own Settings section.** The routing card (per-role
+  primary and fallback models) was reachable only through the Plugins page,
+  on the bundle's own page, where an operator looking for fallbacks did not
+  find it. The client now also registers the card as a `settings.section`
+  nav row, **RigorQuant**, after the built-in sections, beside other
+  plugins' sections such as Market. Same card, same controller and same
+  save contract; the section always draws the full form, since the shell
+  asks a section for no view.
+- **A subagent conversation names its model.** The harness hides the model
+  picker when you open a subagent's or teammate's conversation, so nothing
+  said which model answered. The header now shows the model and reasoning
+  effort of that conversation's last request, `modelSelection.lastUsed`:
+  the route the router actually sent, fallback included. The Agent Teams
+  roster shows `next`, which can still be the spawn-time model, so the two
+  may disagree; the badge is the one to trust. Ordinary conversations, and
+  subagents that have not sent a request yet, show nothing.
 - **`working_directory` is denied to teammates.** 0.2.1 ships it as a
   host-plane tool; a teammate that switches cwd can write outside the scratch
   directory its brief names and its validator checks. It joins

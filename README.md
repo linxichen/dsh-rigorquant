@@ -159,9 +159,10 @@ claims).
 Requires DSH `>=0.2.1-rc.2 <0.2.2-0` (Decision 27,
 `docs/adr/0004-rigorquant-on-dsh-0.2.1.md`). The preset is a declared
 `@deepseek-ai/dsh-agent-preset` row, the routes are the router row's own
-profile config, the card edits them through the Plugins page's config forms,
-and the unattended intake ask uses the harness's timed `ask_user_question`
-mode; none of that exists on an older harness, and the installer refuses one.
+profile config, the card edits them through the harness's config forms (it is
+its own **RigorQuant** section in Settings, and the bundle's form on the
+Plugins page), and the unattended intake ask uses the harness's timed
+`ask_user_question` mode; none of that exists on an older harness, and the installer refuses one.
 **0.7.0 is the last release for the 0.2.0-rc.2 harness**: nothing is
 backported, so stay on 0.7.0 if you cannot move the harness yet. (0.6.1 was
 the last release for 0.1.7-rc.2, for the same reason.)
@@ -236,7 +237,7 @@ same as the rest of the install, and the Beta card on the Plugins page is
 then yours to toggle (docs/adr/0001-rigorquant-on-agent-teams.md).
 
 **One line, everything**: the compute lane and the plugin (the declared
-preset, the role model router and its card on the Plugins page):
+preset, the role model router and its routing card in Settings):
 
 ```sh
 npx dsh-rigorquant
