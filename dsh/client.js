@@ -1,17 +1,20 @@
 // RigorQuant model router — browser half.
 //
-// One configuration entry on the Plugins page: the bundle's own form, rendered
-// on this bundle's page between its description and its rows
-// (`plugins.bundle.config`, keyed by the package name), editing the
-// `rq-model-router` row's own profile config through `configForms`
-// (Decision 25). Each role row stages an explicit primary override (model +
-// reasoning effort) and a per-role fallback choice, all picked from the model
-// catalog; "inherit" clears the saved field so the router's shipped tier
-// matrix (fixed-tier roles) or the parent/session route (root and inherit
-// roles) governs again. Only a save writes: the last saved selection is the
-// persistent one (the profile's user layer), and leaving the page drops
-// whatever was staged. A write the Host refuses (`set`/`unset` resolving
-// `false`) is a failed save, shown under the form.
+// One routing card, mounted in two places. Its own Settings section
+// (`settings.section`, a nav row beside Models, Plugins and other plugins'
+// sections) is where an operator finds it. The Plugins page's configuration
+// entry is the bundle's own form, rendered on this bundle's page between its
+// description and its rows (`plugins.bundle.config`, keyed by the package
+// name). Both edit the `rq-model-router` row's own profile config through
+// `configForms` (Decision 25). (The bundle also puts a model badge in a
+// subagent conversation's header; see ModelBadge.) Each role row stages an
+// explicit primary override (model + reasoning effort) and a per-role fallback
+// choice, all picked from the model catalog; "inherit" clears the saved field
+// so the router's shipped tier matrix (fixed-tier roles) or the parent/session
+// route (root and inherit roles) governs again. Only a save writes: the last
+// saved selection is the persistent one (the profile's user layer), and leaving
+// the page drops whatever was staged. A write the Host refuses (`set`/`unset`
+// resolving `false`) is a failed save, shown under the form.
 //
 // The Plugins page generates no form for a row's config (the
 // `plugins.row.config` slot renders only what a plugin registers), so without
@@ -48,6 +51,16 @@ const BUNDLE = 'dsh-rigorquant'
 // The router row's entry id: the key `configForms` serves its config under,
 // and this entry's locale namespace.
 const CARD_KEY = 'rq-model-router'
+// The card's own Settings section: its nav id and its place in the nav.
+// The shell orders sections ascending (account -10, general 0, models 10,
+// plugins 15, agent presets 20); 30 puts RigorQuant after the built-ins. An id
+// the shell has no glyph for gets the settings gear.
+const SECTION_ID = 'rigorquant'
+const SECTION_ORDER = 30
+// The model badge in a subagent conversation's header. -30 puts it left of the
+// Agent Teams action (-20).
+const BADGE_ID = 'rq-model'
+const BADGE_ORDER = -30
 const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 const SLOTS = ['Primary', 'Fallback']
 // Invocation frequency per role: the badge tone follows the level, the label
@@ -120,6 +133,8 @@ const inject = ['slots', 'locale', 'remote', 'remote.session', 'remote.settings'
 
 const copy = {
   en: {
+    nav: 'RigorQuant',
+    modelBadge: 'Model of this conversation\'s last request',
     title: 'RigorQuant model routing',
     description: 'Per-role model overrides and fallbacks for RigorQuant sessions. Left on Inherit, the DoubleChecker and adversary take the router\'s shipped routes (on DeepSeek Account when no API key is set); root follows the chatbox picker, and other roles inherit their session model.',
     inherit: 'Inherit',
@@ -162,6 +177,8 @@ const copy = {
     'roleFreq.doc-adversary': 'Rare',
   },
   zh: {
+    nav: 'RigorQuant',
+    modelBadge: '此会话上一次请求使用的模型',
     title: 'RigorQuant 角色模型路由',
     description: '为 RigorQuant 会话配置每个角色的模型覆盖与回退。DoubleChecker 与 adversary 留在“继承”时走路由器内置的默认路由（未配置 API key 时改走 DeepSeek 账号）；root 跟随聊天框选择器，其他选择“继承”的角色沿用会话模型。',
     inherit: '继承',
@@ -776,12 +793,47 @@ function RqModelsCard(props) {
     R.createElement('div', { style: footerStyle }, ...controls))
 }
 
+// The model a subagent conversation's last request ran on. The harness hides
+// the composer's model picker in an addressed subagent conversation, so
+// without this nothing there says which model answered. The value is the
+// `modelSelection` projection's `lastUsed`: the agent loop records each
+// request's header AFTER the `agent/request` waterfall, so it is the router's
+// route (a degraded role shows its fallback), not the model the teammate was
+// spawned with. `next` would show a spawn-time selection the router
+// overrides, which is why the Agent Teams roster can disagree with this badge.
+// Nothing renders in an ordinary conversation (its picker already shows the
+// model) or before the first request.
+function ModelBadge(props) {
+  const { sessionId, useSession, useSessions, t } = props
+  const subagent = useSession((snapshot) => snapshot.subagent !== undefined)
+  // A primitive, so the selector's result compares equal across unrelated
+  // store updates.
+  const used = useSessions((state) => {
+    const last = state.projectionsBySession[sessionId]?.values.modelSelection?.lastUsed
+    return last === undefined || last === null
+      ? null
+      : [last.provider, last.model, last.reasoningEffort ?? ''].join('\u0000')
+  })
+  if (!subagent || used === null) return null
+  const [provider, model, effort] = used.split('\u0000')
+  const label = effort === '' ? model : `${model} · ${effort}`
+  return React().createElement('span', {
+    'data-rq-model-badge': '',
+    title: `${t('modelBadge')}: ${provider} / ${model}${effort === '' ? '' : ` (${effort})`}`,
+    style: {
+      display: 'inline-flex', alignItems: 'center', minHeight: 28, padding: '3px 7px',
+      fontSize: 12, whiteSpace: 'nowrap', color: 'var(--dsw-alias-label-tertiary)',
+    },
+  }, label)
+}
+
 function apply(ctx) {
   ctx.effect(() => ctx.locale.register(CARD_KEY, copy), 'rq-model-router: card dictionaries')
   const controller = new RqModelsCardController(ctx)
   ctx.effect(() => {
     void controller.load()
   }, 'rq-model-router: catalog load')
+  const t = ctx.locale.bind(CARD_KEY)
   // The bundle's configuration entry: the Plugins page renders it on this
   // bundle's page, looked up by the package name. (The Settings-tab plugin
   // card slot this entry once used is retired on 0.1.6 — a registration
@@ -793,7 +845,35 @@ function apply(ctx) {
       locale: CARD_KEY,
       inject: () => controller.inject(),
     },
-    (props) => RqModelsCard({ ...props, t: ctx.locale.bind(CARD_KEY) }),
+    (props) => RqModelsCard({ ...props, t }),
+  ))
+  // The card's own Settings section, the same card on the same controller. The
+  // shell asks a section for no view, so it is always the `page` form, and
+  // leaving the section drops what was staged, as leaving the Plugins page
+  // does. The dialog shows one section at a time, so the two mounts never
+  // stage into the shared draft at once.
+  ctx.slots.inject('settings.section', () => ctx.slots.register(
+    {
+      name: 'settings.section',
+      id: SECTION_ID,
+      order: SECTION_ORDER,
+      label: () => t('nav'),
+      locale: CARD_KEY,
+      inject: () => controller.inject(),
+    },
+    (props) => RqModelsCard({ ...props, view: 'page', t }),
+  ))
+  // The subagent conversation header's model badge. The slot is
+  // session-scoped: the component receives `sessionId` and the shared
+  // Session-store hooks as standard props, so it injects nothing.
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register(
+    {
+      name: 'conversation.session.header.actions',
+      id: BADGE_ID,
+      order: BADGE_ORDER,
+      locale: CARD_KEY,
+    },
+    (props) => ModelBadge({ ...props, t }),
   ))
 }
 

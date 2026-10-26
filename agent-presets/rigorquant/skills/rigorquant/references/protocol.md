@@ -117,8 +117,11 @@ unaudited. Decision 24 (docs/architecture.md) carries them onto Agent Teams.
   a later reader can tell which document a verdict judged. A reused teammate
   only ever receives a new hash-bound brief, never a follow-up about an
   artifact under audit, and only while the roster shows it idle or inactive —
-  if it is running, wait on it first. A `send_message` whose result says
-  `queued` is durable: a queued message is already stored; never resend it.
+  if it is running, wait on it first. A `send_message` that returns an error
+  has failed and the brief was not stored; a successful result means the
+  message is stored, not processed — never resend it and never wait on the
+  send for a verdict (on 0.2.1-rc.2 a successful send returns `{sent:true}`;
+  the teammate's turn is the signal).
 - **Roster policy.** Fresh per brief: `explorer-<n>`, `offgrid-<n>`,
   `doublechecker-<n>` — blank context is the point, and the two independent
   derivations of a load-bearing claim are two fresh DoubleCheckers with

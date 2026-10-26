@@ -865,8 +865,8 @@ Amends:
 
 Recorded as an ADR: `docs/adr/0003-rigorquant-on-dsh-0.2.0.md`.
 
-**Harness.** From 0.7.0 the harness range is `>=0.2.0-rc.2 <0.2.1`, and the
-**required floor is now `DSH ≥ 0.2.0-rc.2`**, enforced by `peerDependencies`
+**Harness.** From 0.7.0 the harness range was `>=0.2.0-rc.2 <0.2.1`, and the
+floor that release set was `DSH ≥ 0.2.0-rc.2`, enforced by `peerDependencies`
 and by `install.sh` — which refuses a core at EITHER end of the range, because
 the loader skips an out-of-range bundle at both — restated declaratively under
 `engines.dsh`, stated in both READMEs, and pinned by
@@ -875,6 +875,10 @@ CLI's compatibility gate reads a bundle's `peerDependencies` *before* it loads
 it, and **skips a bundle the running core does not satisfy**, so on 0.2.0 the
 old range would have mounted the plugin nowhere, silently. 0.6.1 is the last
 release for the 0.1.7-rc.2 line; nothing is backported.
+
+*(Superseded by Decision 27: the band moved to `>=0.2.1-rc.2 <0.2.2-0` after
+the host differential showed this ceiling already admitted 0.2.1-rc.2, and
+0.7.0 is the last release for the 0.2.0-rc.2 line.)*
 
 **What moved.** Almost nothing RigorQuant uses. 0.2.0-rc.2's package inventory
 is the 0.1.7-rc.2 one plus telemetry, desktop analytics, a session-log settings
@@ -932,12 +936,120 @@ Amends:
 - **25:** the floor and the last-release statement; the architecture itself
   stands.
 
+## Decision 27 — DSH 0.2.1-rc.2: band re-targeted, false-green ceiling closed, five native limits (0.8.0)
+
+Recorded as an ADR: `docs/adr/0004-rigorquant-on-dsh-0.2.1.md`.
+
+**Harness.** From 0.8.0 the harness range is `>=0.2.1-rc.2 <0.2.2-0`, and the
+**required floor is now `DSH ≥ 0.2.1-rc.2`**, enforced by `engines.dsh` and by
+`install.sh` — which still refuses a core at EITHER end of the range before
+copying anything — restated in `peerDependencies`, stated in both READMEs, and
+pinned by `test_repo_consistency.py`. The floor moves because on 0.2.1-rc.2
+`engines.dsh` is the enforced field — the gate reads it alone and ignores
+`peerDependencies` — and one range is evaluated against one running core.
+0.7.0 is the last release for the 0.2.0-rc.2 line; nothing is backported.
+
+**Why the ceiling moved (a false green, not a guard).** The previous band,
+`>=0.2.0-rc.2 <0.2.1`, **already admitted 0.2.1-rc.2**: the compatibility gate
+matches with `includePrerelease`, so `<0.2.1` excludes 0.2.1 stable, not a
+prerelease of 0.2.1. 0.7.0 therefore mounted on the new core without ever
+claiming it, and no gate reported it. The new ceiling uses semver's `-0`
+sentinel so every 0.2.2 prerelease is excluded as well as 0.2.2 stable: with
+`includePrerelease`, both `<=0.2.1` and `<0.2.2` would readmit `0.2.2-rc.1`,
+the same bug one minor version up. A verdict test now loads the installed
+harness's own `evaluatePluginCompatibility` and asserts the real manifest
+accepts `0.2.1-rc.2` and `0.2.1` and refuses `0.2.2-rc.1`, `0.2.2` and
+`0.2.0-rc.2` — a string-equality test of the band cannot catch a prerelease
+ordering mistake.
+
+**The gate reads `engines.dsh` alone.** When a manifest declares `engines.dsh`,
+the 0.2.1 gate evaluates that range and ignores `peerDependencies`; the issue
+object also renamed its field from `peers` to `requirements`. So the two
+manifest fields must agree, a test now asserts they do, and the shared harness
+locator reads `issue.requirements ?? issue.peers` — otherwise a refusal names
+`(undefined)` instead of the range it read.
+
+**What the migration made dead, deleted.** `agentTeams`'s `Config` no longer
+has `maxPendingMessagesPerMember` (the mailbox moved onto the journal/session
+projection). The key is removed from the bundle patch's `agent-team` row and
+from the installer's marked block; `maxMembers: 64`, `maxTasks: 256`,
+`maxMessageBytes: 65536` and `disposalTimeoutMs: 5000` stay. `dsh-tool-subagent`
+dropped `backgroundMode`, `enableRunInBackground`, `persona` and `toolFilter`
+and added `agentPreset`/`allowedAgentPresets`; `backgroundMode: one-shot` is
+removed from the two disabled external-agent rows, which stay disabled (they
+were never the delegation path — Agent Teams' `spawn_teammate` is) and keep
+`provider`, `toolName` and `maxDepth`. Both removals were silent no-ops before:
+schemastery preserves an unknown key and a disabled row is never imported,
+which is why the tests that pinned them are inverted in the same release.
+
+**The new host-plane tool is denied.** 0.2.1's base bundle mounts
+`working_directory`, a model-facing tool that changes the session's working
+directory. A teammate's scratch directory is part of its brief and its
+evidence contract; no pre-0.2.1 teammate had the tool, and none may acquire it
+by upgrading the host. It joins `EVERY_TEAMMATE_DENY`; the orchestrator keeps it.
+
+**The Team message contract is restated.** 0.2.1's `send_message` returns
+`{sent: true}` (was `{messageId, status: "accepted" | "queued"}`), awaits
+durable admission, and carries identity in a required `team:identity` runtime
+context instead of a `<system-reminder>` prefixed to the initial prompt; the
+`spawn_teammate` request and every tool name the team guard reads are
+unchanged. The skill's L3 rule now says: a failed send is an error, a
+successful result means stored rather than processed, and a message is never
+resent. No plugin code changed for this.
+
+**Five native limits, taken up.** The preset pins five row configs the 0.2.1
+host already serves, each with a purpose and a measured basis
+(`docs/token-efficiency.md`):
+
+- `tool-skill.catalogDescriptionMaxLength: 160` — the catalog is a durable
+  message replayed in every later request; the default 500 rendered 1,423
+  chars for the four shipped skills.
+- `tool-fs.readMaxBytes: 24576` and `readLimit: 1200` — `read` is the main
+  evidence-reading tool, the spill policy explicitly skips it, and the pruner
+  only runs after a compaction trigger, so an uncapped read could inject
+  ≈ 12.8 k tokens.
+- `tool-fs-search.globMaxResults: 60` and `grepMaxMatches: 120` — pages
+  exploration output instead of dumping it (defaults 100 / 250), keeping
+  `sampleOverCapGlobResults: false`.
+- `tool-goal.blockedAfterConsecutiveRounds: 3` — makes the documented
+  blocked-round rule an explicit pin rather than a host default.
+- `agent-instructions.maxBytes: 8192`, `instructionFileCandidates: ['AGENTS.md']`,
+  `localInstructionFileCandidates: []` — bounds a research repo's agent guide,
+  which otherwise enters **all eight** agents' prompts, and drops the
+  `CLAUDE*` variant duplication.
+
+The larger token opportunities are dynamic and stay deferred until a real
+study measures them: compaction right-sizing, spill tightening, `SKILL.md` and
+persona slimming, and PTC presentation. The mechanisms Decision 26 rejected
+stay rejected for the same contract reasons, each re-checked against 0.2.1:
+the native schedule bundle (≈ 1,492 tokens always-on, and it would restart
+rounds across a session boundary), session search (≈ 993 tokens of fixed
+schemas; the cross-round memory is file-based), hooks/webhooks (**absent from
+0.2.1's package inventory entirely**), workflow/ralph fan-out (untagged
+children still carry no per-role persona or tool budget), and the classic
+subagent fork (breaks the producer ≠ checker isolation that is the only
+harness-enforced wall).
+
+**Considered and rejected.** Staying on `<0.2.1` (it never excluded 0.2.1's
+release candidates, so it is the same false contract, and it refuses 0.2.1
+stable once it ships); widening the ceiling without raising the floor (this
+release is validated on 0.2.1-rc.2 only, and the dead-key removals and message
+wording are 0.2.1 facts — one range is evaluated against one running core);
+`<=0.2.1` or `<0.2.2` as the ceiling (both readmit 0.2.2 prereleases under
+`includePrerelease`); and keeping the dead keys as harmless extras (a key the
+schema does not declare is a promise the files cannot keep).
+
+Amends:
+- **20:** the harness range.
+- **25:** the floor and the last-release statement.
+- **26:** the band it set is superseded by the one above.
+
 ## Repo map
 
 ```
 package.json                dsh.bundle manifest; dsh.manifestVersion + engines.dsh
                             and peerDependencies pin the harness range
-                            (>=0.2.0-rc.2 <0.2.1); icon + locale/ are the
+                            (>=0.2.1-rc.2 <0.2.2-0); icon + locale/ are the
                             bundle's native display metadata
 agent-presets/rigorquant.patch.yml  the declared preset (persona + child rows)
 agent-presets/rigorquant/   the rigorquant skill and its sibling skills
@@ -954,8 +1066,11 @@ mcp/jacobian.md             escalation lane wiring (mounted by rq_escalate)
 locale/en.json, locale/zh.json  native bundle display metadata (title, description)
 icon.svg                    native bundle artwork, read from the manifest
 docs/architecture.md        this record
+docs/token-efficiency.md    token-efficiency record: limits adopted in 0.8.0,
+                            deferred follow-ups, rejected native mechanisms
 docs/adr/                   ADR 0001 (Agent Teams), ADR 0002 (declared preset
-                            on DSH 0.1.7), ADR 0003 (DSH 0.2.0)
+                            on DSH 0.1.7), ADR 0003 (DSH 0.2.0), ADR 0004
+                            (DSH 0.2.1)
 docs/hard-lessons-…md       the run record the skill cites
 docs/showcase.html          the showcase page
 tests/                      the validator's suite; a forged study must FAIL

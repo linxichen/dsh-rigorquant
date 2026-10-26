@@ -14,7 +14,7 @@ package's real `Config` — the same schema the loader uses, so there is no
 second copy to drift. It resolves the harness from `RQ_HARNESS_MODULES` or
 the `dsh` on PATH, and these tests skip when there is no harness to check
 against, or when it predates declared presets or cannot be judged (outside the
-package's `>=0.2.0-rc.2 <0.2.1` range or without its own gate), because this
+package's `>=0.2.1-rc.2 <0.2.2-0` range or without its own gate), because this
 repository is also developed and packaged without one.
 
 A core the package REFUSES and a machine with no core both leave these tests
@@ -142,30 +142,32 @@ def _probe_against(scope):
 def test_the_probe_refuses_a_harness_outside_the_declared_range(tmp_path):
     """A green run must be about a core this release supports.
 
-    The bundle loader SKIPS a bundle whose `peerDependencies` range the
-    running core does not satisfy, so validating every row against, say,
-    0.1.7-rc.2 would report the composition healthy for a core where the
-    plugin never mounts. The probe therefore judges the installed core with
-    the harness's OWN gate (`evaluatePluginCompatibility`) and exits 2 — the
-    "no usable harness" path — when the range excludes it.
+    The bundle loader SKIPS a bundle whose declared band the running core does
+    not satisfy, so validating every row against, say, 0.2.0-rc.2 would report
+    the composition healthy for a core where the plugin never mounts. The probe
+    therefore judges the installed core with the harness's OWN gate
+    (`evaluatePluginCompatibility`) and exits 2 — the "no usable harness"
+    path — when the band excludes it. On 0.2.1-rc.2 that gate reads
+    `engines.dsh` alone (seam S2), so the shadowed core is what decides, not
+    the shadowed peers.
 
     Both answers are pinned by presenting the same real packages twice, only
     the core version differing, so the test cannot pass by skipping: a probe
-    that stops refusing the old core fails the first half, and one that
-    refuses the supported core fails the second. The only skip is a machine
+    that stops refusing the old floor fails the first half, and one that
+    refuses the supported floor fails the second. The only skip is a machine
     with no real install to shadow.
     """
     real = _installed_harness()
     if real is None:
         pytest.skip("no real DSH install to shadow the core version of")
 
-    refused = _probe_against(_shadow_harness(real, tmp_path / "old", "0.1.7-rc.2"))
+    refused = _probe_against(_shadow_harness(real, tmp_path / "old", "0.2.0-rc.2"))
     assert refused.returncode == 2, (refused.stdout, refused.stderr)
     assert "outside the range this package supports" in refused.stderr, refused.stderr
-    assert ">=0.2.0-rc.2 <0.2.1" in refused.stderr, (
+    assert ">=0.2.1-rc.2 <0.2.2-0" in refused.stderr, (
         "the refusal must name the range it read from the manifest")
 
-    accepted = _probe_against(_shadow_harness(real, tmp_path / "floor", "0.2.0-rc.2"))
+    accepted = _probe_against(_shadow_harness(real, tmp_path / "floor", "0.2.1-rc.2"))
     assert "outside the range this package supports" not in accepted.stderr, accepted.stderr
     assert "rows;" in accepted.stdout, (
         "the probe must reach the row summary for a supported core:\n%s\n%s"

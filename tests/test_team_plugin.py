@@ -106,7 +106,8 @@ def test_doublechecker_loses_web_skill_and_every_teammate_tools(probe):
     deny = set(restricts[0]["deny"])
     assert deny == {
         "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode", "web_search", "web_fetch", "skill",
+        "ask_user_question", "exit_plan_mode", "working_directory",
+        "web_search", "web_fetch", "skill",
     }
 
 
@@ -116,7 +117,7 @@ def test_explorer_keeps_web_and_skill_but_loses_the_every_teammate_tools(probe):
     deny = set(restricts[0]["deny"])
     assert deny == {
         "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode",
+        "ask_user_question", "exit_plan_mode", "working_directory",
     }
     assert "web_search" not in deny and "skill" not in deny
 

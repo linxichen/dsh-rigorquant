@@ -36,6 +36,10 @@ from conftest import REPO, composition_rows, is_disabled, preset_children
 GUARANTEED = frozenset({
     # shell + filesystem (preset tool-bash/tool-fs/tool-fs-search rows)
     "bash", "read", "write", "edit", "glob", "grep",
+    # 0.2.1's dsh-base host plane mounts `working_directory` for every
+    # deployment; a teammate is denied it by Decision 27 (seam S7), and a
+    # static deny may only name a guaranteed-mounted tool.
+    "working_directory",
     # retrieval + procedure (preset tool-web row with fetch: true, tool-skill)
     "web_search", "web_fetch", "skill",
     # background compute (preset tool-jobs row; bash run_in_background needs them)

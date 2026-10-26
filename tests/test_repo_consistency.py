@@ -8,6 +8,7 @@ class is unenforced consistency between files. These are those checks.
 
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -20,6 +21,8 @@ from conftest import (PRESET_PATCH, REPO, SKILL_DIR, composition_rows, is_disabl
 SKILL_SCRIPTS = ("rq_check.py", "provision-lean.sh")
 ROUTER_PROBE = REPO / "tests/router_probe.cjs"
 ROUTER_SCHEMA_PROBE = REPO / "tests/router_schema_probe.cjs"
+GATE_PROBE = REPO / "tests/gate_probe.cjs"
+TEAM_CONFIG_PROBE = REPO / "tests/team_config_probe.cjs"
 
 
 def tracked_files():
@@ -101,21 +104,30 @@ def test_install_script_installs_everything_the_runtime_needs():
 def test_native_agent_options_floor_is_declared_and_enforced():
     """The mount-time RANGE cannot be installed outside, at either end.
 
-    Decision 25 (carried forward by Decision 26): the preset is a declared
+    Decision 27 (amending Decision 26): the preset is a declared
     `@deepseek-ai/dsh-agent-preset` row, the routes are `.volatile()` profile
     config, the card edits them through `configForms`, and the unattended
     intake ask uses the timed `ask_user_question` mode -- none of which exists
-    before 0.2.0-rc.2. The ceiling is not decoration: on a newer core the loader
+    before 0.2.0-rc.2 -- and the floor is 0.2.1-rc.2, the one line this release
+    is validated on. The ceiling is not decoration: on a newer core the loader
     SKIPS this bundle, so a profile would boot with no RigorQuant and no error,
     which is the same silent failure the floor prevents.
 
+    The ceiling is written `<0.2.2-0`, the lowest possible 0.2.2 prerelease:
+    that refuses every 0.2.2 prerelease AND 0.2.2 final, while admitting 0.2.1
+    final and its prereleases. The old `<0.2.1` ceiling could not do that in
+    either direction (Decision 27, seam S1): it admitted 0.2.1's release
+    candidates because the gate matches prereleases, and it would have refused
+    0.2.1 final only by a semver ordering accident a reader cannot see.
+
     The range is stated in several places: a reader who finds a different number
-    in any of them learns the wrong contract. `install.sh` enforces both bounds
-    and the manifest's `peerDependencies` carries the same pair; this test ties
-    the two together so neither can move alone.
+    in any of them learns the wrong contract. `install.sh` enforces both bounds,
+    and the manifest carries the same pair in BOTH `engines.dsh` and
+    `peerDependencies` -- on 0.2.1-rc.2 the loader reads `engines.dsh` alone
+    (seam S2), so a one-sided edit would silently change the enforced band.
     """
-    floor = "0.2.0-rc.2"
-    ceiling = "0.2.1"
+    floor = "0.2.1-rc.2"
+    ceiling = "0.2.2-0"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
     assert "MAX_DSH_VERSION=\"%s\"" % ceiling in install
@@ -124,13 +136,18 @@ def test_native_agent_options_floor_is_declared_and_enforced():
     assert install.count("version_at_least \"$actual\"") == 2, (
         "install.sh declares a two-sided range but compares only one side")
     pkg = json.loads((REPO / "package.json").read_text())
-    assert pkg["peerDependencies"]["@deepseek-ai/dsh"] == ">=%s <%s" % (floor, ceiling), (
+    band = ">=%s <%s" % (floor, ceiling)
+    assert pkg["peerDependencies"]["@deepseek-ai/dsh"] == band, (
         "install.sh enforces [%s, %s) while the manifest declares %s"
         % (floor, ceiling, pkg["peerDependencies"]["@deepseek-ai/dsh"]))
+    assert pkg["engines"]["dsh"] == band, (
+        "engines.dsh (%s) and peerDependencies (%s) disagree; on 0.2.1-rc.2 "
+        "the loader reads engines.dsh alone"
+        % (pkg["engines"]["dsh"], pkg["peerDependencies"]["@deepseek-ai/dsh"]))
     stale = "0.1.5-alpha.2"
     for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
         text = path.read_text()
-        assert floor in text, "%s omits the DSH floor" % path.name
+        assert band in text, "%s omits the declared DSH band" % path.name
         assert stale not in text, (
             "%s still states the superseded floor %s" % (path.name, stale))
     # The decision record is where a reader looks for WHY the floor moved, so
@@ -161,7 +178,55 @@ def test_preset_persona_row_uses_the_prefix_suffix_split():
     assert "const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'" in team
 
 
-FLOOR = "0.2.0-rc.2"
+# The prompt variables 0.2.1-rc.2 registers (`dsh-agent-loop`); 0.2.0-rc.2
+# also had `cwd`, which 0.2.1 replaced with a WORKING_DIRECTORY runtime context.
+PROMPT_VARIABLES = {"provider", "model"}
+
+
+def _registered_prompt_variables():
+    """The `systemPrompt.variable(name, ...)` names the installed harness registers,
+    or None when there is no harness to read."""
+    node = shutil.which("node")
+    if node is None:
+        return None
+    out = subprocess.run(
+        [node, "-e", "const h = require('./tests/harness_locator.cjs').resolveHarness();"
+                     "if (h) process.stdout.write(h)"],
+        cwd=REPO, capture_output=True, text=True)
+    harness = out.stdout.strip()
+    if out.returncode != 0 or not harness or not os.path.isdir(harness):
+        return None
+    names = set()
+    for lib in sorted(pathlib.Path(harness).glob("*/lib/index.js")):
+        names.update(re.findall(r"systemPrompt\.variable\(\s*[\"'](\w+)[\"']", lib.read_text()))
+    return names or None
+
+
+def test_every_prompt_variable_the_preset_uses_is_registered():
+    """An unregistered `{{name}}` fails EVERY turn, not just the mount.
+
+    `dsh-system-prompt` throws `unknown prompt variable "{{cwd}}" in section
+    "deployment:persona-suffix"` while assembling the request, so the preset
+    mounts, the picker shows it healthy, and the first message fails. 0.8.0
+    shipped exactly that: the persona suffix kept `{{cwd}}` after 0.2.1-rc.2
+    stopped registering it. Schema validation cannot see this; the variables
+    must be checked against what the core registers.
+    """
+    used = set(re.findall(r"\{\{(\w+)\}\}", PRESET_PATCH.read_text()))
+    assert used <= PROMPT_VARIABLES, (
+        "the preset references prompt variables 0.2.1-rc.2 does not register: %s"
+        % sorted(used - PROMPT_VARIABLES))
+    registered = _registered_prompt_variables()
+    if registered is None:
+        pytest.skip("no installed harness to read prompt-variable registrations from")
+    if "cwd" in registered:
+        pytest.skip("the installed harness predates 0.2.1 (it still registers `cwd`)")
+    assert used <= registered, (
+        "the preset references prompt variables the installed core does not register: %s"
+        % sorted(used - registered))
+
+
+FLOOR = "0.2.1-rc.2"
 
 
 def _stub_dsh_env(tmp_path, version=FLOOR):
@@ -194,7 +259,7 @@ def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
     to reject the nearest harness this release cannot run on, not merely some
     ancient tag.
     """
-    env, dsh_home = _stub_dsh_env(tmp_path, version="0.2.0-rc.1")
+    env, dsh_home = _stub_dsh_env(tmp_path, version="0.2.1-rc.1")
     result = subprocess.run(
         [str(REPO / "install.sh"), "--profile", "upgrade-test"],
         cwd=REPO,
@@ -209,7 +274,7 @@ def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
 
 def test_installer_accepts_every_version_inside_the_range(tmp_path):
     """The whole supported range installs, floor and stable release alike."""
-    for version in (FLOOR, "0.2.0"):
+    for version in (FLOOR, "0.2.1"):
         env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
         result = subprocess.run(
             [str(REPO / "install.sh"), "--profile", "upgrade-test"],
@@ -226,12 +291,14 @@ def test_installer_accepts_every_version_inside_the_range(tmp_path):
 def test_installer_rejects_a_dsh_above_the_supported_range(tmp_path):
     """A newer core is the same silent failure as an older one.
 
-    The loader skips a bundle whose peer range the running core does not
-    satisfy, so a full install onto 0.2.1+ would land the lane and enable the
-    Team bundle while the plugin itself mounted nowhere. The guard therefore
-    checks the ceiling too, before copying anything.
+    The loader skips a bundle whose band the running core does not satisfy, so
+    a full install onto 0.2.2+ would land the lane and enable the Team bundle
+    while the plugin itself mounted nowhere. The ceiling is `<0.2.2-0`, the
+    lowest possible 0.2.2 prerelease: it refuses 0.2.2's release candidates as
+    well as 0.2.2 final, and the guard therefore checks it before copying
+    anything. 0.2.1 final is INSIDE the band and must install.
     """
-    for version in ("0.2.1", "0.3.0"):
+    for version in ("0.2.2-0", "0.2.2", "0.3.0"):
         env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
         result = subprocess.run(
             [str(REPO / "install.sh"), "--profile", "upgrade-test"],
@@ -242,7 +309,7 @@ def test_installer_rejects_a_dsh_above_the_supported_range(tmp_path):
         )
         assert result.returncode == 2, (version, result.stdout, result.stderr)
         assert "requires dsh >= %s" % FLOOR in result.stderr, version
-        assert "< 0.2.1" in result.stderr, (
+        assert "< 0.2.2-0" in result.stderr, (
             "the refusal must name the ceiling it enforced: %s" % result.stderr)
         assert not dsh_home.exists(), (
             "the range guard must run before copying (%s)" % version)
@@ -266,15 +333,18 @@ def test_the_cap_override_ships_in_the_bundle_patch_too():
     that instead enables Agent Teams by bundle order alone (no ./install.sh
     run, e.g. a plugin-only install per Decision 22) still needs the raised
     cap once dsh-rigorquant is mounted after the Team layer, so the exact
-    same row config is restated in this package's own bundle patch.
+    same row config is restated in this package's own bundle patch. The key
+    set follows Decision 27: `maxPendingMessagesPerMember` is deliberately
+    absent because 0.2.1-rc.2's `agentTeams` Config no longer has it (seam S3).
     """
     patch = (REPO / "cordis.patch.yml").read_text()
     assert "- id: agent-team" in patch, "cordis.patch.yml carries no agent-team override"
     tail = patch.split("- id: agent-team", 1)[1]
-    for line in ("maxMembers: 64", "maxTasks: 256",
-                 "maxPendingMessagesPerMember: 64", "maxMessageBytes: 65536",
+    for line in ("maxMembers: 64", "maxTasks: 256", "maxMessageBytes: 65536",
                  "disposalTimeoutMs: 5000"):
         assert line in tail, "cordis.patch.yml's agent-team override omits %s" % line
+    assert "maxPendingMessagesPerMember" not in tail, (
+        "the dead per-member pending cap is back in the bundle patch")
     # A non-insert entry (no `insert:` key here) so cordis-plugin-include
     # replaces the row's `config` wholesale by id, rather than adding a
     # sibling row -- see install.sh's matching write for the same contract.
@@ -345,22 +415,30 @@ def test_the_disabled_workflow_row_names_a_package_that_exists():
     assert not named, "a row still names the retired package: %s" % named
 
 
-def test_disabled_external_agent_rows_track_the_shipped_background_mode():
+def test_disabled_external_agent_rows_do_not_carry_removed_tool_subagent_keys():
     """The disabled rows are documentation; stale keys document a dead API.
 
-    0.1.6's standard preset moved the external-agent rows from
-    `enableRunInBackground: false` to `backgroundMode: one-shot`. Both keys
-    still exist in `tool-subagent`'s Config, so nothing fails — which is
-    exactly why a copy left on the old key drifts unnoticed until someone
-    enables the row.
+    0.2.1-rc.2's `dsh-tool-subagent` Config dropped `backgroundMode`,
+    `enableRunInBackground`, `persona` and `toolFilter` (seam S4), and the
+    call parameter `run_in_background` went with them. RigorQuant's two
+    external-agent rows are disabled, so schemastery would keep the unknown
+    keys silently and nothing would fail — until someone enables a row on
+    0.2.1-rc.2 and the one-shot semantics are gone. The rows carry only keys
+    the installed Config still declares; `agentPreset`/`allowedAgentPresets`
+    are the replacement mechanism if delegation is ever restored.
     """
     rows = dict(composition_rows(preset_children()))
     for row_id in ("tool-subagent-codex", "tool-subagent-claude-code"):
-        body = rows[row_id]
-        assert "backgroundMode: one-shot" in body, (
-            "%s does not carry the shipped background mode" % row_id)
-        assert "enableRunInBackground" not in body, (
-            "%s still carries the superseded key" % row_id)
+        # The row's own config block, before the next inter-row comment.
+        body = rows[row_id].split("\n\n")[0]
+        for gone in ("backgroundMode:", "enableRunInBackground:", "persona:",
+                     "toolFilter:", "run_in_background:"):
+            assert gone not in body, (
+                "%s still carries the removed tool-subagent key %r"
+                % (row_id, gone))
+        for needed in ("name: '@deepseek-ai/dsh-tool-subagent'",
+                       "provider: ", "toolName: ", "maxDepth: provider-managed"):
+            assert needed in body, "%s lost %r" % (row_id, needed)
 
 
 def test_no_delegation_row_offers_caller_selectable_models():
@@ -559,17 +637,131 @@ def test_the_declared_child_list_drops_the_skill_root_and_the_jacobian_row():
         "a child resolves a path from baseUrl, which is the profile root here")
 
 
-def test_the_package_requires_the_rc2_harness_line():
-    """The bundle refuses harness versions outside the tested line.
+def test_the_package_pins_the_same_band_in_engines_and_peers():
+    """The band is declared twice, and on 0.2.1-rc.2 only one is read.
 
-    The compatibility gate matches `peerDependencies` with
-    `includePrerelease`, so the rc floor itself satisfies the range and 0.2.1
-    does not. The same range is restated declaratively under `engines.dsh`,
-    the manifest's own (not-yet-enforced) compatibility field.
+    Decision 27: from 0.2.1-rc.2 the loader evaluates `engines.dsh` alone when
+    it is declared and ignores `peerDependencies` entirely (seam S2). Keeping
+    both fields equal is therefore not cosmetic -- a one-sided edit silently
+    changes the enforced band, and the 0.2.0-era comment that called
+    `engines.dsh` "declarative / not yet enforced" is now false.
     """
     pkg = json.loads((REPO / "package.json").read_text())
-    assert pkg["peerDependencies"] == {"@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.2.1"}
-    assert pkg["engines"] == {"dsh": ">=0.2.0-rc.2 <0.2.1"}
+    band = ">=0.2.1-rc.2 <0.2.2-0"
+    assert pkg["peerDependencies"] == {"@deepseek-ai/dsh": band}
+    assert pkg["engines"] == {"dsh": band}, (
+        "engines.dsh and peerDependencies disagree; the loader reads engines.dsh")
+
+
+def _node_probe(probe, *args, env=None):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required to run the harness probes")
+    return subprocess.run([node, str(probe), *args], cwd=REPO,
+                          capture_output=True, text=True, env=env)
+
+
+def test_the_installed_gate_accepts_the_declared_band():
+    """S1: judge the REAL manifest with the INSTALLED harness's own gate.
+
+    A string-equality test cannot catch the false-green ceiling (seam S1):
+    both gates match ranges with prereleases, so under the old band
+    `0.2.1-rc.2` was ACCEPTED while every document claimed it was refused.
+    This runs the shipped `evaluatePluginCompatibility` over the runtime
+    versions that pin the contract: the new floor and 0.2.1 final accepted;
+    0.2.2's release candidates and final, and the old floor, refused.
+    """
+    out = _node_probe(GATE_PROBE)
+    require_harness(out)
+    assert out.returncode == 0, (out.stdout, out.stderr)
+    report = json.loads(out.stdout)
+    verdicts = report["verdicts"]
+    assert set(verdicts) == {
+        "0.2.0-rc.2", "0.2.1-rc.2", "0.2.1", "0.2.2-rc.1", "0.2.2", "0.3.0"}
+    for version in ("0.2.1-rc.2", "0.2.1"):
+        assert verdicts[version]["verdict"] == "accepted", (version, verdicts[version])
+    for version in ("0.2.0-rc.2", "0.2.2-rc.1", "0.2.2", "0.3.0"):
+        assert verdicts[version]["verdict"] == "refused", (version, verdicts[version])
+        if report["gateReads"] == "engines":
+            assert verdicts[version]["requirements"] == {
+                "engines.dsh": ">=0.2.1-rc.2 <0.2.2-0"}, (
+                "the refusal must name the field the core actually reads: %s"
+                % (verdicts[version],))
+
+
+def test_the_installed_gate_reads_engines_dsh_alone():
+    """S2: on >=0.2.1-rc.2 `engines.dsh` decides alone; peers are ignored.
+
+    A synthetic manifest whose `engines.dsh` is wide open and whose
+    `peerDependencies` range matches nothing is accepted only by a gate that
+    reads `engines.dsh` first and returns. The probe reports which field the
+    installed gate used; a pre-0.2.1 harness (CI's PATH core) predates the
+    precedence and is skipped rather than failed, because the behavior under
+    test does not exist there.
+    """
+    out = _node_probe(GATE_PROBE)
+    require_harness(out)
+    assert out.returncode == 0, (out.stdout, out.stderr)
+    report = json.loads(out.stdout)
+    if report["gateReads"] != "engines":
+        pytest.skip("the installed harness %s predates engines.dsh precedence"
+                    % report["coreVersion"])
+    assert report["gateReads"] == "engines", report
+
+
+def test_the_team_row_config_matches_the_installed_service():
+    """S3: the shipped agent-team row must match the installed Config schema.
+
+    `maxPendingMessagesPerMember` was silently dropped from 0.2.1-rc.2's
+    `agentTeams` Config, and schemastery keeps unknown keys, so the row still
+    mounted with a dead key. The probe validates the exact config this package
+    ships AND reports whether the installed service's own source still names
+    each key, so a future drop fails loudly instead of going inert.
+    """
+    patch = (REPO / "cordis.patch.yml").read_text()
+    tail = patch.split("- id: agent-team", 1)[1]
+    config = {m.group(1): int(m.group(2)) for m in
+              re.finditer(r"^    ([A-Za-z]+): (\d+)$", tail, re.MULTILINE)}
+    expected = {"maxMembers": 64, "maxTasks": 256,
+                "maxMessageBytes": 65536, "disposalTimeoutMs": 5000}
+    assert config == expected, config
+    assert "maxPendingMessagesPerMember" not in tail, (
+        "the dead per-member pending cap is back in cordis.patch.yml")
+    out = _node_probe(TEAM_CONFIG_PROBE, json.dumps(config))
+    require_harness(out)
+    assert out.returncode == 0, (out.stdout, out.stderr)
+    report = json.loads(out.stdout)
+    assert report["validated"] is True, report
+    assert sorted(report["keysFound"]) == sorted(expected), report
+    if report["deadKeysFound"]:
+        pytest.skip("the installed harness %s predates the schema drop" % report["coreVersion"])
+    assert report["deadKeysFound"] == [], report
+
+
+def test_the_preset_carries_the_five_native_token_limits():
+    """Decision 27's adopted native limits (0.2.1-rc.2 Config fields).
+
+    Every row here is an enabled row of the declared preset, so each config
+    key is validated against the installed package's schema by the harness
+    probe. This test pins the exact values the release ships, because a
+    silently changed limit is a changed token budget for every study.
+    """
+    rows = top_level_rows(preset_children())
+    skill = rows["tool-skill"]
+    assert "catalogDescriptionMaxLength: 160" in skill
+    fs = rows["tool-fs"]
+    assert "readMaxBytes: 24576" in fs
+    assert "readLimit: 1200" in fs
+    fs_search = rows["tool-fs-search"]
+    assert "sampleOverCapGlobResults: false" in fs_search
+    assert "globMaxResults: 60" in fs_search
+    assert "grepMaxMatches: 120" in fs_search
+    goal = rows["tool-goal"]
+    assert "blockedAfterConsecutiveRounds: 3" in goal
+    instructions = rows["agent-instructions"]
+    assert "maxBytes: 8192" in instructions
+    assert "instructionFileCandidates: ['AGENTS.md']" in instructions
+    assert "localInstructionFileCandidates: []" in instructions
 
 
 def test_the_manifest_declares_its_format_version():
@@ -725,7 +917,9 @@ def test_the_router_and_the_card_name_the_same_roles_and_slots():
 
 def _persona_prefix():
     preset = preset_children()
-    m = re.search(r"prefix: >-\n(.*?)\n    suffix:", preset, re.DOTALL)
+    # The folded scalar runs until the first non-blank line at the key's own
+    # indentation or less (the persona row has no suffix since 0.8.0).
+    m = re.search(r"prefix: >-\n((?:[ ]{5,}.*\n|[ ]*\n)*)", preset)
     assert m, "the persona row lost its prefix"
     return " ".join(m.group(1).split())
 
@@ -777,10 +971,24 @@ def test_hard_lesson_l3_keeps_freeze_and_hash_and_adopts_the_brief_rule():
             "the roster shows it idle or inactive") in text.lower(), (
         "L3 lacks the new-brief rule")
     assert "if it is running, wait on it first" in text
-    assert "a queued message is already stored; never resend it" in text
+    # 0.2.1-rc.2's SendMessageTool returns `{sent:true}` (seam S14); the old
+    # `{messageId, status:"accepted"|"queued"}` never appears, so the discipline
+    # is "a failed send is an error; a stored send is not a processed one —
+    # never resend, never wait on the send".
+    assert "never resend it" in text
+    assert "send_message" in text and "stored, not processed" in text
+    for gone in ("whose result says `queued`", "a queued message is already stored",
+                 "messageId", 'status: "accepted"', "status: 'accepted'"):
+        assert gone not in text, "L3 still names the retired send result %r" % gone
     for gone in ("discarded without action", "never message an in-flight",
                  "Do not send follow-up messages to a settled"):
         assert gone not in text, "L3 still carries the retired rule %r" % gone
+    skill = " ".join((SKILL_DIR / "SKILL.md").read_text().split())
+    # The anti-pattern is resending a send that SUCCEEDED (it is stored); a
+    # failed send stored nothing, so resending it is the repair, not the sin.
+    assert "resending a message whose send already succeeded" in skill
+    for gone in ("resending a queued message", "whose send already returned an error"):
+        assert gone not in skill, "SKILL.md's L3 anti-pattern still says %r" % gone
 
 
 def test_the_brief_contract_names_task_snapshot_and_role_only_description():
@@ -977,20 +1185,20 @@ def test_both_readmes_install_sections_carry_the_beta_toggle_and_the_cap():
     for name, heading, words in (
         ("README.md", "Install", ("Beta", "Official", "cordis.patch.yml",
                                   "member cap to 64", "experimental",
-                                  "0.2.0-rc.2")),
+                                  "0.2.1-rc.2")),
         ("README.zh-CN.md", "安装", ("Beta", "官方", "cordis.patch.yml",
-                                    "提高到 64", "实验性", "0.2.0-rc.2")),
+                                    "提高到 64", "实验性", "0.2.1-rc.2")),
     ):
         _pin_section_words(name, heading, words)
 
 
-def test_both_readmes_carry_the_0_2_0_operator_facts():
-    """Issue #32's facts, moved to DSH 0.2.0-rc.2.
+def test_both_readmes_carry_the_0_2_1_operator_facts():
+    """The 0.7.0 -> 0.8.0 operator facts (Decision 27).
 
     The upgrade is one cutover, so the Install section carries the operator
-    sequence (the CLI pinned to rc.2; npm `latest` now points at the same
+    sequence (the CLI pinned to 0.2.1-rc.2; npm `latest` points at the same
     core, so the pin is reproducibility rather than a workaround), Coding
-    Tools as the picker's gate, 0.6.1 as the last release for the 0.1.7
+    Tools as the picker's gate, 0.7.0 as the last release for the 0.2.0-rc.2
     harness, and finishing or archiving studies first. Routing says an
     account-only sign-in routes to `deepseek-account` on account quota; the
     team section says the roster's model column is the selection, not the
@@ -999,16 +1207,16 @@ def test_both_readmes_carry_the_0_2_0_operator_facts():
     """
     for name, pins in (
         ("README.md", (
-            ("Install", ("stop dsh", "npm i -g @deepseek-ai/dsh@0.2.0-rc.2", "npm `latest`",
-                         "./install.sh", "Coding Tools", "0.6.1", "last release",
+            ("Install", ("stop dsh", "npm i -g @deepseek-ai/dsh@0.2.1-rc.2", "npm `latest`",
+                         "./install.sh", "Coding Tools", "0.7.0", "last release",
                          "finish or archive")),
             ("Role-routed models", ("deepseek-account", "account quota")),
             ("Deployment notes", ("scheduled tasks",)),
             ("Compute lane", ("rq_escalate", "at runtime")),
         )),
         ("README.zh-CN.md", (
-            ("安装", ("停止 dsh", "npm i -g @deepseek-ai/dsh@0.2.0-rc.2", "npm 的 `latest`",
-                      "./install.sh", "代码工作工具", "0.6.1", "最后一个版本", "完成或归档")),
+            ("安装", ("停止 dsh", "npm i -g @deepseek-ai/dsh@0.2.1-rc.2", "npm 的 `latest`",
+                      "./install.sh", "代码工作工具", "0.7.0", "最后一个版本", "完成或归档")),
             ("角色模型路由", ("deepseek-account", "账号额度")),
             ("部署须知", ("定时任务",)),
             ("计算通道", ("rq_escalate", "运行时")),
@@ -1022,6 +1230,28 @@ def test_both_readmes_carry_the_0_2_0_operator_facts():
         text = (REPO / name).read_text()
         unqualified = re.findall(r"npm i(?:nstall)? -g @deepseek-ai/dsh(?![@\w-])", text)
         assert not unqualified, "%s has an unqualified harness install" % name
+
+
+def test_the_0_8_0_release_record_is_present():
+    """Decision 27 is recorded where a reader looks for WHY the band moved.
+
+    The release contract is exact: one Decision-27 section in the architecture
+    record, one ADR file, and a dated CHANGELOG entry that says which harness
+    the previous release was the last for. Pinned by heading/date rather than
+    by prose, so the argument can be rewritten without touching this test.
+    """
+    architecture = (REPO / "docs/architecture.md").read_text()
+    heading = "## Decision 27 \u2014 DSH 0.2.1-rc.2: band re-targeted, false-green ceiling closed, five native limits (0.8.0)"
+    assert heading in architecture, "docs/architecture.md has no Decision 27 heading"
+    adr = REPO / "docs/adr/0004-rigorquant-on-dsh-0.2.1.md"
+    assert adr.is_file(), "the 0.2.1-rc.2 ADR is missing"
+    assert "0.2.1-rc.2" in adr.read_text()
+    changelog = (REPO / "CHANGELOG.md").read_text()
+    assert "## [0.8.0] - 2026-10-19" in changelog, "CHANGELOG has no dated 0.8.0 entry"
+    assert "## [Unreleased]" in changelog.split("## [0.8.0]", 1)[0], (
+        "the Unreleased section no longer sits above the 0.8.0 entry")
+    assert "0.7.0 is the last release for the 0.2.0-rc.2 harness" in " ".join(
+        changelog.split()), "the 0.8.0 entry omits the last-release statement"
 
 
 def test_both_readmes_carry_the_deployment_notes():
@@ -1539,6 +1769,30 @@ def test_every_decision_reference_resolves():
                     offenders.append("%s:%d: Decision %s" % (src.relative_to(REPO), n, num))
     assert not offenders, (
         "references to decisions architecture.md never records:\n" + "\n".join(offenders))
+
+
+def test_every_seam_reference_resolves():
+    """A `seam SN` cited in code or tests must be a row of ADR 0004's ledger.
+
+    Comments name host seams by number (`seam S3`) the way they name
+    decisions; the label is only meaningful while the ledger records it, and
+    the ledger lists every seam the differential found, so its numbers run
+    from S1 with no gap.
+    """
+    adr = (REPO / "docs/adr/0004-rigorquant-on-dsh-0.2.1.md").read_text()
+    known = [int(n) for n in re.findall(r"^\| S(\d+) ", adr, re.MULTILINE)]
+    assert known == list(range(1, len(known) + 1)), (
+        "ADR 0004's seam ledger is not S1..SN in order: %s" % known)
+    offenders = []
+    for f in tracked_files():
+        if not f.endswith((".js", ".cjs", ".py", ".yml", ".sh", ".md")):
+            continue
+        for n, line in enumerate((REPO / f).read_text().splitlines(), 1):
+            for num in re.findall(r"\bseams? S(\d+)\b", line):
+                if int(num) not in known:
+                    offenders.append("%s:%d: seam S%s" % (f, n, num))
+    assert not offenders, (
+        "references to seams ADR 0004's ledger never records:\n" + "\n".join(offenders))
 
 
 def test_the_shipped_procedure_names_every_teammate_role():

@@ -58,10 +58,12 @@ def test_the_deny_tiers_match_the_glossary():
 
 def test_every_teammate_is_denied_the_orchestrator_owned_tools():
     """Decision 10: one study-level goal, root-owned; the unattended contract
-    keeps ask_user_question and plan mode off every teammate."""
+    keeps ask_user_question and plan mode off every teammate; Decision 27 adds
+    the 0.2.1 host-plane `working_directory` tool (a teammate's scratch dir is
+    fixed at spawn, seam S7)."""
     assert _js_list("EVERY_TEAMMATE_DENY") == {
         "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode"}
+        "ask_user_question", "exit_plan_mode", "working_directory"}
 
 
 def test_blind_personas_carry_the_protocol_they_cannot_load():

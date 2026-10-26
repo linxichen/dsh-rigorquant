@@ -329,6 +329,13 @@ if (verdict.applyIsFunction) {
     const card = registrations.find((reg) => reg.descriptor.name === 'plugins.bundle.config')
     verdict.cardSlot = card?.descriptor.name ?? null
     verdict.cardKey = card?.descriptor.key ?? null
+    // The settings shell builds its nav from `settings.section` entries: an
+    // id, an order and a label thunk it resolves on every locale revision.
+    const section = registrations.find((reg) => reg.descriptor.name === 'settings.section')
+    if (section !== undefined) {
+      const { id, order, label, locale } = section.descriptor
+      verdict.section = { id, order, label: typeof label === 'function' ? label() : label, locale }
+    }
   } catch (error) {
     verdict.mounted = false
     verdict.mountError = `${error.name}: ${error.message}`
@@ -348,30 +355,81 @@ if (verdict.applyIsFunction) {
     // owner props: `summary` is the one-liner under the title, `page` the
     // form with its own save control (ui-plugin-manager slot-contract). Only
     // a save writes: there is no discard control and no unsaved marker.
-    const textOf = (node, found = []) => {
-      if (typeof node === 'string') found.push(node)
-      else if (node !== null && typeof node === 'object') for (const child of node.children ?? []) textOf(child, found)
-      return found
-    }
-    const buttonsOf = (node, found = []) => {
-      if (node === null || typeof node !== 'object') return found
-      if (node.type === 'button') found.push(textOf(node).join(''))
-      for (const child of node.children ?? []) buttonsOf(child, found)
-      return found
-    }
     try {
       const summary = component({ ...props, view: 'summary' })
       verdict.summaryView = typeof summary === 'string' ? summary : (summary?.type ?? null)
       const page = component({ ...props, view: 'page' })
       verdict.rendered = true
       verdict.rootType = page?.type ?? null
-      verdict.pageButtons = buttonsOf(page)
-      verdict.pageText = textOf(page)
+      verdict.pageButtons = buttonsOfNode(page)
+      verdict.pageText = textOfNode(page)
     } catch (error) {
       verdict.rendered = false
       verdict.renderError = `${error.name}: ${error.message}`
     }
   }
+
+  // The shell renders the active section with only `{ close }` as owner
+  // props: no `view`. The section must still draw the full form.
+  const section = registrations.find((reg) => reg.descriptor.name === 'settings.section')
+  if (section !== undefined) {
+    try {
+      const page = section.component({ ...propsOf(section.descriptor.inject()), close: () => {} })
+      verdict.sectionRootType = page?.type ?? null
+      verdict.sectionButtons = buttonsOfNode(page)
+    } catch (error) {
+      verdict.sectionRenderError = `${error.name}: ${error.message}`
+    }
+  }
+  renderBadge()
+}
+
+// The header badge reads the shared Session store through the session-scoped
+// slot's standard hooks: `useSession` over the conversation's own snapshot,
+// `useSessions` over every Session's projections. Each case renders it once.
+function renderBadge() {
+  const badge = registrations.find((reg) => reg.descriptor.name === 'conversation.session.header.actions')
+  if (badge === undefined) return
+  const { id, order } = badge.descriptor
+  verdict.badge = { id, order }
+  const SID = 'child-1'
+  const render = (snapshot, lastUsed, next) => {
+    const state = {
+      projectionsBySession: {
+        [SID]: { values: { modelSelection: { lastUsed, next: next ?? lastUsed } } },
+      },
+    }
+    const node = badge.component({
+      sessionId: SID,
+      useSession: (select) => select(snapshot),
+      useSessions: (select) => select(state),
+    })
+    return node === null ? null : { type: node.type, title: node.props?.title ?? null, text: textOfNode(node).join('') }
+  }
+  const used = { provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'low' }
+  const spawnedWith = { provider: 'deepseek-official', model: 'deepseek-pro' }
+  const address = { parentSessionId: 'lead-1', childSessionId: SID, mode: 'continuable' }
+  try {
+    verdict.badge.ordinary = render({}, used)
+    verdict.badge.beforeFirstRequest = render({ subagent: { address } }, null, spawnedWith)
+    verdict.badge.subagent = render({ subagent: { address } }, used, spawnedWith)
+    verdict.badge.noEffort = render({ subagent: { address } }, { provider: 'p', model: 'm' })
+  } catch (error) {
+    verdict.badge.renderError = `${error.name}: ${error.message}`
+  }
+}
+
+function textOfNode(node, found = []) {
+  if (typeof node === 'string') found.push(node)
+  else if (node !== null && typeof node === 'object') for (const child of node.children ?? []) textOfNode(child, found)
+  return found
+}
+
+function buttonsOfNode(node, found = []) {
+  if (node === null || typeof node !== 'object') return found
+  if (node.type === 'button') found.push(textOfNode(node).join(''))
+  for (const child of node.children ?? []) buttonsOfNode(child, found)
+  return found
 }
 
 // Drive the draft model through the same face the card uses. This is the

@@ -130,8 +130,10 @@ breaks that teammate's blank context — documented, not prevented).
 
 The topology is **hub-and-spoke**, and the guards enforce it rather than
 asking: a teammate's message reaches the orchestrator or nowhere, a teammate
-cannot list the roster or the whole board, and it may read or update only a
-task no other teammate owns (the one its brief names, which it claims).
+cannot list the roster or the whole board, it cannot change its working
+directory (the brief names the one it writes in), and it may read or update
+only a task no other teammate owns (the one its brief names, which it
+claims).
 
 > **Attribution.** The hero banner (`docs/figs/agent-team-hero.svg`) is
 > reworked from the hero graphic of
@@ -154,33 +156,41 @@ task no other teammate owns (the one its brief names, which it claims).
 
 ## Install
 
-Requires DSH `>=0.2.0-rc.2 <0.2.1` (Decision 26,
-`docs/adr/0003-rigorquant-on-dsh-0.2.0.md`). The preset is a declared
+Requires DSH `>=0.2.1-rc.2 <0.2.2-0` (Decision 27,
+`docs/adr/0004-rigorquant-on-dsh-0.2.1.md`). The preset is a declared
 `@deepseek-ai/dsh-agent-preset` row, the routes are the router row's own
-profile config, the card edits them through the Plugins page's config forms,
-and the unattended intake ask uses the harness's timed `ask_user_question`
-mode; none of that exists on an older harness, and the installer refuses one.
-**0.6.1 is the last release for the 0.1.7-rc.2 harness**: nothing is
-backported, so stay on 0.6.1 if you cannot move the harness yet.
+profile config, the card edits them through the harness's config forms (it is
+its own **RigorQuant** section in Settings, and the bundle's form on the
+Plugins page), and the unattended intake ask uses the harness's timed
+`ask_user_question` mode; none of that exists on an older harness, and the installer refuses one.
+**0.7.0 is the last release for the 0.2.0-rc.2 harness**: nothing is
+backported, so stay on 0.7.0 if you cannot move the harness yet. (0.6.1 was
+the last release for 0.1.7-rc.2, for the same reason.)
+
+That band is not a formality. The previous one, `>=0.2.0-rc.2 <0.2.1`, looked
+like it kept 0.2.1 out, but the compatibility gate matches prereleases, so it
+already admitted `0.2.1-rc.2`: 0.7.0 mounted on the new core without ever
+claiming it. This release is that validation, and the ceiling is
+`<0.2.2-0` so a 0.2.2 release candidate cannot slip in the same way.
 
 That range is a prerelease and the team layer is experimental: this release
 runs team-only on the **Agent Teams** bundle the harness ships as a **Beta**
 card, *Agent Teams* under **Plugins → Official**. Turn it on there yourself,
 or let a full install do it for you (below).
 
-**Upgrading from 0.6.1** — or from any 0.5.x, which the installer still
-migrates (see below) — is one cutover, done before the first 0.2.0 boot.
-First finish or archive the RigorQuant studies in progress: resuming a session
-started on the 0.1.7 harness is not promised. Then:
+**Upgrading from 0.7.0** — or from any 0.5.x or 0.6.x, which the installer
+still migrates (see below) — is one cutover, done before the first 0.2.1-rc.2
+boot. First finish or archive the RigorQuant studies in progress: resuming a
+session started on the 0.2.0-rc.2 harness is not promised. Then:
 
 1. Stop dsh (every running process, the web app included).
 2. Install the harness pinned to the release this range was tested on:
 
    ```sh
-   npm i -g @deepseek-ai/dsh@0.2.0-rc.2
+   npm i -g @deepseek-ai/dsh@0.2.1-rc.2
    ```
 
-   npm `latest` now points at `0.2.0-rc.2` too, so an unqualified install
+   npm `latest` now points at `0.2.1-rc.2` too, so an unqualified install
    happens to land on this core; the pin is what keeps it there.
 3. Run `./install.sh` (or `npx dsh-rigorquant`) before starting dsh. It
    carries your saved routes and a saved RigorQuant default over from an old
@@ -195,6 +205,14 @@ The bundle card itself now carries native display metadata: `locale/en.json`
 and `locale/zh.json` give the Plugins page and the Settings plugin inventory a
 title and description, and `icon.svg` gives them artwork — read from the
 manifest without activating the plugin.
+
+The preset also pins five native limits (Decision 27,
+`docs/token-efficiency.md`): skill-catalog descriptions at 160 characters,
+`read` at 24 KiB and 1,200 lines, `glob` at 60 results and `grep` at 120
+matches, the goal's blocked-round threshold at 3, and injected workspace
+instructions at 8 KiB from `AGENTS.md` only. They are row configuration —
+there is no custom code behind any of them — and each is bounded where it
+enters the prompt rather than after the fact.
 
 Fan-out is bounded by the host: eight live children per root
 (`maxActiveSubagents`, **Plugins → Subagent**). A literature-heavy study that
@@ -219,7 +237,7 @@ same as the rest of the install, and the Beta card on the Plugins page is
 then yours to toggle (docs/adr/0001-rigorquant-on-agent-teams.md).
 
 **One line, everything**: the compute lane and the plugin (the declared
-preset, the role model router and its card on the Plugins page):
+preset, the role model router and its routing card in Settings):
 
 ```sh
 npx dsh-rigorquant
@@ -247,7 +265,7 @@ distribution (docs/architecture.md Decisions 22 and 25). This path neither
 enables Agent Teams nor carries saved routes over; the installer does both:
 
 ```sh
-dsh --version                 # must be >= 0.2.0-rc.2 and < 0.2.1
+dsh --version                 # must be >= 0.2.1-rc.2 and < 0.2.2-0
 dsh plugin --profile web add dsh-rigorquant
 ```
 

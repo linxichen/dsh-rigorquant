@@ -1,6 +1,6 @@
 {
   "name": "dsh-rigorquant",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "RigorQuant for DeepSeek Harness: session-scoped unattended, context-isolated multi-agent research for empirical/computational mathematics with a four-part pre-implementation check battery and a jacobian/Lean escalation lane.",
   "icon": "./icon.svg",
   "license": "MIT",
@@ -55,6 +55,8 @@
         "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-general",
+        "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-plugin-manager"
       ],
       "platform": "web",
@@ -65,9 +67,9 @@
     "@deepseek-ai/schemastery": "*"
   },
   "engines": {
-    "dsh": ">=0.2.0-rc.2 <0.2.1"
+    "dsh": ">=0.2.1-rc.2 <0.2.2-0"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.2.1"
+    "@deepseek-ai/dsh": ">=0.2.1-rc.2 <0.2.2-0"
   }
 }
