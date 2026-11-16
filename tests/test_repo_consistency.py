@@ -305,40 +305,41 @@ def test_skill_only_bypasses_the_floor_and_the_advisory(tmp_path):
             "--skill-only must not touch a profile (%s)" % version)
 
 
-# ── the Agent Teams bundle: enabling, the cap override, uninstall ──────────
+# ── Agent Teams ownership is the base bundle's (0.8.1) ────────────────────
 #
-# RigorQuant runs team-only, so install.sh enables the one Agent Teams bundle
-# DSH 0.1.7 and later ship (the Beta "Agent Teams" card) and raises the team
-# service's
-# lifetime member cap under a marker in the profile's user patch (Decisions
-# 24 and 25, docs/adr/0001-rigorquant-on-agent-teams.md); the full
-# enable/idempotent/uninstall/no-dsh coverage lives in
-# tests/test_installer_agent_teams.py.
+# The base bundle mounts `agent-team` (maxTasks: 256) and the subagent service;
+# this package no longer restates Team's key set. What remains in the bundle
+# patch is the study's capacity: an id-targeted `subagent` override. The full
+# installer coverage lives in tests/test_installer_agent_teams.py.
 
 
-def test_the_cap_override_ships_in_the_bundle_patch_too():
-    """Decision 24: the override rides along whichever route enables Teams.
-
-    install.sh writes the override into the PROFILE's user patch; a profile
-    that instead enables Agent Teams by bundle order alone (no ./install.sh
-    run, e.g. a plugin-only install per Decision 22) still needs the raised
-    cap once dsh-rigorquant is mounted after the Team layer, so the exact
-    same row config is restated in this package's own bundle patch. The key
-    set follows Decision 27: `maxPendingMessagesPerMember` is deliberately
-    absent because 0.2.1-rc.2's `agentTeams` Config no longer has it (seam S3).
-    """
+def capacity_row_config():
+    """The `subagent` row config this package's bundle patch ships."""
     patch = (REPO / "cordis.patch.yml").read_text()
-    assert "- id: agent-team" in patch, "cordis.patch.yml carries no agent-team override"
-    tail = patch.split("- id: agent-team", 1)[1]
-    for line in ("maxMembers: 64", "maxTasks: 256", "maxMessageBytes: 65536",
-                 "disposalTimeoutMs: 5000"):
-        assert line in tail, "cordis.patch.yml's agent-team override omits %s" % line
-    assert "maxPendingMessagesPerMember" not in tail, (
-        "the dead per-member pending cap is back in the bundle patch")
-    # A non-insert entry (no `insert:` key here) so cordis-plugin-include
-    # replaces the row's `config` wholesale by id, rather than adding a
-    # sibling row -- see install.sh's matching write for the same contract.
-    assert "insert" not in patch.split("- id: agent-team", 1)[1].split("\n", 1)[0]
+    assert "- id: subagent" in patch, "cordis.patch.yml carries no subagent override"
+    return patch.split("- id: subagent", 1)[1].split("\n- ", 1)[0]
+
+
+def test_the_capacity_override_ships_in_the_bundle_patch_too():
+    """The study's live-teammate pool, restated because a patch is wholesale.
+
+    A profile that enables the base bundle by bundle order alone (no
+    ./install.sh run, e.g. a plugin-only install per Decision 22) still gets
+    the study's capacity once dsh-rigorquant is mounted after the base layer.
+    `maxDepth` must be restated because an id-targeted patch replaces the
+    row's `config` wholesale -- omitting it would silently fall back to the
+    core's default. 12 bounds live concurrency only; the 0.8.0 lifetime
+    member cap went with the retired Team bundle.
+    """
+    tail = capacity_row_config()
+    config = {m.group(1): int(m.group(2)) for m in
+              re.finditer(r"^    ([A-Za-z]+): (\d+)$", tail, re.MULTILINE)}
+    assert config == {"maxDepth": 1, "maxActiveSubagents": 12}, config
+    assert "- id: agent-team" not in (REPO / "cordis.patch.yml").read_text(), (
+        "the retired agent-team override is back in the bundle patch")
+    # A non-insert entry so cordis-plugin-include replaces the row's config
+    # wholesale by id rather than adding a sibling row.
+    assert "insert" not in tail.split("\n", 1)[0]
 
 
 def test_architecture_record_matches_the_preset_composition():
@@ -472,6 +473,11 @@ def test_every_document_that_names_the_pool_states_the_same_bound():
     The same argument as the floor: a reader who finds "twelve" in the README
     and "eight" in the skill has learned nothing. Any tracked file naming the
     host setting has to state the bound, and the bound is one number.
+
+    Transition (0.8.1 ticket B1): the bundle patch now raises the live pool to
+    12, while the prose still states the core's default of eight. Both bounds
+    are admitted here until tickets B2/C move every document to 12; a file
+    that states neither still fails.
     """
     offenders = []
     for name in tracked_files():
@@ -480,8 +486,9 @@ def test_every_document_that_names_the_pool_states_the_same_bound():
         if "maxActiveSubagents" not in text:
             continue
         # Written as a word in prose, as a digit in the setting's default and
-        # in the Chinese README's "8 个存活子代理".
-        if "eight" not in text and not re.search(r"\b8\b", text):
+        # in the Chinese README's "8 个存活子代理"; 12 is the 0.8.1 pool.
+        if "eight" not in text and "twelve" not in text \
+                and not re.search(r"\b(?:8|12)\b", text):
             offenders.append(name)
     assert not offenders, (
         "these name maxActiveSubagents without stating the bound: %s"
@@ -711,33 +718,34 @@ def test_the_installed_gate_reads_engines_dsh_alone():
     assert report["gateReads"] == "engines", report
 
 
-def test_the_team_row_config_matches_the_installed_service():
-    """S3: the shipped agent-team row must match the installed Config schema.
+def test_the_capacity_row_matches_the_installed_subagent_schema():
+    """The shipped capacity row must match the installed service's Config.
 
-    `maxPendingMessagesPerMember` was silently dropped from 0.2.1-rc.2's
-    `agentTeams` Config, and schemastery keeps unknown keys, so the row still
-    mounted with a dead key. The probe validates the exact config this package
-    ships AND reports whether the installed service's own source still names
-    each key, so a future drop fails loudly instead of going inert.
+    Schemastery preserves unknown keys, so a rename goes silently inert: the
+    row still mounts and the limit is simply not applied. The probe validates
+    the exact config this package ships against `@deepseek-ai/dsh-subagent`'s
+    own Config AND reports whether the installed source still names each key.
+    It also pins the other direction of the Team retirement: the installed
+    `@deepseek-ai/dsh-agent-team` still rejects 0.8.0's `maxMembers`,
+    `maxMessageBytes` and `disposalTimeoutMs` (its Config schema keeps unknown
+    keys, so the probe scans for the constructor's removal marker), while the
+    base bundle's own `maxTasks: 256` row validates.
     """
-    patch = (REPO / "cordis.patch.yml").read_text()
-    tail = patch.split("- id: agent-team", 1)[1]
+    tail = capacity_row_config()
     config = {m.group(1): int(m.group(2)) for m in
               re.finditer(r"^    ([A-Za-z]+): (\d+)$", tail, re.MULTILINE)}
-    expected = {"maxMembers": 64, "maxTasks": 256,
-                "maxMessageBytes": 65536, "disposalTimeoutMs": 5000}
-    assert config == expected, config
-    assert "maxPendingMessagesPerMember" not in tail, (
-        "the dead per-member pending cap is back in cordis.patch.yml")
     out = _node_probe(TEAM_CONFIG_PROBE, json.dumps(config))
     require_harness(out)
     assert out.returncode == 0, (out.stdout, out.stderr)
     report = json.loads(out.stdout)
-    assert report["validated"] is True, report
-    assert sorted(report["keysFound"]) == sorted(expected), report
-    if report["deadKeysFound"]:
-        pytest.skip("the installed harness %s predates the schema drop" % report["coreVersion"])
-    assert report["deadKeysFound"] == [], report
+    assert report["subagentValidated"] is True, report
+    assert sorted(report["subagentKeysFound"]) == ["maxActiveSubagents", "maxDepth"], report
+    assert report["teamRowAccepted"] is True, report
+    if not report["removedTeamKeysRejected"]:
+        pytest.skip("the installed harness %s predates the Team config removal"
+                    % report["coreVersion"])
+    assert set(report["removedTeamKeysFound"]) == {
+        "disposalTimeoutMs", "maxMessageBytes", "maxMembers"}, report
 
 
 def test_the_preset_carries_the_five_native_token_limits():
