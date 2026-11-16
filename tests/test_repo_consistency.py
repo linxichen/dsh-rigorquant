@@ -539,12 +539,11 @@ def test_router_resolves_role_from_the_subagent_identity_api_only():
         "dsh/index.js must resolve role through the shared subagent identity helper")
     assert "rootOf" in identity and "namesOf" in identity, (
         "dsh/identity.js must read the surviving subagent identity API")
-    code = "\n".join((REPO / "dsh" / name).read_text()
-                     for name in ("index.js", "lane.js", "team.js", "identity.js"))
-    for gone in ("tryMembership", "listMembers"):
-        assert gone not in code, (
-            "dsh/*.js still calls the removed Agent Teams %r; identity is the "
-            "subagent tree now" % gone)
+    code = "\n".join(path.read_text() for path in sorted((REPO / "dsh").glob("*.js")))
+    removed = sorted(set(re.findall(r"\b(tryMembership|listMembers)\s*[:(=]", code)))
+    assert not removed, (
+        "dsh/*.js still calls the removed Agent Teams membership API (%s); "
+        "identity is the subagent tree now" % ", ".join(removed))
     for gone in ("[[rq:role=", "TAG.exec", "systemPrompt.assemble", "PERSONA_SECTION"):
         assert gone not in router, (
             "dsh/index.js still names %r; role identity must come only from "
@@ -559,12 +558,16 @@ def test_the_router_and_team_probes_model_the_surviving_identity_api():
     model the real 0.2.2 shape — `rootOf`/`namesOf` keyed by the live Agent —
     so a regression to a removed method fails a test instead of passing.
     """
+    for name in ("router_probe.cjs", "team_probe.cjs", "lane_sync_probe.cjs"):
+        source = (REPO / "tests" / name).read_text()
+        removed = sorted(set(re.findall(r"\b(tryMembership|listMembers)\s*[:(=]", source)))
+        assert not removed, (
+            "tests/%s still defines the removed Agent Teams %s"
+            % (name, ", ".join(removed)))
+    # The two probes that drive an identity reader model the service's real
+    # shape; a regression there has nowhere to hide behind a fake.
     for name in ("router_probe.cjs", "team_probe.cjs"):
         source = (REPO / "tests" / name).read_text()
-        for gone in ("tryMembership", "listMembers"):
-            assert gone not in source, (
-                "tests/%s still defines or names the removed Agent Teams %r"
-                % (name, gone))
         assert "rootOf" in source and "namesOf" in source, (
             "tests/%s no longer models the surviving subagent identity service"
             % name)

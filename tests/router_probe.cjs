@@ -288,6 +288,15 @@ async function main() {
     'a teammate composed under another preset is left alone',
   )
 
+  // ---- An ORDINARY root (a Session root on another preset) is left alone
+  // too: `isRoot` identifies the tree root, never the orchestrator by itself.
+  const standardRoot = makeAgent('lead-9', 'lead', 'standard')
+  equal(
+    await waterfall('agent/request', { agent: standardRoot }, inheritedRoute),
+    inheritedRoute,
+    'a root composed under another preset is left alone',
+  )
+
   // ---- An agent with NO live tree identity (the service throws for it, the
   // way it does for an agent whose root is gone) is never touched either.
   const noIdentity = { id: 'no-identity-1', ctx: { __preset: 'rigorquant' } }
