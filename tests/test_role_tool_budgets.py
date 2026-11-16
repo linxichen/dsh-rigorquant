@@ -15,9 +15,10 @@ about the composition around them:
    composition for every teammate on any machine without that plugin. The
    classification is the only source of a teammate's visible catalog, so a
    typo must fail here rather than silently narrow a role.
-2. EVERY TEAMMATE DENIAL IS REAL — the named every-teammate denial list is
-   documentation plus the audit list, so no tier may allow a name in it. The
-   allow set is the enforcement; this proves the two agree.
+2. ONE SOURCE OF SCOPE — the per-tier allow sets are the whole classification.
+   There is no second, exported every-teammate deny list that a reader or a
+   test could mistake for the enforcement; the module's exported surface is
+   pinned so a retired list cannot come back beside the tiers.
 3. NO UNSCOPED SPAWNERS — fork, workflow and ralph mint children the team
    plugin never composes (no name, no persona, no budget), so their rows stay
    disabled.
@@ -74,7 +75,7 @@ def _classification():
     module = REPO / "dsh/team.js"
     code = (
         "import(process.argv[1]).then((m) => process.stdout.write(JSON.stringify({"
-        "tiers: m.TEAMMATE_ALLOW_BY_TIER, denied: m.EVERY_TEAMMATE_DENY})))"
+        "keys: Object.keys(m).sort(), tiers: m.TEAMMATE_ALLOW_BY_TIER})))"
         ".catch((error) => { process.stderr.write(String(error)); process.exit(1) })"
     )
     out = subprocess.run([node, "-e", code, module.as_uri()],
@@ -99,22 +100,39 @@ def test_every_classified_allow_name_is_guaranteed_mounted():
         % unknown)
 
 
-def test_every_teammate_denial_is_unclassified():
-    """The denial list and the allow sets must not disagree.
+def test_the_module_exports_no_second_scope_source():
+    """The tier tables are the only classification this module exposes.
 
-    The allow set is the enforcement; the denial list is what a reader and a
-    reviewer audit. A name in both would be a silent contract conflict.
+    0.8.0 shipped an exported every-teammate deny list next to the composition
+    even though a global deny mask cannot reach the scope-registered Team
+    tools; 0.8.1 deleted it and made the allow classification the only source
+    of a teammate's visible catalog. The export set is pinned so a second list
+    cannot reappear as an "audit list" a reader or a test would treat as the
+    enforcement.
     """
-    report = _classification()
-    denied = set(report["denied"])
+    keys = _classification()["keys"]
+    assert keys == [
+        "TEAMMATE_ALLOW_BY_TIER", "TEAMMATE_ROLES", "apply",
+        "classificationFor", "inject", "name", "roleFromName", "tierOf",
+    ], keys
+
+
+def test_the_orchestrator_owned_tools_are_absent_from_every_tier():
+    """Decision 10/24/27 tools are denied by not being classified at all.
+
+    working_directory (Decision 27 S7), the study goal and todo (Decision 10),
+    the unattended contract, the roster and board listings (Decision 24),
+    interruption (the shipped configs leave it off) and delegation itself are
+    absent from every allow set. Absence is the enforcement; nothing has to
+    name them as denied.
+    """
+    tiers = _classification()["tiers"]
     for required in ("working_directory", "create_goal", "update_goal", "get_goal",
                      "todo_write", "ask_user_question", "exit_plan_mode",
                      "list_agents", "team_task_list", "interrupt_agent",
                      "subagent", "subagent_fork"):
-        assert required in denied, (
-            "EVERY_TEAMMATE_DENY no longer names %r" % required)
-    for tier, allow in report["tiers"].items():
-        assert not denied & set(allow), (tier, sorted(denied & set(allow)))
+        assert all(required not in allow for allow in tiers.values()), (
+            "a tier still allows the orchestrator-owned tool %r" % required)
 
 
 def test_the_tiers_narrow_from_open_to_blind():

@@ -167,13 +167,16 @@ exception. Recorded as Decision 28 in `docs/architecture.md`.
 - **Capacity, restated as what it now is.** 12 live teammates per study, no
   lifetime cap, in the bundle patch, the skill's Step 3, the protocol's roster
   and BUDGET rules, both READMEs and the architecture record.
-- **Classification and interruption.** `dsh/team.js` replaces
-  `EVERY_TEAMMATE_DENY` with per-tier allow sets (`blind` and `web-denied`
-  keep their existing semantics: `skill` denied only to blind roles, web denied
-  to blind and adversary roles). `interrupt_agent` is absent from every tier,
-  matching the shipped configurations. The team-config and team probes pin the
-  class list against the installed catalog, so a new host tool fails a test
-  instead of widening a teammate's scope.
+- **Classification and interruption.** `dsh/team.js`'s scope is the per-tier
+  allow classification alone (`blind` and `web-denied` keep their existing
+  semantics: `skill` denied only to blind roles, web denied to blind and
+  adversary roles). The old exported every-teammate deny list is deleted, not
+  kept beside the tiers: a global deny mask cannot reach the scope-registered
+  Team tools, and two exported scope sources invite a reader or a test to audit
+  the wrong one. `interrupt_agent` is absent from every tier, matching the
+  shipped configurations. The tool-catalog probe pins the classification
+  against the installed core's shipped `docs/tool-catalog.md`, so a new
+  model-facing tool fails a test instead of widening a teammate's scope.
 - **The skill and the static pins.** `SKILL.md` and `references/` teach
   `subagent` + `name`, `send_message({agent, message})`, `list_agents` rows and
   the board's `owner`; no teaching document names `spawn_teammate`,

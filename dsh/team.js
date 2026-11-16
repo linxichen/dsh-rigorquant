@@ -179,25 +179,8 @@ export const TEAMMATE_ALLOW_BY_TIER = {
 }
 
 /**
- * Tools denied to every teammate even when a tier would otherwise allow
- * them. This is documentation and the audit list, not the enforcement: the
- * allow set above is the enforcement, and the guards below reach the scoped
- * tools a restriction cannot. It names the orchestrator-owned study goal
- * (Decision 10), todo, the unattended-contract tools, the 0.2.1 host-plane
- * `working_directory` (Decision 27, seam S7), roster/board listing, the
- * interruption control the shipped configs leave off (Decision 24's
- * "interruption is not restored"), and delegation itself — a teammate never
- * creates another teammate.
+ * Parse a teammate's role from its name, or `null` when it doesn't parse.
  */
-export const EVERY_TEAMMATE_DENY = [
-  'working_directory',
-  'create_goal', 'update_goal', 'get_goal', 'todo_write',
-  'ask_user_question', 'exit_plan_mode',
-  'list_agents', 'team_task_list', 'interrupt_agent',
-  'subagent', 'subagent_fork', 'subagent_codex', 'subagent_claude_code',
-]
-
-/** Parse a teammate's role from its name, or `null` when it doesn't parse. */
 function roleFromName(teammateName) {
   const match = typeof teammateName === 'string' ? NAME_PATTERN.exec(teammateName) : null
   return match !== null ? match[1] : null

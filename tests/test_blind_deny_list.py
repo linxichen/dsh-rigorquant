@@ -7,9 +7,10 @@ web_fetch and `skill`, and the web-denied roles (the blind roles plus the
 Adversary and Document adversary) web_search and web_fetch. No teammate can
 create teammates at all (only the orchestrator holds `subagent`), so the
 per-row delegation deny lists the classic preset carried have nothing left to
-deny. The deny tables are pinned here against CONTEXT.md's glossary; what
+deny. The tier tables are pinned here against CONTEXT.md's glossary; what
 each role actually SEES is observed through the team probe
-(tests/test_team_plugin.py).
+(tests/test_team_plugin.py), and the orchestrator-owned tools are pinned as
+absent from every tier in tests/test_role_tool_budgets.py.
 
 Because `skill` is denied, a blind role cannot load the rigorquant skill: its
 persona file (`dsh/personas/<role>.md`) has to carry the derivation protocol
@@ -29,12 +30,6 @@ def _js_set(name):
     m = re.search(r"const %s = new Set\(\[([^\]]*)\]\)" % name, TEAM.read_text())
     assert m, "dsh/team.js no longer declares %s" % name
     return set(re.findall(r"'([a-z-]+)'", m.group(1)))
-
-
-def _js_list(name):
-    m = re.search(r"const %s = \[([^\]]*)\]" % name, TEAM.read_text())
-    assert m, "dsh/team.js no longer declares %s" % name
-    return set(re.findall(r"'([a-z_]+)'", m.group(1)))
 
 
 def test_fetch_is_enabled():
@@ -62,21 +57,6 @@ def test_the_deny_tiers_match_the_glossary():
     glossary = " ".join((REPO / "CONTEXT.md").read_text().split())
     assert "no web, no skills and nobody's draft: OffGridThinker, DoubleChecker" in glossary
     assert "the blind roles plus the Adversary and Document adversary" in glossary
-
-
-def test_every_teammate_is_denied_the_orchestrator_owned_tools():
-    """Decision 10: one study-level goal, root-owned; the unattended contract
-    keeps ask_user_question and plan mode off every teammate; Decision 27 adds
-    the 0.2.1 host-plane `working_directory` tool (a teammate's scratch dir is
-    fixed at spawn, seam S7). The roster/board stay blind (Decision 24), the
-    shipped configs keep interruption off, and delegation belongs to the
-    Orchestrator alone."""
-    assert _js_list("EVERY_TEAMMATE_DENY") == {
-        "working_directory",
-        "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode",
-        "list_agents", "team_task_list", "interrupt_agent",
-        "subagent", "subagent_fork", "subagent_codex", "subagent_claude_code"}
 
 
 def test_blind_personas_carry_the_protocol_they_cannot_load():

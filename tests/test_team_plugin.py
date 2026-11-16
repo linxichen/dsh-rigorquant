@@ -159,23 +159,23 @@ def test_a_teammates_visible_tools_are_all_classified(probe):
     """Visibility is exactly the classification, and interruption stays out.
 
     A tool the core newly mounts is invisible until it is classified, so the
-    assertion is one-directional by construction: the visible set must equal
-    the tier's allow set for this session, and no every-teammate denial (the
-    roster/board, interruption, delegation, the orchestrator's goal tools)
-    may appear.
+    visible set is the tier's allow set intersected with this session's
+    mounted catalog, and it must equal the tier's classification — nothing
+    filtered out by accident, nothing widened. The roster/board, interruption,
+    delegation and the orchestrator's goal tools are absent because no tier
+    classifies them, not because a second deny list names them.
     """
-    denied = set(probe["denied"])
     for member in ("doublechecker1", "explorer1", "adversary1"):
         entry = probe["classification"][member]
-        visible = set(entry["visible"])
+        allow = set(entry["allow"])
         assert entry["tier"] in {"blind", "webDenied", "open"}, entry
-        assert visible == set(entry["classification"]), member
-        assert not visible & denied, (member, sorted(visible & denied))
-        assert "interrupt_agent" not in visible, member
+        assert allow == set(entry["classification"]), member
+        assert not set(entry["unmounted"]), (member, entry["unmounted"])
+        assert "interrupt_agent" not in allow, member
         for gone in ("list_agents", "team_task_list", "subagent", "subagent_fork",
                      "working_directory", "create_goal", "todo_write",
                      "ask_user_question", "exit_plan_mode"):
-            assert gone not in visible, (member, gone)
+            assert gone not in allow, (member, gone)
 
 
 def test_an_unparseable_teammate_name_is_skipped_silently(probe):

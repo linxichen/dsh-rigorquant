@@ -100,17 +100,20 @@ function pick(recorder) {
 
 /** One role's classification verdict, read from the module's own data and
  * from what its composition installed: the allow filter `tools.restrict`
- * received, the un-filtered tier, and the visible set (the allow set the
- * session's catalog intersects, which is what the model actually sees). */
+ * received (what the model sees) and the un-filtered tier. `unmounted` is the
+ * tier entry this session's catalog lacks — a non-empty list would mean
+ * `allowListFor` silently narrowed a role, so the test requires it to be
+ * empty rather than treating the filter as a second, unfalsifiable view. */
 function classificationOf(mod, role, recorder) {
   const filter = recorder.restricts[0] ?? {}
   const allow = Array.isArray(filter.allow) ? filter.allow.slice() : []
+  const classification = [...mod.classificationFor(role)]
   return {
     role,
     tier: mod.tierOf(role),
     allow,
-    classification: [...mod.classificationFor(role)],
-    visible: allow.slice(),
+    classification,
+    unmounted: classification.filter((tool) => !allow.includes(tool)),
   }
 }
 
@@ -349,7 +352,6 @@ async function runPresentScenario(mod) {
     mountError,
     beforeSubagentStart,
     guardChecks,
-    denied: [...mod.EVERY_TEAMMATE_DENY],
     classification: {
       doublechecker1: classificationOf(mod, 'doublechecker', doublechecker1.recorder),
       explorer1: classificationOf(mod, 'explorer', explorer1.recorder),
@@ -796,7 +798,7 @@ async function main() {
   const mod = await import(pathToFileURL(modulePath).href)
 
   const {
-    mountError, beforeSubagentStart, present, guardChecks, arming, classification, denied,
+    mountError, beforeSubagentStart, present, guardChecks, arming, classification,
   } = await runPresentScenario(mod)
   const unarmedService = await runUnarmedServiceScenario(mod)
   const absent = await runAbsentScenario(mod)
@@ -807,7 +809,7 @@ async function main() {
 
   process.stdout.write(JSON.stringify({
     mountError, beforeSubagentStart, present, guardChecks, arming, classification,
-    denied, unarmedService,
+    unarmedService,
     absent, resume, latePresetSelection, unload, escalation,
   }))
 }

@@ -143,8 +143,9 @@ new core.
   `disposalTimeoutMs`; keeping any of the three prevents the team service from
   mounting. `maxMembers` was the lifetime member cap, so there is no cap left
   to raise.
-- **`EVERY_TEAMMATE_DENY`**, replaced by the per-tier tool classification (see
-  Changed).
+- **The exported `EVERY_TEAMMATE_DENY` list**, deleted outright: the per-tier
+  tool classification is the only source of a Teammate's scope now (see
+  Changed), and no second exported list sits beside it.
 
 ### Fixed
 
