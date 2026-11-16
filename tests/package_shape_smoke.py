@@ -13,7 +13,9 @@ consume:
   ``docs/``, read from ``dsh/sync.js``) are present, with the compute lane's
   anchor files;
 - no current package file references the installer 0.8.1 removed -- the
-  changelog, the architecture record and the ADRs are history and exempt.
+  script, its skills-only mode, a migration performed by the installer, or its
+  `npx` entry point. The changelog, the architecture record and the ADRs are
+  history and exempt.
 
 Standard library only, no network, no ``dsh``: run it from the repository root
 or from anywhere (paths resolve from this file). CI runs:
@@ -32,7 +34,8 @@ MANIFEST = ROOT / "package.json"
 # Assembled so this file does not match its own installer sweep.
 RETIRED_DISTRIBUTION = ("".join(("install", ".sh")),
                         "".join(("--skill", "-only")),
-                        "".join(("installer-driven", " migration")))
+                        "".join(("installer-driven", " migration")),
+                        "".join(("npx dsh-", "rigorquant")))
 # The historical record keeps the old names on purpose.
 HISTORY = ("CHANGELOG.md", "docs/architecture.md")
 HISTORY_PREFIXES = ("docs/adr/",)

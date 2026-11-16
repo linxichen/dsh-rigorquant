@@ -2125,6 +2125,7 @@ RETIRED_DISTRIBUTION = tuple("".join(parts) for parts in (
     ("install", ".sh"),
     ("--skill", "-only"),
     ("installer-driven", " migration"),
+    ("npx dsh-", "rigorquant"),
 ))
 # The historical record keeps the old names on purpose: the changelog, the
 # decision record and the ADRs say what shipped and why, in the words of the
