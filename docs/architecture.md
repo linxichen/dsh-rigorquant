@@ -1187,9 +1187,9 @@ is denied, and the old exported every-teammate deny list is deleted rather
 than kept beside them. The blind and web-denied tiers keep their semantics
 (`skill` denied only to blind roles; web denied to blind and adversary roles).
 The classification is data, so a Role or a tool is a one-line change, and the
-tool-catalog probe fails when the installed core's shipped
-its shipped `tool-catalog.md` page names a model-facing tool nobody classified and nobody
-explicitly excluded. `apply_patch` is not adopted — the filesystem package and
+tool-catalog probe fails when the installed core's shipped `tool-catalog.md`
+page names a model-facing tool nobody classified and nobody explicitly
+excluded. `apply_patch` is not adopted — the filesystem package and
 the base both default it off.
 
 **Interruption stays off.** The base and Web presets set

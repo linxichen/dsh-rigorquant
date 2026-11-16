@@ -184,9 +184,9 @@ exception. Recorded as Decision 28 in `docs/architecture.md`.
   Team tools, and two exported scope sources invite a reader or a test to audit
   the wrong one. `interrupt_agent` is absent from every tier, matching the
   shipped configurations. The tool-catalog probe pins the classification
-  against the installed core's shipped `tool-catalog.md` page (under its
-  own `docs/`), so a new
-  model-facing tool fails a test instead of widening a teammate's scope.
+  against the installed core's shipped `tool-catalog.md` page (under its own
+  `docs/`), so a new model-facing tool fails a test instead of widening a
+  teammate's scope.
 - **The skill and the static pins.** `SKILL.md` and `references/` teach
   `subagent` + `name`, `send_message({agent, message})`, `list_agents` rows and
   the board's `owner`; no teaching document names `spawn_teammate`,
