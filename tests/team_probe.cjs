@@ -18,6 +18,22 @@
 // MCP client into the caller or a named teammate. Prints one JSON verdict.
 const { pathToFileURL } = require('node:url')
 
+// The global tools a RigorQuant session mounts (base + preset + Team control)
+// plus a few the core mounts for other modes. The probe's tools stub reports
+// exactly these as known, so `tools.restrict({ allow })` sees a realistic
+// global catalog and the classification report can prove what stays visible.
+const SESSION_TOOLS = new Set([
+  'bash', 'pwsh', 'read', 'write', 'edit', 'read_image', 'glob', 'grep',
+  'job_output', 'job_kill', 'job_list', 'present', 'skill',
+  'web_search', 'web_fetch', 'working_directory',
+  'create_goal', 'update_goal', 'get_goal', 'todo_write', 'ask_user_question',
+  'exit_plan_mode', 'send_message', 'list_agents', 'wait_agent', 'interrupt_agent',
+  'team_task_create', 'team_task_list', 'team_task_get', 'team_task_update',
+  'subagent', 'subagent_fork', 'subagent_codex', 'subagent_claude_code',
+  'propose_action', 'session_search', 'schedule_create', 'plugin_manager',
+  'load_workspace_dependencies',
+])
+
 /** One fake teammate/lead: its own agent.ctx scope recording every
  * section()/context()/restrict() call made against it. `status` is what the
  * harness's own roster projection reads (`running` vs `inactive`). */
@@ -40,6 +56,7 @@ function makeAgent(id, preset, { status = 'running' } = {}) {
     getSectionOrder: (n) => (n === 'DEPLOYMENT_PERSONA_PREFIX' ? 0 : undefined),
   }
   const toolsStub = {
+    get: (toolName) => SESSION_TOOLS.has(toolName) ? { name: toolName } : undefined,
     restrict: (filter) => {
       restricts.push(filter)
       return () => {}
@@ -78,6 +95,22 @@ function pick(recorder) {
     restricts: recorder.restricts.slice(),
     guardCount: recorder.guards.length,
     tools: recorder.registered.map((definition) => definition.name),
+  }
+}
+
+/** One role's classification verdict, read from the module's own data and
+ * from what its composition installed: the allow filter `tools.restrict`
+ * received, the un-filtered tier, and the visible set (the allow set the
+ * session's catalog intersects, which is what the model actually sees). */
+function classificationOf(mod, role, recorder) {
+  const filter = recorder.restricts[0] ?? {}
+  const allow = Array.isArray(filter.allow) ? filter.allow.slice() : []
+  return {
+    role,
+    tier: mod.tierOf(role),
+    allow,
+    classification: [...mod.classificationFor(role)],
+    visible: allow.slice(),
   }
 }
 
@@ -297,6 +330,12 @@ async function runPresentScenario(mod) {
   return {
     mountError,
     guardChecks,
+    denied: [...mod.EVERY_TEAMMATE_DENY],
+    classification: {
+      doublechecker1: classificationOf(mod, 'doublechecker', doublechecker1.recorder),
+      explorer1: classificationOf(mod, 'explorer', explorer1.recorder),
+      adversary1: classificationOf(mod, 'adversary', adversary1.recorder),
+    },
     arming: {
       setEnabledCalls: teams.calls,
       standardRootContexts: standardRoot.recorder.contexts,
@@ -493,6 +532,7 @@ function makeScopedAgent(id, preset) {
       getSectionOrder: () => 0,
     },
     tools: {
+      get: (toolName) => SESSION_TOOLS.has(toolName) ? { name: toolName } : undefined,
       restrict: counted('restricts'),
       guard: counted('guards'),
       register: (definition) => {
@@ -702,7 +742,7 @@ async function main() {
   const [, , modulePath] = process.argv
   const mod = await import(pathToFileURL(modulePath).href)
 
-  const { mountError, present, guardChecks, arming } = await runPresentScenario(mod)
+  const { mountError, present, guardChecks, arming, classification, denied } = await runPresentScenario(mod)
   const unarmedService = await runUnarmedServiceScenario(mod)
   const absent = await runAbsentScenario(mod)
   const resume = await runResumeScenario(mod)
@@ -711,8 +751,8 @@ async function main() {
   const escalation = await runEscalationScenario(mod)
 
   process.stdout.write(JSON.stringify({
-    mountError, present, guardChecks, arming, unarmedService, absent, resume,
-    latePresetSelection, unload, escalation,
+    mountError, present, guardChecks, arming, classification, denied, unarmedService,
+    absent, resume, latePresetSelection, unload, escalation,
   }))
 }
 

@@ -44,13 +44,21 @@ def test_fetch_is_enabled():
 
 def test_the_deny_tiers_match_the_glossary():
     """CONTEXT.md: blind = OffGridThinker + DoubleChecker; web-denied = the
-    blind roles plus the Adversary and Document adversary."""
+    blind roles plus the Adversary and Document adversary.
+
+    The tiers are ALLOW sets now: blind is the shared set, webDenied adds the
+    skill, open adds retrieval. The web pair must appear in exactly one tier
+    and the skill in two — that is the glossary's "no web, no skills" rule.
+    """
     assert _js_set("BLIND_ROLES") == set(BLIND)
     assert _js_set("WEB_DENIED_ROLES") == {"adversary", "doc-adversary"}
-    assert _js_list("WEB_DENY") == {"web_search", "web_fetch"}
     team = TEAM.read_text()
-    assert "[...EVERY_TEAMMATE_DENY, ...WEB_DENY, 'skill']" in team, (
-        "the blind tier no longer denies web and skill")
+    assert "open: [...SHARED_TOOLS, 'web_search', 'web_fetch', 'skill']" in team, (
+        "the open tier no longer grants web and skill")
+    assert "webDenied: [...SHARED_TOOLS, 'skill']" in team, (
+        "the webDenied tier no longer keeps skill")
+    assert "blind: [...SHARED_TOOLS]" in team, (
+        "the blind tier is no longer the bare shared set")
     glossary = " ".join((REPO / "CONTEXT.md").read_text().split())
     assert "no web, no skills and nobody's draft: OffGridThinker, DoubleChecker" in glossary
     assert "the blind roles plus the Adversary and Document adversary" in glossary
@@ -60,10 +68,15 @@ def test_every_teammate_is_denied_the_orchestrator_owned_tools():
     """Decision 10: one study-level goal, root-owned; the unattended contract
     keeps ask_user_question and plan mode off every teammate; Decision 27 adds
     the 0.2.1 host-plane `working_directory` tool (a teammate's scratch dir is
-    fixed at spawn, seam S7)."""
+    fixed at spawn, seam S7). The roster/board stay blind (Decision 24), the
+    shipped configs keep interruption off, and delegation belongs to the
+    Orchestrator alone."""
     assert _js_list("EVERY_TEAMMATE_DENY") == {
+        "working_directory",
         "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode", "working_directory"}
+        "ask_user_question", "exit_plan_mode",
+        "list_agents", "team_task_list", "interrupt_agent",
+        "subagent", "subagent_fork", "subagent_codex", "subagent_claude_code"}
 
 
 def test_blind_personas_carry_the_protocol_they_cannot_load():

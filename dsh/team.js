@@ -123,14 +123,34 @@ const GUARD_TEXT = 'RigorQuant team guard: armed'
 
 const PERSONA_DIR = fileURLToPath(new URL('./personas/', import.meta.url))
 
-/** Every teammate is denied these regardless of tier: the orchestrator-owned
- * study goal (Decision 10), todo, the unattended-contract tools, and the
- * 0.2.1 host-plane `working_directory` tool (Decision 27, seam S7). A
- * teammate's working directory is its own scratch dir, fixed when the Team
- * spawns it; letting a teammate switch it would break the own-scratch-dir
- * contract that keeps two producers from writing into each other's tree. */
-const EVERY_TEAMMATE_DENY = ['create_goal', 'update_goal', 'get_goal', 'todo_write', 'ask_user_question', 'exit_plan_mode', 'working_directory']
-const WEB_DENY = ['web_search', 'web_fetch']
+// ── explicit tool classification ────────────────────────────────────────────
+//
+// A teammate's visible catalog is an ALLOW set, not a deny list. `tools.
+// restrict({ allow })` keeps only the names classified here, so a tool the
+// core (or another plugin) newly mounts stays invisible until it is
+// classified for the tier — the failure mode is "the teammate cannot see it",
+// never "the teammate silently got more scope". The tier is data: adding a
+// role or a tool is a one-line change plus a failing test.
+//
+// Only names in the session's guaranteed-mounted universe may appear in a
+// tier: `tools.restrict` resolves against the live global catalog, and an
+// allow entry the session does not mount must be filtered out (see
+// `allowListFor`). `pwsh` is the one platform-gated entry (win32); it is
+// filtered out where the row is disabled.
+
+/** Tools every teammate keeps regardless of tier: the shell (one of bash or
+ * pwsh per platform), the filesystem, background jobs, deliverables, the
+ * messaging pair the hub-and-spoke guard polices, and the shared task board
+ * minus its roster-wide listing. */
+const SHARED_TOOLS = [
+  'bash', 'pwsh',
+  'read', 'write', 'edit', 'read_image', 'glob', 'grep',
+  'job_output', 'job_kill', 'job_list',
+  'present',
+  'send_message', 'wait_agent',
+  'team_task_create', 'team_task_get', 'team_task_update',
+]
+
 /** Blind roles: no other agent's results, so no web AND no skill (the
  * rigorquant skill carries the working procedure, not raw derivation). */
 const BLIND_ROLES = new Set(['offgrid', 'doublechecker'])
@@ -138,16 +158,63 @@ const BLIND_ROLES = new Set(['offgrid', 'doublechecker'])
  * audit checklist lives there). */
 const WEB_DENIED_ROLES = new Set(['adversary', 'doc-adversary'])
 
+/**
+ * The complete classification: every global tool a teammate may see, per
+ * tier. `blind` keeps the shared set, `webDenied` adds the skill, and `open`
+ * adds retrieval on top. Anything absent from a tier is denied.
+ */
+export const TEAMMATE_ALLOW_BY_TIER = {
+  open: [...SHARED_TOOLS, 'web_search', 'web_fetch', 'skill'],
+  webDenied: [...SHARED_TOOLS, 'skill'],
+  blind: [...SHARED_TOOLS],
+}
+
+/**
+ * Tools denied to every teammate even when a tier would otherwise allow
+ * them. This is documentation and the audit list, not the enforcement: the
+ * allow set above is the enforcement, and the guards below reach the scoped
+ * tools a restriction cannot. It names the orchestrator-owned study goal
+ * (Decision 10), todo, the unattended-contract tools, the 0.2.1 host-plane
+ * `working_directory` (Decision 27, seam S7), roster/board listing, the
+ * interruption control the shipped configs leave off (Decision 24's
+ * "interruption is not restored"), and delegation itself — a teammate never
+ * creates another teammate.
+ */
+export const EVERY_TEAMMATE_DENY = [
+  'working_directory',
+  'create_goal', 'update_goal', 'get_goal', 'todo_write',
+  'ask_user_question', 'exit_plan_mode',
+  'list_agents', 'team_task_list', 'interrupt_agent',
+  'subagent', 'subagent_fork', 'subagent_codex', 'subagent_claude_code',
+]
+
 /** Parse a teammate's role from its name, or `null` when it doesn't parse. */
 function roleFromName(teammateName) {
   const match = typeof teammateName === 'string' ? NAME_PATTERN.exec(teammateName) : null
   return match !== null ? match[1] : null
 }
 
-function denyListFor(role) {
-  if (BLIND_ROLES.has(role)) return [...EVERY_TEAMMATE_DENY, ...WEB_DENY, 'skill']
-  if (WEB_DENIED_ROLES.has(role)) return [...EVERY_TEAMMATE_DENY, ...WEB_DENY]
-  return [...EVERY_TEAMMATE_DENY]
+/** The classification tier a role belongs to (unknown roles are open). */
+export function tierOf(role) {
+  if (BLIND_ROLES.has(role)) return 'blind'
+  if (WEB_DENIED_ROLES.has(role)) return 'webDenied'
+  return 'open'
+}
+
+/** The allow set for one role's tier (the un-filtered classification). */
+export function classificationFor(role) {
+  return TEAMMATE_ALLOW_BY_TIER[tierOf(role)]
+}
+
+/**
+ * The allow set to install for one teammate: the tier classification,
+ * restricted to the global tools this session actually mounts. `tools.
+ * restrict` throws on an unknown global name, and a platform-gated row
+ * (`pwsh`) is genuinely absent elsewhere; filtering keeps the classification
+ * portable without ever widening it.
+ */
+function allowListFor(role, tools) {
+  return classificationFor(role).filter((tool) => tools.get(tool) !== undefined)
 }
 
 // ── identity (the 0.2.2 subagent tree) ───────────────────────────────────────
@@ -245,6 +312,17 @@ function argsOf(execution) {
   return (execution.arguments && typeof execution.arguments === 'object') ? execution.arguments : {}
 }
 
+/** The Session id of a teammate's subagent-tree root, or undefined when the
+ * tree is not loadable — a guard runs synchronously before every call and
+ * must never turn a missing service into a crash. */
+function treeRootId(subagents, agent) {
+  try {
+    return subagents?.rootOf(agent).id
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * A teammate's guard: hub-and-spoke messaging, roster/board blindness,
  * own-task-only board access, and (for web-denied roles) the bash
@@ -261,12 +339,7 @@ function teammateGuard(agent, membership, role, teams, subagents) {
   return (execution) => {
     const args = argsOf(execution)
     if (execution.name === 'send_message') {
-      let rootId
-      try {
-        rootId = subagents?.rootOf(agent).id
-      } catch {
-        rootId = undefined
-      }
+      const rootId = treeRootId(subagents, agent)
       if (args.agent === LEAD_TARGET || (rootId !== undefined && args.agent === rootId)) return undefined
       return `rq-team: hub-and-spoke — ${membership.name} may message only the Lead ('${LEAD_TARGET}' or its Session id), not '${args.agent}'`
     }
@@ -412,7 +485,7 @@ function apply(ctx, config = {}) {
     if (persona === undefined) return
     const order = systemPrompt.getSectionOrder?.('DEPLOYMENT_PERSONA_PREFIX') ?? 0
     const disposePersona = systemPrompt.section({ name: PERSONA_PREFIX_SECTION, order, text: persona })
-    const disposeTools = tools !== undefined ? tools.restrict({ deny: denyListFor(role) }) : () => {}
+    const disposeTools = tools !== undefined ? tools.restrict({ allow: allowListFor(role, tools) }) : () => {}
     const disposeGuard = tools !== undefined
       ? tools.guard(teammateGuard(agent, membership, role, teams, ctx.get('subagents')))
       : () => {}

@@ -104,34 +104,63 @@ def test_doublechecker_gets_its_persona_under_the_persona_prefix_section(probe):
     assert "DoubleChecker" in sections[0]["text"]
 
 
-def test_doublechecker_loses_web_skill_and_every_teammate_tools(probe):
-    restricts = probe["present"]["doublechecker1"]["restricts"]
-    assert len(restricts) == 1
-    deny = set(restricts[0]["deny"])
-    assert deny == {
-        "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode", "working_directory",
-        "web_search", "web_fetch", "skill",
-    }
+def _allow(probe, member):
+    return set(probe["classification"][member]["allow"])
 
 
-def test_explorer_keeps_web_and_skill_but_loses_the_every_teammate_tools(probe):
-    restricts = probe["present"]["explorer1"]["restricts"]
-    assert len(restricts) == 1
-    deny = set(restricts[0]["deny"])
-    assert deny == {
-        "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode", "working_directory",
-    }
-    assert "web_search" not in deny and "skill" not in deny
+def test_doublechecker_gets_the_blind_tier_classification(probe):
+    """A teammate's catalog is an ALLOW set, not a short deny list.
+
+    The blind tier keeps the shared tools but loses web and skills; anything
+    the tier does not name stays invisible, so a newly mounted host tool
+    cannot widen a teammate's scope by accident.
+    """
+    entry = probe["classification"]["doublechecker1"]
+    assert entry["tier"] == "blind"
+    allow = _allow(probe, "doublechecker1")
+    assert allow == set(entry["classification"])
+    assert "bash" in allow and "team_task_get" in allow and "send_message" in allow
+    assert not {"web_search", "web_fetch", "skill"} & allow
+
+
+def test_explorer_gets_the_open_tier_classification(probe):
+    entry = probe["classification"]["explorer1"]
+    assert entry["tier"] == "open"
+    allow = _allow(probe, "explorer1")
+    assert allow == set(entry["classification"])
+    assert {"web_search", "web_fetch", "skill"} <= allow
 
 
 def test_adversary_is_web_denied_but_keeps_skill(probe):
-    restricts = probe["present"]["adversary1"]["restricts"]
-    assert len(restricts) == 1
-    deny = set(restricts[0]["deny"])
-    assert "web_search" in deny and "web_fetch" in deny
-    assert "skill" not in deny
+    entry = probe["classification"]["adversary1"]
+    assert entry["tier"] == "webDenied"
+    allow = _allow(probe, "adversary1")
+    assert allow == set(entry["classification"])
+    assert "skill" in allow
+    assert not {"web_search", "web_fetch"} & allow
+
+
+def test_a_teammates_visible_tools_are_all_classified(probe):
+    """Visibility is exactly the classification, and interruption stays out.
+
+    A tool the core newly mounts is invisible until it is classified, so the
+    assertion is one-directional by construction: the visible set must equal
+    the tier's allow set for this session, and no every-teammate denial (the
+    roster/board, interruption, delegation, the orchestrator's goal tools)
+    may appear.
+    """
+    denied = set(probe["denied"])
+    for member in ("doublechecker1", "explorer1", "adversary1"):
+        entry = probe["classification"][member]
+        visible = set(entry["visible"])
+        assert entry["tier"] in {"blind", "webDenied", "open"}, entry
+        assert visible == set(entry["classification"]), member
+        assert not visible & denied, (member, sorted(visible & denied))
+        assert "interrupt_agent" not in visible, member
+        for gone in ("list_agents", "team_task_list", "subagent", "subagent_fork",
+                     "working_directory", "create_goal", "todo_write",
+                     "ask_user_question", "exit_plan_mode"):
+            assert gone not in visible, (member, gone)
 
 
 def test_an_unparseable_teammate_name_is_skipped_silently(probe):
