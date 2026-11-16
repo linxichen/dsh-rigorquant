@@ -94,7 +94,9 @@
     preset + bundled skill (install.sh), MIT, `dsh-plugin` GitHub topic —
     compliant with the awesome-list `dsh plugin add` convention. The npm bundle
     ships `env/` and `mcp/`; `install.sh` anchors the compute lane at
-    `$DSH_HOME/share/rigorquant`.
+    `$DSH_HOME/share/rigorquant`. *(Amended by Decision 29: no install script
+    ships; the plugin manager is the only install and uninstall mechanism, and
+    the bundle's boot-sync row anchors the lane.)*
 12. **Workspace** — a **study** is the self-contained work unit: the user's
     assignment, one question worked in one directory with an identical internal
     structure everywhere. Two modes, implied by location, no config flag:
@@ -238,7 +240,9 @@ the literature roles load them by name. `install.sh` therefore copies both to
 while the preset keeps its own copies under
 `agent-presets/rigorquant/skills/` so a checkout is self-contained. The blind
 roles deny `skill` outright, so a global install never widens what the
-off-grid lane can reach.
+off-grid lane can reach. *(Amended by Decision 29: no installer ships, so
+there is no second `$DSH_HOME/skills` copy; the bundle's skill row serves the
+packaged copies to every session of the profile.)*
 
 ## Decision 16 — role-routed models (the rq-model-router plugin)
 
@@ -478,9 +482,10 @@ is validated on a newer one. A ceiling could not tell "this core will break
 the plugin" from "this core did not exist when the release was cut" — it
 asserted the latter as the former, so every later core drew the same
 incompatibility warning and forced the operator to grant a risk exemption on a
-plugin the gate called unsafe. The installer keeps the one refusal that
-protects an older core and replaces the ceiling refusal with an advisory
-naming the validated core.
+plugin the gate called unsafe. The manifest keeps the one refusal that
+protects an older core; the ceiling is gone, and there is no advisory because
+there is no second gate. *(The installer gate this paragraph was drafted
+around is superseded within the release — Decision 29.)*
 
 - **The routing card is the bundle's configuration entry on the Plugins
   page.** 0.1.6 retired `settings.plugin.item` (plugin configuration moved
@@ -629,10 +634,10 @@ exists cannot run — so "remove the preset when the plugin is removed" is not
 implementable from inside this package. Each install/boot instead REPLACES the
 managed trees wholesale, every managed root carries an ownership marker
 (`.rq-sync.json`: manager + version + syncedAt) so ownership stays
-discoverable after removal, removal stays explicit (`./install.sh
---uninstall`), and orphaning is benign: the synced preset is self-contained
-(skills travel inside its directory) and merely routes nothing without the
-router.
+discoverable after removal, the lane stays on uninstall (Decision 29: it is
+study evidence, not plugin state), and orphaning is benign: the synced preset
+is self-contained (skills travel inside its directory) and merely routes
+nothing without the router.
 
 Tests: `tests/test_preset_sync.py` executes the engine over real directories
 via `tests/preset_sync_probe.cjs` (first sync, quiet rerun, replace-on-bump,
@@ -1086,12 +1091,14 @@ Recorded as an ADR: `docs/adr/0005-rigorquant-on-dsh-0.2.2.md`.
 `peerDependencies` range**, because the gate reads `engines.dsh` alone when it
 is declared. The floor names the core the release was validated on: every core
 at or above it is admitted, and the floor moves only when a release is
-validated on a newer one. `install.sh` keeps one refused bound
-(`MIN_DSH_VERSION`), replaces the ceiling refusal with a **validated-through
-advisory** (`VALIDATED_DSH_VERSION`, the same version) that names the core and
-continues, and bypasses both under `--skill-only`. **0.8.0 is the last release
-for the 0.2.1-rc.2 line**; nothing is backported. The manifest field, the
-installer pair and the ADR are pinned by `test_repo_consistency.py`.
+validated on a newer one. The loader's own compatibility gate is the only
+gate: it reads `engines.dsh`, refuses a core below the floor, and admits every
+core above it. **The pre-flight installer gate this Decision was drafted
+around — a floor refusal plus a validated-through advisory, bypassed under
+`--skill-only` — is superseded within the same release (Decision 29): 0.8.1
+ships without an installer.** **0.8.0 is the last release for the 0.2.1-rc.2
+line**; nothing is backported. The manifest field, the loader's verdict and
+the ADR are pinned by `test_repo_consistency.py`.
 
 **Why the ceiling was the announcement.** 0.8.0's `<0.2.2-0` excluded every
 0.2.2 prerelease, so on 0.2.2-rc.3 the gate printed `Plugin
@@ -1135,8 +1142,8 @@ made 0.8.0 work, which is why this is a fix and not a band edit:
   every teammate mounting the root persona and the full catalog, which is the
   failure the framework exists to prevent — with no error to say so.
 
-**Agent Teams is the base bundle's; arming is per Session.** The installer no
-longer adds, pins, enables or configures a Team bundle, and the bundle patch
+**Agent Teams is the base bundle's; arming is per Session.** This release adds,
+pins, enables and configures no Team bundle, and the bundle patch
 drops its `agent-team` override so the base bundle's `maxTasks` is the value.
 `dsh/team.js` keeps its composition half and adds the arming half: on
 `agent/created` (and the late `agent-preset/selected` switch), for a **root**
@@ -1198,9 +1205,13 @@ the base both default it off.
 skill stops offering it as an available action. This is the shipped contract,
 not a regression to repair.
 
-**The installer's contract.** Full install: refuse a core below the floor
-before copying anything; print an advisory naming the validated core and
-continue above it; manage no Team bundle; remove the retired Team and web
+**The installer's contract — superseded within this release.** Drafted for
+0.8.1 and then deleted before the release shipped: the file, its `bin` and
+`files` entries, and its tests are gone, because distribution is the plugin
+manager (Decision 29). What follows is the record of what the draft did, kept
+for the reader who finds it in git history. Full install: refuse a core below
+the floor before copying anything; print an advisory naming the validated core
+and continue above it; manage no Team bundle; remove the retired Team and web
 bundle names from a profile that lists either, one line each saying why;
 migrate a marked 0.8.0 block by deleting the three rejected keys inside its
 `agent-team` row and keeping everything else, including an operator-saved
@@ -1208,15 +1219,17 @@ migrate a marked 0.8.0 block by deleting the three rejected keys inside its
 remains and retaining that record while an older block still needs removal
 because `--uninstall` reads it; carry saved routes over; change nothing on a
 re-run. With no `dsh` on the path the step warns and is skipped. `--skill-only`
-is independent of core version.
+is independent of core version. None of it ships: the four duties are argued
+one by one in Decision 29.
 
 **The skill and the pins.** `SKILL.md` and `references/` teach `subagent` +
 `name`, `send_message({agent, message})`, `list_agents` rows and the board's
 `owner`, and treat `inactive` as not-done. The static suite pins the open-floor
-policy in the manifest, the installer and both READMEs, the last-release
-statement and the Decision/ADR references, the repo-wide 12-live-teammate
-pool, and the absence of `spawn_teammate`, `agent_id`, `target` and `ownerId`
-from every current teaching document. The client half changes not at all: the
+policy in the manifest and both READMEs, the last-release statement and the
+Decision/ADR references, the repo-wide 12-live-teammate pool, the
+plugin-manager commands and the lane-stays rule, and the absence of
+`spawn_teammate`, `agent_id`, `target` and `ownerId` from every current
+teaching document. The client half changes not at all: the
 only plugin-manager surface that moved is `BundleInfo.update` replacing
 `updatable`, and the routing card reads neither.
 
@@ -1257,6 +1270,69 @@ Amends:
 - **27:** the band (its `-0` ceiling is superseded) and the `agentTeams` key
   set (deleted, not trimmed).
 
+## Decision 29 — Distribution is the plugin manager
+
+Recorded as an ADR: `docs/adr/0006-distribution-is-the-plugin-manager.md`.
+
+0.8.1 ships without `install.sh`. The plugin manager is the **only** install
+and uninstall mechanism: `dsh plugin add dsh-rigorquant` (or the **Plugins**
+page) installs, `dsh plugin remove dsh-rigorquant` uninstalls. The file is
+deleted outright — no shim, no deprecation stub, no "run this instead" — and
+its `bin` and `files` entries leave the manifest with it. The decision was
+taken before the release shipped, so 0.8.1 never had an installer. The shared
+lane at `$DSH_HOME/share/rigorquant` **remains** on uninstall: it is study
+evidence (a study's `study.json` records that path), not plugin state.
+
+**The four residual duties, each dropped or native.**
+
+- **Profile migrations — dropped.** No migration runs for releases ≤0.8.0. An
+  operator upgrades by removing and adding the plugin; a marked block a 0.8.0
+  installer left in
+  `$DSH_HOME/profiles/<profile>/cordis.patch.yml` is theirs to clear (one edit,
+  between the `BEGIN` and `END` markers), the core removes the retired Agent
+  Teams bundle selection itself, routes saved on a 0.8.0 profile live in the
+  profile patch and stay, and a route saved on an older release is re-selected
+  on the card. The installer was the only code that wrote foreign rows into a
+  profile; the migration engine and its 958-line shadow-profile harness are
+  deleted, not re-homed.
+- **Uninstall — native.** `dsh plugin remove` is pnpm delete plus a manifest
+  reconcile, and the CLI has no uninstall hook; with no writes there is
+  nothing to unwind. The lane the plugin lands is study evidence, so it is not
+  removed — the marker (`.rq-sync.json`) keeps its ownership discoverable and
+  a re-install resumes from the same bytes.
+- **The skills-only path — dropped.** The bundle's skill row serves
+  `agent-presets/rigorquant/skills` at a custom root, so rigorquant and the
+  two literature skills arrive with the plugin. A second copy in
+  `$DSH_HOME/skills` added a rank/shadowing story for a duplicate with no
+  remaining purpose.
+- **The pre-flight version gate — dropped.** The loader's own compatibility
+  gate reads `engines.dsh` alone, refuses a core below the floor and admits
+  every core above it; a second check in a script could only disagree with it.
+  The release states the core it was exercised on in prose.
+
+**What proves the package instead.** CI runs
+`tests/package_shape_smoke.py`, a stdlib-only script that needs no `dsh`:
+every `dsh.bundle.patch` file exists, every export resolves, the lane template
+directories the boot sync copies are present with the lane anchor, and no
+current package file references a removed installer. The static suite pins the
+two commands and the lane-stays rule in both READMEs, the changelog's
+`0.8.1` `### Removed` entry, this section and ADR 0006, and a repo-wide sweep
+that no current file names the removed installer, `--skill-only`, or an
+installer-driven migration — the changelog, this record and the ADRs are
+history and exempt. The runtime halves do not change: `dsh/sync.js` still
+lands the lane; only its comments moved.
+
+Amends:
+- **20:** the floor is enforced by the loader's gate alone; the installer's
+  pre-flight refusal is gone.
+- **22:** removal of the lane no longer has an explicit command — it stays,
+  because it is study evidence.
+- **24:** the installer's Team cleanup and enabled-bundles record are gone with
+  the installer; the base bundle and the per-Session arming are the whole
+  story.
+- **28:** its installer contract is superseded within the same release (the
+  amendment is recorded on it).
+
 ## Repo map
 
 ```
@@ -1287,15 +1363,14 @@ docs/token-efficiency.md    token-efficiency record: limits adopted in 0.8.0,
                             deferred follow-ups, rejected native mechanisms
 docs/adr/                   ADR 0001 (Agent Teams), ADR 0002 (declared preset
                             on DSH 0.1.7), ADR 0003 (DSH 0.2.0), ADR 0004
-                            (DSH 0.2.1), ADR 0005 (DSH 0.2.2-rc.3, open floor)
+                            (DSH 0.2.1), ADR 0005 (DSH 0.2.2-rc.3, open floor),
+                            ADR 0006 (distribution is the plugin manager)
 docs/hard-lessons-…md       the run record the skill cites
 docs/showcase.html          the showcase page
 tests/                      the validator's suite; a forged study must FAIL
-install.sh                  installs the compute lane and the plugin; refuses a
-                            core below the validated floor, advises above it;
-                            removes the retired Team bundles, migrates a 0.8.0
-                            profile block, ports saved routes (or --skill-only:
-                            the skills)
+tests/package_shape_smoke.py  CI's no-DSH shape check: both bundle patch files,
+                            every export, the boot-sync lane templates, and no
+                            reference to the removed installer (Decision 29)
 ```
 
 A study folder (`studies/<slug>/` in Mode B, the repo root in Mode A) lives in
