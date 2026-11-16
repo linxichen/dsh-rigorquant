@@ -1087,6 +1087,23 @@ def test_the_skill_teaches_the_surviving_delegation_contract():
         assert needle in protocol, "protocol.md omits %r" % needle
 
 
+def test_the_guard_names_the_surviving_delegation_calls():
+    """The skill's guard claims are the module's actual checks.
+
+    The prose says a `subagent` needs a parsable name, a `subagent_fork` is
+    refused, and `send_message` reads its `agent` argument. Those three
+    guards are `dsh/team.js`'s constants and argument read, not a story.
+    """
+    team = (REPO / "dsh" / "team.js").read_text()
+    assert "const SUBAGENT_TOOL = 'subagent'" in team
+    assert "const SUBAGENT_FORK_TOOL = 'subagent_fork'" in team
+    assert "execution.name === SUBAGENT_TOOL" in team
+    assert "execution.name === SUBAGENT_FORK_TOOL" in team
+    assert "if (execution.name === 'send_message')" in team
+    assert "const target = args.agent" in team, (
+        "the send_message guard must read the surviving `agent` argument")
+
+
 def test_the_roster_policy_is_stated_once_and_consistently():
     """Fresh blank-context roles per brief; audit and literature roles reused
     by message, only while `inactive` (0.2.2 has no `idle` status)."""
