@@ -134,11 +134,12 @@ unaudited. Decision 24 (docs/architecture.md) carries them onto Agent Teams.
   `lit-adversary-<n>`, `doc-adversary-<n>`, and each `lit-line-<n>` (`n` = the
   line number; lines are numbered in creation order, so it is also the
   counter) — their accumulated knowledge is the job — only while `inactive`,
-  under L3. `n` is a per-role counter that only increases within a study;
-  `list_agents` rows are `{name, status, description}`, so on resume the
-  highest `n` per role is the counter. Board rows show each task's `owner` as
-  a teammate's name, and `team_task_list` filters by that name — ownership is
-  never an id.
+  under L3. `inactive` means no turn is executing; it does not mean the
+  teammate is done. `n` is a per-role counter that only increases within a
+  study; `list_agents` rows are `{name, status, description}`, so on resume
+  the highest `n` per role is the counter. Board rows show each task's
+  `owner` as a teammate's name, and `team_task_list` filters by that name —
+  ownership is never an id.
 - **Fan out is bounded by the live-teammate pool.** The bundle patch raises
   the `subagent` service's `maxActiveSubagents` to **12**, so a study runs at
   most twelve live teammates at a time. Teammates are depth-1 and a settled
