@@ -778,11 +778,12 @@ def test_the_capacity_row_matches_the_installed_subagent_schema():
     row still mounts and the limit is simply not applied. The probe validates
     the exact config this package ships against `@deepseek-ai/dsh-subagent`'s
     own Config AND reports whether the installed source still names each key.
-    It also pins the other direction of the Team retirement: the installed
-    `@deepseek-ai/dsh-agent-team` still rejects 0.8.0's `maxMembers`,
-    `maxMessageBytes` and `disposalTimeoutMs` (its Config schema keeps unknown
-    keys, so the probe scans for the constructor's removal marker), while the
-    base bundle's own `maxTasks: 256` row validates.
+    It also pins the other direction of the Team retirement by MOUNTING the
+    installed `@deepseek-ai/dsh-agent-team` service: its Config schema keeps
+    unknown keys, so only the constructor enforces the removal, and a
+    source-string scan would pass with the rejection deleted. The base
+    bundle's own `maxTasks: 256` row must construct, and each of 0.8.0's three
+    dead keys must raise `TEAM_INVALID_CONFIG`.
     """
     tail = capacity_row_config()
     config = {m.group(1): int(m.group(2)) for m in
@@ -794,10 +795,13 @@ def test_the_capacity_row_matches_the_installed_subagent_schema():
     assert report["subagentValidated"] is True, report
     assert sorted(report["subagentKeysFound"]) == ["maxActiveSubagents", "maxDepth"], report
     assert report["teamRowAccepted"] is True, report
-    if not report["removedTeamKeysRejected"]:
+    assert report["removedTeamKeyErrors"] == {}, (
+        "the installed Team service raised an unexpected error for the retired "
+        "keys: %r" % (report["removedTeamKeyErrors"],))
+    if report["removedTeamKeysRejected"] == []:
         pytest.skip("the installed harness %s predates the Team config removal"
                     % report["coreVersion"])
-    assert set(report["removedTeamKeysFound"]) == {
+    assert set(report["removedTeamKeysRejected"]) == {
         "disposalTimeoutMs", "maxMessageBytes", "maxMembers"}, report
 
 
