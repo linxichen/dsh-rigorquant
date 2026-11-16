@@ -16,24 +16,22 @@ DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="${DSH_PROFILE:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HERE/package.json" 2>/dev/null | head -n1)"
-MIN_DSH_VERSION="0.2.1-rc.2"
-# EXCLUSIVE ceiling, the other half of the same range. `dsh plugin add` is gated
-# by the manifest's compatibility field, but a full install has to refuse a core
-# above the range for the same reason it refuses one below it: the loader skips
-# a bundle built for another core, silently. The ceiling is written as the
-# prerelease-EXCLUSIVE `<0.2.2-0`: `0.2.2-0` is the lowest possible 0.2.2
-# prerelease, so this ceiling refuses every 0.2.2 prerelease AND 0.2.2 final,
-# while admitting 0.2.1 final and its prereleases. Pinned equal to
-# package.json's `engines.dsh` and `peerDependencies` pair by
-# tests/test_repo_consistency.py (on 0.2.1-rc.2 the loader reads `engines.dsh`
-# alone; install.sh has to agree with it).
-MAX_DSH_VERSION="0.2.2-0"
-# The optional bundle that carries Agent Teams — the harness's Beta "Agent
-# Teams" card on the Plugins page. RigorQuant runs team-only, so a full install
-# enables it and raises the team service's lifetime member cap
-# (docs/adr/0001-rigorquant-on-agent-teams.md).
-TEAM_BUNDLE_HOST="@deepseek-ai/dsh-experimental-agent-team-profile"
-# DSH 0.1.7 folded the team panel into that one bundle and dropped the
+MIN_DSH_VERSION="0.2.2-rc.3"
+# The core this release was validated through. NOT a ceiling: the band is open
+# by the 0.8.1 open-floor policy, so RigorQuant admits every core at or above the
+# floor and the floor moves only when a release is validated on the new one. A
+# core above this constant therefore gets an advisory that names it, and the
+# install continues. Pinned equal to MIN_DSH_VERSION and to package.json's
+# `engines.dsh` floor by tests/test_repo_consistency.py.
+VALIDATED_DSH_VERSION="0.2.2-rc.3"
+# The Agent Teams bundle 0.8.0 enabled. DSH 0.2.2-rc.3 mounts Agent Teams from
+# its base bundle (the `agent-team` row and its team tools), and this package is
+# published only through 0.2.2-rc.1: a full install therefore REMOVES it from a
+# profile that still lists it, whoever enabled it. `--uninstall` still reads the
+# old enabled-bundles record to disable anything an older installer turned on
+# (the 0.8.1 open-floor policy; the release record lands in #44).
+RETIRED_TEAM_BUNDLE="@deepseek-ai/dsh-experimental-agent-team-profile"
+# DSH 0.1.7 folded the team panel into the base bundle and dropped the
 # separate web bundle; npm has no build of it for a 0.1.7-or-later core, and a
 # profile that still lists it cannot resolve it. A full install therefore
 # removes it from the profile, whoever enabled it (Decision 25).
@@ -42,9 +40,10 @@ RETIRED_WEB_BUNDLE="@deepseek-ai/dsh-experimental-agent-team-web-profile"
 # tests/test_installer_agent_teams.py). A saved route ports only when its key
 # is `<role>Primary` or `<role>Fallback` for one of these.
 RQ_ROUTE_ROLES="root explorer offgrid doublechecker adversary lit-line lit-adversary doc-adversary"
-# Marks the block this installer owns inside a profile's user patch
-# (`cordis.patch.yml`), so a re-run finds it and `--uninstall` can remove
-# exactly it and nothing the operator wrote by hand.
+# Marks the block the 0.8.0 installer owned inside a profile's user patch
+# (`cordis.patch.yml`). 0.8.1 writes no block, but it must find a 0.8.0 one to
+# migrate its rejected config keys, and `--uninstall` must still remove exactly
+# the lines that installer wrote and nothing the operator wrote by hand.
 TEAM_PATCH_MARK_BEGIN='# >>> dsh-rigorquant BEGIN (managed by ./install.sh; see docs/adr/0001-rigorquant-on-agent-teams.md) >>>'
 TEAM_PATCH_MARK_END='# <<< dsh-rigorquant END <<<'
 
@@ -55,24 +54,23 @@ TEAM_PATCH_MARK_END='# <<< dsh-rigorquant END <<<'
 # neither, which is the case the `file:` decision below deliberately separates.
 is_git_checkout() { [ -d "$HERE/.git" ] || [ -f "$HERE/.git" ]; }
 
-# The version the installed CLI reports, e.g. `0.2.1-rc.2`, read once for the
-# whole run: it gates the install (require_dsh_version) and pins the Agent Teams
-# bundle to the core it is published in lockstep with
-# (install_agent_teams). Empty when `dsh --version` cannot answer at all.
+# The version the installed CLI reports, e.g. `0.2.2-rc.3`, read once for the
+# whole run: it gates the install (require_dsh_version). Empty when
+# `dsh --version` cannot answer at all.
 DSH_CORE_VERSION=""
 
 usage() {
   cat <<EOF
 Usage: $0 [--skill-only] [--uninstall] [--profile <name>] [--version] [--help]
 
-  Full install requires DSH >= $MIN_DSH_VERSION and < $MAX_DSH_VERSION;
-  --skill-only does not.
+  Full install requires DSH >= $MIN_DSH_VERSION; a newer core installs with
+  an advisory naming the validated core. --skill-only does not.
 
   (no args)      Install everything: the shared compute lane under
                  \$DSH_HOME/share/rigorquant, and the plugin (the declared
                  RigorQuant preset, role model router + its card on the
-                 Plugins page) into the '$PROFILE' profile, with Agent Teams
-                 enabled and saved routes carried over from settings.yaml.
+                 Plugins page) into the '$PROFILE' profile, with saved routes
+                 carried over from settings.yaml.
                  The plugin supplies the skills, so no global copies are made.
   --skill-only   Install ONLY the skills into \$DSH_HOME/skills, for use with
                  any preset and without the plugin.
@@ -153,38 +151,40 @@ NODE
 require_dsh_version() {
   actual="$DSH_CORE_VERSION"
   if [ -z "$actual" ]; then
-    printf 'error: dsh-rigorquant installs onto dsh >= %s and < %s, and the installed CLI reported no version\n' \
-      "$MIN_DSH_VERSION" "$MAX_DSH_VERSION" >&2
+    printf 'error: dsh-rigorquant installs onto dsh >= %s, and the installed CLI reported no version\n' \
+      "$MIN_DSH_VERSION" >&2
     exit 2
   fi
-  # BOTH bounds, because the failure they prevent is the same at each end: the
-  # loader skips a bundle whose peer range the running core does not satisfy,
-  # leaving a profile that boots with no RigorQuant and no error. A core above
-  # the ceiling is as unsupported as one below the floor.
+  # ONE enforced bound. Below the floor this release is not built for the
+  # core: the loader skips the bundle silently, so the operator would get a
+  # profile with no RigorQuant and no error. Refuse before copying anything.
   if ! version_at_least "$actual" "$MIN_DSH_VERSION"; then
-    printf 'error: dsh-rigorquant requires dsh >= %s and < %s (found %s)\n' \
-      "$MIN_DSH_VERSION" "$MAX_DSH_VERSION" "$actual" >&2
+    printf 'error: dsh-rigorquant requires dsh >= %s (found %s)\n' \
+      "$MIN_DSH_VERSION" "$actual" >&2
     printf '       upgrade the DSH CLI before installing the full preset.\n' >&2
     exit 2
   fi
-  if version_at_least "$actual" "$MAX_DSH_VERSION"; then
-    printf 'error: dsh-rigorquant requires dsh >= %s and < %s (found %s)\n' \
-      "$MIN_DSH_VERSION" "$MAX_DSH_VERSION" "$actual" >&2
-    printf '       this release is not tested on a newer core; install a release that is.\n' >&2
-    exit 2
+  # Above the validated core the band is open by policy: name the core this
+  # release was exercised on and continue. An operator judges the risk; a
+  # future core never draws an incompatibility announcement.
+  if [ "$actual" != "$VALIDATED_DSH_VERSION" ] && version_at_least "$actual" "$VALIDATED_DSH_VERSION"; then
+    printf 'warning: dsh-rigorquant is validated through dsh %s; the installed core is %s.\n' \
+      "$VALIDATED_DSH_VERSION" "$actual" >&2
+    printf '         the band is open above the floor by policy, so the install continues;\n' >&2
+    printf '         this release was not exercised on that core, so check a Team session before a long study.\n' >&2
   fi
 }
 
-# The full distribution is only mountable on the harness it was written
-# against (Decision 25, carried forward by Decisions 26 and 27): the preset is a
+# The full distribution is only mountable on a harness that serves the surfaces
+# it is written against (the 0.8.1 open-floor policy, amending the record): the preset is a
 # declared `@deepseek-ai/dsh-agent-preset` row, the router's routes are
 # `.volatile()` profile config, the card edits them through `configForms`, and
 # the unattended intake ask uses the timed `ask_user_question` mode — none of
-# which exists before 0.2.0-rc.2 — and the floor sits at 0.2.1-rc.2 because
-# that is the only line this release is validated on (0.7.0 is the last
-# release for 0.2.0-rc.2). Fail before copying anything when the installed CLI
-# is older; a missing CLI keeps the historical warning and can be installed
-# later.
+# which exists before 0.2.2-rc.3. That core is the validated FLOOR, not a
+# ceiling: the band is open above it, so a newer core takes the advisory and
+# continues. Fail before copying anything when the installed CLI is older; a
+# missing CLI keeps the historical warning and can be installed later (CI's
+# install smoke test runs with no `dsh` on PATH).
 if [ "$mode" = full ] && command -v dsh >/dev/null 2>&1; then
   DSH_CORE_VERSION="$(dsh --version 2>/dev/null || true)"
   require_dsh_version
@@ -226,194 +226,150 @@ install_plugin() {
   fi
 }
 
-# Enable the Agent Teams bundle on PROFILE, remove the retired web bundle, and
-# raise the team service's lifetime member cap, all idempotently.
+# Retire the Agent Teams bundle 0.8.0 managed, and migrate the profile block it
+# wrote, idempotently.
 #
-# A profile's enabled bundles are `dsh.profile.bundles` in its package.json —
-# the same list `dsh plugin add` reconciles, so the bundle is added only when
-# absent (`dsh plugin add` also lazily initializes the profile
-# directory, including an empty `cordis.patch.yml`, when it does not exist
-# yet). Without `dsh` there is no way to add a bundle or safely locate/create
-# a profile, so this warns and does nothing else — the historical behaviour
-# for a missing CLI, and how CI's install smoke test (no `dsh` on PATH) stays
-# green.
-install_agent_teams() {
+# DSH 0.2.2-rc.3 folds Agent Teams into the base bundle: the base mounts the
+# `agent-team` row and its team tools itself, and the separate
+# `@deepseek-ai/dsh-experimental-agent-team-profile` is published only through
+# 0.2.2-rc.1. A full install therefore adds, pins and enables no Team bundle.
+# What it does instead is clean up what 0.8.0 wrote:
+#
+#   - remove a retired bundle name the profile still lists (the separate Team
+#     bundle and the older web bundle), whichever release enabled it, and fail
+#     hard if that removal fails -- the profile cannot boot cleanly while it
+#     names a package this core does not serve;
+#   - migrate a marked block written by 0.8.0: delete the three `agentTeams`
+#     config keys 0.2.2-rc.3's Config rejects (`maxMembers`,
+#     `maxMessageBytes`, `disposalTimeoutMs`) and drop the removed names from
+#     the enabled-bundles record, leaving every other line alone;
+#   - remove the block entirely when nothing but that record is left.
+#
+# Without `dsh` there is no way to remove a bundle or safely locate the
+# profile, so this warns and does nothing else -- the historical behaviour for
+# a missing CLI, and how CI's install smoke test (no `dsh` on PATH) stays green
+# rather than becoming a refusal.
+retire_agent_teams() {
   if ! command -v dsh >/dev/null 2>&1; then
-    printf 'warning: dsh is not on PATH; skipped enabling Agent Teams for the "%s" profile.\n' "$PROFILE" >&2
-    printf '         install it later and re-run, or add %s\n' "$TEAM_BUNDLE_HOST" >&2
-    printf '         yourself (Plugins page, or dsh plugin --profile %s add <pkg>).\n' "$PROFILE" >&2
+    printf 'warning: dsh is not on PATH; skipped retiring the Agent Teams bundle and migrating the "%s" profile.\n' "$PROFILE" >&2
     return 0
   fi
   profile_dir="$DSH_HOME/profiles/$PROFILE"
   manifest="$profile_dir/package.json"
   patch_file="$profile_dir/cordis.patch.yml"
 
-  missing="$(node - "$manifest" "$DSH_CORE_VERSION" "$RETIRED_WEB_BUNDLE" "$TEAM_BUNDLE_HOST" <<'NODE'
+  # A bundle is PRESENT when the profile lists it in `dsh.profile.bundles` or
+  # pins it in dependencies; a bundle listed with no recorded version was
+  # enabled by the operator rather than by us, and is removed all the same --
+  # this core does not serve that package at any version.
+  present="$(node - "$manifest" "$RETIRED_TEAM_BUNDLE" "$RETIRED_WEB_BUNDLE" <<'NODE'
 const { existsSync, readFileSync } = require('node:fs')
-const [manifest, coreVersion, retired, ...wanted] = process.argv.slice(2)
+const [manifest, ...retired] = process.argv.slice(2)
 let bundles = []
 let dependencies = {}
 if (existsSync(manifest)) {
   try {
     const parsed = JSON.parse(readFileSync(manifest, 'utf8'))
-    const listed = parsed?.dsh?.profile?.bundles
-    if (Array.isArray(listed)) bundles = listed
+    if (Array.isArray(parsed?.dsh?.profile?.bundles)) bundles = parsed.dsh.profile.bundles
     if (parsed?.dependencies !== null && typeof parsed?.dependencies === 'object') dependencies = parsed.dependencies
   } catch {}
 }
-// A wanted bundle is ABSENT when it is not in the bundle list of the profile,
-// and STALE when the profile pins it at a version other than this core (the
-// pin of the previous core, after a harness upgrade): the names being present
-// means a name-only check would leave that profile unable to boot forever. A
-// bundle listed with no recorded version was enabled by the operator rather
-// than by us, and is left alone. The retired bundle is reported when the
-// profile names it at all.
-const absent = []
-const stale = []
-for (const name of wanted) {
-  if (!bundles.includes(name)) absent.push(name)
-  else if (typeof dependencies[name] === 'string' && coreVersion !== '' && dependencies[name] !== coreVersion) stale.push(name)
-}
-const retiredPresent = bundles.includes(retired) || Object.hasOwn(dependencies, retired)
-process.stdout.write(absent.join(' ') + '|' + stale.join(' ') + '|' + (retiredPresent ? retired : ''))
+process.stdout.write(retired.filter((name) => bundles.includes(name) || Object.hasOwn(dependencies, name)).join(' '))
 NODE
   )"
-
-  absent="${missing%%|*}"
-  rest="${missing#*|}"
-  stale="${rest%%|*}"
-  retired="${rest#*|}"
-  enabled=""
-
-  # First, because it can fail the install: a profile still listing the web
-  # bundle names a package this core does not have. Removed whoever enabled
-  # it, and a failed removal stops the install before the operator boots a
-  # profile that cannot resolve.
-  if [ -n "$retired" ]; then
-    if dsh plugin --profile "$PROFILE" remove "$retired" >/dev/null 2>&1; then
-      # A 0.5.0 marker block records this bundle as installer-enabled; drop
-      # it from the record so --uninstall does not look for it again.
-      if [ -f "$patch_file" ]; then
-        node - "$patch_file" "$retired" <<'NODE'
-const { readFileSync, writeFileSync } = require('node:fs')
-const [patchFile, retired] = process.argv.slice(2)
-const content = readFileSync(patchFile, 'utf8')
-const next = content.replace(/^(# rq-enabled-bundles:)(.*)$/m, (line, head, list) =>
-  head + ' ' + list.split(/\s+/).filter((name) => name !== '' && name !== retired).join(' '))
-if (next !== content) writeFileSync(patchFile, next)
-NODE
+  for bundle in $present; do
+    if dsh plugin --profile "$PROFILE" remove "$bundle" >/dev/null 2>&1; then
+      if [ "$bundle" = "$RETIRED_WEB_BUNDLE" ]; then
+        echo "Removed the retired Agent Teams web bundle '$bundle' from the '$PROFILE' profile: DSH 0.1.7 ships the team panel in the base bundle and publishes no web bundle for this core."
+      else
+        echo "Removed the retired Agent Teams bundle '$bundle' from the '$PROFILE' profile: DSH 0.2.2-rc.3 mounts Agent Teams from the base bundle and publishes no separate bundle."
       fi
-      echo "Removed the retired Agent Teams web bundle '$retired' from the '$PROFILE' profile: DSH 0.1.7 ships the team panel in '$TEAM_BUNDLE_HOST' and publishes no web bundle for this core."
     else
-      printf 'error: `dsh plugin --profile %s remove %s` failed; DSH 0.1.7 has no build of that bundle, so the profile cannot boot cleanly while it lists it.\n' "$PROFILE" "$retired" >&2
+      printf 'error: `dsh plugin --profile %s remove %s` failed; the profile cannot boot cleanly while it lists a package this core does not serve.\n' "$PROFILE" "$bundle" >&2
       printf '       remove it yourself (Plugins page, or the command above) and re-run ./install.sh.\n' >&2
       exit 1
     fi
-  fi
-  if [ -n "$absent$stale" ]; then
-    # Unpinned, `dsh plugin add` resolves the `latest` dist-tag, which is not
-    # the version this core was built against: the Team bundle is published in
-    # lockstep with the CLI and its typert codecs are validated against it, so
-    # a mismatch makes the whole profile fail to boot ("parameter codec has no
-    # create() factory"). Ask for the core's own version whenever the CLI can
-    # name it; with no version to go on, add unpinned and say so.
-    core="$DSH_CORE_VERSION"
-    specs=""
-    for bundle in $absent $stale; do
-      if [ -n "$core" ]; then
-        specs="$specs $bundle@$core"
-      else
-        specs="$specs $bundle"
-      fi
-    done
-    if [ -z "$core" ]; then
-      printf 'warning: could not read the dsh version; adding the Agent Teams bundle unpinned, which may not match this core.\n' >&2
-    fi
-    # Unquoted on purpose: $specs is a space-separated list, and a package name
-    # (with an optional @version) contains no whitespace or glob character, so
-    # the split is the argument list and the glob cannot fire.
-    if dsh plugin --profile "$PROFILE" add $specs >/dev/null 2>&1; then
-      for bundle in $absent; do echo "Enabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile."; done
-      for bundle in $stale; do echo "Re-pinned the Agent Teams bundle '$bundle' to $core on the '$PROFILE' profile."; done
-      enabled="$absent $stale"
-    else
-      printf 'warning: `dsh plugin --profile %s add %s` failed; Agent Teams may not be fully enabled.\n' "$PROFILE" "$specs" >&2
-    fi
-  fi
+  done
 
-  # Write the cap override under our marker. A freshly-initialized patch file is
-  # a bare `[]`; a block sequence cannot follow a flow-style empty array in the
-  # same YAML document, so that placeholder is replaced rather than appended
-  # after. On a profile that already carries our block the rewrite is
-  # SURGICAL: it removes only the dead `maxPendingMessagesPerMember` key that
-  # 0.7.0 wrote and 0.2.1-rc.2's Config no longer accepts, merging this run's
-  # newly enabled bundles into the existing `# rq-enabled-bundles:` record.
-  # Everything else inside the block is left byte-for-byte as it is -- an
-  # operator's saved cap edit (a raised `maxTasks`), a row the ConfigEditor
-  # saved after ours, the record itself -- and a block that already lacks the
-  # dead key with nothing new to record is not written at all, so a second run
-  # prints nothing and changes nothing.
-  written="$(node - "$patch_file" "$enabled" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" <<'NODE'
-const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('node:fs')
-const { dirname } = require('node:path')
-const [patchFile, enabled, markBegin, markEnd] = process.argv.slice(2)
-const content = existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : ''
-const runEnabled = enabled.trim() === '' ? [] : enabled.trim().split(/\s+/)
-// The one line 0.8.0 removes; every other line in the block is operator- or
-// harness-owned and survives the migration untouched.
-const DEAD_KEY = /^\s*maxPendingMessagesPerMember\s*:\s*\d+\s*$/
-const freshBlock = (record) => [
-  markBegin,
-  // Trimmed: with nothing recorded the record line is the bare prefix.
-  '# rq-enabled-bundles: ' + record.trim(),
-  '- id: agent-team',
-  '  config:',
-  '    maxMembers: 64',
-  '    maxTasks: 256',
-  '    maxMessageBytes: 65536',
-  '    disposalTimeoutMs: 5000',
-  markEnd,
-].join('\n')
+  # SURGICAL migration of the marked block. The three rejected keys go, the
+  # record loses the retired names, and everything else in the block survives
+  # byte-for-byte: an operator's saved `maxTasks`, a row the ConfigEditor saved
+  # after ours, the record itself. A block that then carries no row at all is
+  # removed with its markers, because the record only means something while a
+  # block an older installer can still see needs it.
+  migrated="$(node - "$patch_file" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" \
+    "$RETIRED_TEAM_BUNDLE $RETIRED_WEB_BUNDLE" <<'NODE'
+const { existsSync, readFileSync, writeFileSync } = require('node:fs')
+const [patchFile, markBegin, markEnd, retiredList] = process.argv.slice(2)
+if (!existsSync(patchFile)) process.exit(0)
+const content = readFileSync(patchFile, 'utf8')
 const begin = content.indexOf(markBegin)
-const end = begin === -1 ? -1 : content.indexOf(markEnd, begin)
-if (begin !== -1 && end !== -1) {
-  const regionStart = begin + markBegin.length
-  const region = content.slice(regionStart, end)
-  let nextRegion = region.split('\n').filter((line) => !DEAD_KEY.test(line)).join('\n')
-  // Merge (never recompute) the record: the absent/stale lists of this run
-  // cannot know what an older install enabled, and --uninstall relies on it.
-  // `[ \t]*`, not `\s*`: an empty record is the bare prefix plus a space, and
-  // `\s*` would run past the newline and read the agent-team row as names.
-  const oldRecord = region.match(/^# rq-enabled-bundles:[ \t]*(.*)$/m)
-  const oldNames = oldRecord === null ? [] : oldRecord[1].trim().split(/\s+/).filter(Boolean)
-  const added = runEnabled.filter((name) => !oldNames.includes(name))
-  if (added.length > 0) {
-    const record = '# rq-enabled-bundles: ' + [...oldNames, ...added].join(' ')
-    // The region normally opens with a newline right after the BEGIN marker;
-    // keep that shape when a record line has to be inserted.
-    nextRegion = oldRecord === null
-      ? '\n' + record + '\n' + nextRegion.replace(/^\n/, '')
-      : nextRegion.replace(oldRecord[0], record)
+if (begin === -1) process.exit(0)
+const end = content.indexOf(markEnd, begin)
+if (end === -1) process.exit(0)
+const regionStart = begin + markBegin.length
+const original = content.slice(regionStart, end)
+let region = original
+
+// 1. The record survives while the block does, but no longer names a bundle
+//    the profile cannot have. Reading the record line ALONE matters: a \s*
+//    would run past the newline and read the agent-team row as names.
+const retired = new Set(retiredList.trim() === '' ? [] : retiredList.trim().split(/\s+/))
+const record = region.match(/^# rq-enabled-bundles:[ \t]*(.*)$/m)
+let recordChanged = false
+if (record !== null) {
+  const names = record[1].trim().split(/\s+/).filter(Boolean)
+  const kept = names.filter((name) => !retired.has(name))
+  if (kept.length !== names.length) {
+    region = region.replace(record[0], '# rq-enabled-bundles: ' + kept.join(' '))
+    recordChanged = true
   }
-  if (nextRegion === region) process.exit(0)
-  writeFileSync(patchFile, content.slice(0, regionStart) + nextRegion + content.slice(end))
-  process.stdout.write(markBegin + nextRegion + markEnd)
+}
+
+// 2. Delete the rejected keys, inside the agent-team row only: a row the
+//    ConfigEditor saved inside the block keeps whatever it holds.
+const rejected = []
+const rows = []
+let inAgentTeamRow = false
+for (const line of region.split('\n')) {
+  if (/^- id: agent-team\s*$/.test(line)) {
+    inAgentTeamRow = true
+    rows.push(line)
+    continue
+  }
+  if (/^- id: /.test(line)) inAgentTeamRow = false
+  if (inAgentTeamRow && /^\s{4}(maxMembers|maxMessageBytes|disposalTimeoutMs)\s*:\s*\d+\s*$/.test(line)) {
+    rejected.push(line.trim().split(':')[0])
+    continue
+  }
+  rows.push(line)
+}
+region = rows.join('\n')
+
+// 3. Nothing but the record left (and no other row of ours or the harness):
+//    the whole block goes. The profile template [] placeholder comes back
+//    if the file would otherwise hold no sequence at all.
+if (!/^- (?:id:|insert:)/m.test(region)) {
+  let rest = content.slice(0, begin) + content.slice(end + markEnd.length)
+  rest = rest.replace(/\n{3,}/g, '\n\n')
+  if (!/^\s*-\s/m.test(rest.replace(/^#.*$/gm, ''))) rest = rest.replace(/\s+$/, '') + '\n[]\n'
+  writeFileSync(patchFile, rest)
+  process.stdout.write('Removed the Agent Teams install block from ' + patchFile + ': nothing but the enabled-bundles record remained after the 0.8.0 migration.\n')
   process.exit(0)
 }
-// An unpaired BEGIN marker is not a region this script can safely rewrite.
-if (begin !== -1) process.exit(0)
-const block = freshBlock(runEnabled.join(' '))
-const next = /\[\]\s*$/.test(content)
-  ? content.replace(/\[\]\s*$/, '') + block + '\n'
-  : (content === '' || content.endsWith('\n') ? content : content + '\n') + block + '\n'
-mkdirSync(dirname(patchFile), { recursive: true })
-writeFileSync(patchFile, next)
-process.stdout.write(block)
+
+if (region === original) process.exit(0)
+writeFileSync(patchFile, content.slice(0, regionStart) + region + content.slice(end))
+const changed = []
+if (rejected.length > 0) {
+  changed.push('removed ' + rejected.join(', ') + ' (0.2.2-rc.3 mounts the base bundle row, whose Config rejects those keys)')
+}
+if (recordChanged) changed.push('updated the enabled-bundles record')
+process.stdout.write('Migrated the Agent Teams block in ' + patchFile + ': ' + changed.join('; ') + '.\n')
 NODE
   )"
-  if [ -n "$written" ]; then
-    echo "Wrote the Agent Teams maxMembers override to $patch_file:"
-    printf '%s\n' "$written" | sed 's/^/  /'
+  if [ -n "$migrated" ]; then
+    printf '%s\n' "$migrated"
   fi
 }
 
@@ -547,7 +503,7 @@ if (legacyDefault === 'rigorquant' && configOf(...REGISTRY).selectedDefault === 
   setConfig(...REGISTRY, { selectedDefault: 'rigorquant' }, { default: 'standard' })
   lines.push(`Set selectedDefault: rigorquant on the agent-preset-registry row of ${patchFile}, the default preset ${sourceFile} saved.`)
 }
-// New rows go in as text ahead of the install_agent_teams marker block, never
+// New rows go in as text ahead of the retire_agent_teams marker block, never
 // appended: the block's END marker is a trailing comment, so a row added to
 // the end of the sequence would land inside it and --uninstall would delete
 // it with the block.
@@ -573,14 +529,14 @@ writeFileSync(doneMarker, `${sourceFile}\n`)
 NODE
 }
 
-# Undo exactly what install_agent_teams wrote: the marker block in the
+# Undo exactly what the 0.8.0 installer wrote: the marker block in the
 # profile's user patch, and the bundles it recorded having enabled (never a
 # bundle the operator had already turned on before installing).
 uninstall_agent_teams() {
   patch_file="$DSH_HOME/profiles/$PROFILE/cordis.patch.yml"
   [ -f "$patch_file" ] || return 0
   command -v node >/dev/null 2>&1 || return 0
-  enabled="$(node - "$patch_file" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" <<'NODE'
+  output="$(node - "$patch_file" "$TEAM_PATCH_MARK_BEGIN" "$TEAM_PATCH_MARK_END" <<'NODE'
 const { readFileSync, writeFileSync } = require('node:fs')
 const [patchFile, markBegin, markEnd] = process.argv.slice(2)
 const content = readFileSync(patchFile, 'utf8')
@@ -589,8 +545,8 @@ const end = begin === -1 ? -1 : content.indexOf(markEnd, begin)
 if (begin === -1 || end === -1) process.exit(0)
 const block = content.slice(begin, end)
 const enabledMatch = block.match(/^# rq-enabled-bundles:[ \t]*(.*)$/m)
-// Only the lines this installer wrote go: the markers, the record, and the
-// `agent-team` row. The END marker is a trailing comment, so a row the
+// Only the lines the old installer wrote go: the markers, the record, and the
+// agent-team row. The END marker is a trailing comment, so a row the
 // ConfigEditor of the harness saved later sits between the markers and must
 // stay.
 const kept = []
@@ -609,14 +565,18 @@ rest = rest.replace(/\n{3,}/g, '\n\n')
 // profile template ships so the file still parses as the empty array it is.
 if (!/^\s*-\s/m.test(rest.replace(/^#.*$/gm, ''))) rest = rest.replace(/\s+$/, '') + '\n[]\n'
 writeFileSync(patchFile, rest)
-process.stdout.write(enabledMatch ? enabledMatch[1].trim() : '')
+process.stdout.write('removed\n' + (enabledMatch ? enabledMatch[1].trim() : '') + '\n')
 NODE
   )"
-  echo "Removed the Agent Teams maxMembers override from $patch_file."
+  status="$(printf '%s\n' "$output" | sed -n '1p')"
+  enabled="$(printf '%s\n' "$output" | sed -n '2p')"
+  if [ "$status" = removed ]; then
+    echo "Removed the Agent Teams install block from $patch_file."
+  fi
   if [ -n "$enabled" ] && command -v dsh >/dev/null 2>&1; then
     for bundle in $enabled; do
       dsh plugin --profile "$PROFILE" remove "$bundle" >/dev/null 2>&1 \
-        && echo "Disabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile (the installer had enabled it)." \
+        && echo "Disabled the Agent Teams bundle '$bundle' on the '$PROFILE' profile (an older installer had enabled it)." \
         || true
     done
   fi
@@ -695,7 +655,7 @@ else
   # without the plugin.
   install_plugin
   echo "Installed compute lane to $DSH_HOME/share/rigorquant"
-  install_agent_teams
+  retire_agent_teams
   port_saved_settings
   echo "Start a new session and pick the 'RigorQuant' preset in the session picker."
 fi

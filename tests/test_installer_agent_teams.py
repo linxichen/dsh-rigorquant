@@ -1,19 +1,19 @@
-"""install.sh on DSH 0.2.1-rc.2 (Decisions 24, 25, 26 and 27; issues #12 and #30).
+"""install.sh on DSH 0.2.2-rc.3 (the 0.8.1 open-floor release; issues #41/#42).
 
-Full install must: enable the ONE Team bundle rc.2 publishes
-(`@deepseek-ai/dsh-experimental-agent-team-profile`, pinned to the core) when
-it is absent; always remove the retired web bundle when a profile still has
-it, saying why, and fail hard if that removal fails; write a `maxMembers: 64`
-cap override under a `dsh-rigorquant` marker in the profile's user patch
-(`cordis.patch.yml`), printing every line it wrote; and write nothing under
-`$DSH_HOME/.agent-presets` (the preset is declared now). The override carries
-only the keys 0.2.1-rc.2's `agentTeams` Config still declares (seam S3: the
-per-member pending cap is gone), and a re-run REWRITES a stale block from an
-older release so the dead key cannot survive the upgrade, while a block that
-already matches is left untouched. `--uninstall` must remove the marker, disable
-only the bundle the installer itself turned on, and still clean up an old
-install's `.agent-presets/rigorquant`. With no `dsh` on PATH the installer must
-warn and continue (this is what keeps CI's install smoke test green).
+0.8.1 stops touching Agent Teams: DSH 0.2.2-rc.3 folds it into the base
+bundle, so a full install adds, pins and enables no Team bundle and writes no
+`agent-team` row into the profile's user patch. What it must still do is clean
+up after 0.8.0: remove the retired
+`@deepseek-ai/dsh-experimental-agent-team-profile` bundle (published only
+through 0.2.2-rc.1) and the retired web bundle when a profile still lists
+either, and migrate a marked block written by 0.8.0 by deleting the three
+`agentTeams` keys 0.2.2-rc.3's Config rejects (`maxMembers`,
+`maxMessageBytes`, `disposalTimeoutMs`). A block that then carries nothing but
+the enabled-bundles record is removed with it. A re-run must change nothing.
+`--uninstall` must remove the marker and keep rows the harness saved inside
+it; an old install's `.agent-presets` copy is still cleaned up. With no `dsh`
+on PATH the installer must warn and continue (this is what keeps CI's install
+smoke test green).
 
 The saved-routes port (Decision 25) is covered here too: the harness's one-time
 `settings.yaml` import drops the `rigorquant-models` section and the legacy
@@ -42,8 +42,10 @@ import pytest
 
 from conftest import REPO
 
-FLOOR = "0.2.1-rc.2"
-TEAM_BUNDLE = "@deepseek-ai/dsh-experimental-agent-team-profile"
+FLOOR = "0.2.2-rc.3"
+# Retired by 0.8.1: DSH 0.2.2-rc.3 mounts Agent Teams from its base bundle, and
+# this package is published only through 0.2.2-rc.1.
+RETIRED_TEAM_BUNDLE = "@deepseek-ai/dsh-experimental-agent-team-profile"
 # Retired in 0.1.7: the harness removed this package from its workspace, and
 # npm has no build of it for any 0.1.7-or-later core.
 WEB_BUNDLE = "@deepseek-ai/dsh-experimental-agent-team-web-profile"
@@ -57,14 +59,14 @@ PATCH_TEMPLATE = (
     "[]\n"
 )
 
-# The marked block a 0.7.0 install left behind: same markers, the dead
-# `maxPendingMessagesPerMember` key, and an OPERATOR-saved edit inside the
-# agent-team row (`maxTasks: 512`, raised from the Plugins page). A user-owned
-# row sits BEFORE the block, and one the harness saved sits INSIDE it (the END
-# marker is a trailing comment, so ConfigEditor appends before it). The
-# surgical migration removes only the dead key line; everything else -- the
-# saved cap, the saved row, the record -- survives byte-for-byte.
-STALE_BLOCK = (
+# The marked block a 0.8.0 install left behind: same markers, the `agent-team`
+# row 0.8.0 wrote with all four keys, and an OPERATOR-saved edit inside that
+# row (`maxTasks: 512`, raised from the Plugins page). The 0.2.2-rc.3 schema
+# rejects `maxMembers`, `maxMessageBytes` and `disposalTimeoutMs`, so the
+# migration deletes exactly those three lines and keeps the saved maxTasks. A
+# user-owned row sits BEFORE the block, and one the harness saved sits INSIDE
+# it (the END marker is a trailing comment, so ConfigEditor appends before it).
+BLOCK_080 = (
     "# rq-user-settings: keep me\n"
     "- id: ui-settings-general\n"
     "  config:\n"
@@ -75,14 +77,13 @@ STALE_BLOCK = (
     "  config:\n"
     "    maxMembers: 64\n"
     "    maxTasks: 512\n"
-    "    maxPendingMessagesPerMember: 64\n"
     "    maxMessageBytes: 65536\n"
     "    disposalTimeoutMs: 5000\n"
     "- id: harness-saved-row\n"
     "  config:\n"
     "    keep: true\n"
     "# <<< dsh-rigorquant END <<<\n"
-) % TEAM_BUNDLE  # the record the 0.7.0 install wrote
+) % RETIRED_TEAM_BUNDLE  # the record the 0.8.0 install wrote
 
 # A minimal stand-in for `dsh`: answers `--version`, and for `plugin --profile
 # <p> add|remove <pkg...>` actually mutates <DSH_HOME>/profiles/<p>/package.json
@@ -312,96 +313,70 @@ def _log_lines(log_path):
     return log_path.read_text().splitlines() if log_path.exists() else []
 
 
-def _team_bundle_calls(log_path, action):
-    """Log lines for `plugin ... <action> <pkg>` naming a Team bundle.
-
-    `install_plugin()` also calls `dsh plugin ... add` for the main
-    `dsh-rigorquant` package itself on every run; filtering by bundle name
-    keeps that unrelated call out of these assertions.
-    """
+def _bundle_calls(log_path, action, bundle):
+    """Log lines for `plugin ... <action> <pkg>` naming `bundle`."""
     return [l for l in _log_lines(log_path) if l.startswith("%s " % action)
-            and (TEAM_BUNDLE in l or WEB_BUNDLE in l)]
+            and bundle in l]
 
 
-# --- the one Team bundle ----------------------------------------------------
+# --- the retired Team bundles ----------------------------------------------
 
 
-def test_the_stub_rejects_the_two_bundle_add_the_way_rc2_does(tmp_path):
-    """0.5.0's call -- host AND web bundle, both pinned to the core -- fails
-    on rc.2 with ERR_PNPM_NO_MATCHING_VERSION and enables neither (live rc.2,
-    B2). The stub must reproduce that, or the one-bundle test below proves
-    nothing."""
-    env, dsh_home, _ = _stub_dsh_env(tmp_path, with_yaml=False)
-    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base"])
-    out = subprocess.run(
-        ["dsh", "plugin", "--profile", "rq-team", "add",
-         "%s@%s" % (TEAM_BUNDLE, FLOOR), "%s@%s" % (WEB_BUNDLE, FLOOR)],
-        env=env, capture_output=True, text=True)
-    assert out.returncode != 0
-    assert "ERR_PNPM_NO_MATCHING_VERSION" in out.stderr
-    assert _manifest_bundles(dsh_home, "rq-team") == ["@deepseek-ai/dsh-base"]
+def test_full_install_adds_no_team_bundle_and_writes_no_agent_team_row(tmp_path):
+    """0.8.1 leaves Agent Teams to the base bundle: no add, no pin, no row.
 
-
-def test_full_install_enables_only_the_team_bundle_and_writes_every_line_of_the_cap_override(tmp_path):
+    A fresh install must not name `agent-team` anywhere in the profile's user
+    patch: on 0.2.2-rc.3 the base bundle mounts the row (and the team tools),
+    and the three config keys 0.8.0 wrote are rejected by its Config. There is
+    also nothing for the installer to record, so it writes no marker block.
+    """
     env, dsh_home, log_path = _stub_dsh_env(tmp_path)
     result = _install(env, "rq-team")
     assert result.returncode == 0, result.stderr
 
-    assert "Enabled the Agent Teams bundle '%s'" % TEAM_BUNDLE in result.stdout
-    bundles = _manifest_bundles(dsh_home, "rq-team")
-    assert TEAM_BUNDLE in bundles
-    assert WEB_BUNDLE not in bundles
+    assert "Enabled the Agent Teams bundle" not in result.stdout
+    assert "Wrote the Agent Teams" not in result.stdout
+    assert _bundle_calls(log_path, "add", RETIRED_TEAM_BUNDLE) == []
+    assert _bundle_calls(log_path, "add", WEB_BUNDLE) == []
+    assert RETIRED_TEAM_BUNDLE not in _manifest_bundles(dsh_home, "rq-team")
 
     patch = _patch_text(dsh_home, "rq-team")
-    assert "# >>> dsh-rigorquant BEGIN" in patch
-    assert "# <<< dsh-rigorquant END <<<" in patch
-    assert re.search(r"^# rq-enabled-bundles: %s$" % re.escape(TEAM_BUNDLE), patch, re.M), patch
-    for line in ("- id: agent-team", "maxMembers: 64", "maxTasks: 256",
-                 "maxMessageBytes: 65536", "disposalTimeoutMs: 5000"):
-        assert line in patch
-        # "prints every line it wrote": each written line must reach stdout too.
-        assert line in result.stdout, "installer wrote %r but never printed it" % line
-    assert "maxPendingMessagesPerMember" not in patch, (
-        "the installer still writes the key 0.2.1-rc.2's agentTeams Config dropped")
-
-    add_calls = _team_bundle_calls(log_path, "add")
-    assert add_calls == ["add rq-team %s@%s" % (TEAM_BUNDLE, FLOOR)], add_calls
-    assert _manifest_dependencies(dsh_home, "rq-team").get(TEAM_BUNDLE) == FLOOR
+    assert "agent-team" not in patch, patch
+    assert "dsh-rigorquant" not in patch, (
+        "a fresh install wrote a marker block it had nothing to put in:\n%s" % patch)
 
 
-def test_full_install_leaves_an_already_enabled_team_bundle_alone(tmp_path):
+def test_the_retired_team_bundle_is_removed_with_one_line_saying_why(tmp_path):
+    """A 0.8.0 profile lists the bundle; 0.2.2-rc.3 publishes no build of it."""
     env, dsh_home, log_path = _stub_dsh_env(tmp_path)
-    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base", TEAM_BUNDLE])
-    result = _install(env, "rq-team")
-    assert result.returncode == 0, result.stderr
-
-    assert "Enabled the Agent Teams bundle" not in result.stdout, (
-        "the installer claimed to enable a bundle that was already on")
-    assert _team_bundle_calls(log_path, "add") == []
-    patch = _patch_text(dsh_home, "rq-team")
-    assert re.search(r"^# rq-enabled-bundles: *$", patch, re.M), patch
-
-
-def test_a_stale_team_bundle_is_repinned_to_the_cores_version(tmp_path):
-    """A profile pinning the Team bundle at another core's version fails to
-    boot ("parameter codec has no create() factory"); re-running repairs it,
-    once."""
-    stale = "0.1.6-alpha.2"
-    env, dsh_home, log_path = _stub_dsh_env(tmp_path)
-    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base", TEAM_BUNDLE],
-                  dependencies={TEAM_BUNDLE: stale})
+    _seed_profile(dsh_home, "rq-team",
+                  ["@deepseek-ai/dsh-base", RETIRED_TEAM_BUNDLE],
+                  dependencies={RETIRED_TEAM_BUNDLE: FLOOR})
 
     result = _install(env, "rq-team")
     assert result.returncode == 0, result.stderr
-    assert "Re-pinned the Agent Teams bundle '%s' to %s" % (TEAM_BUNDLE, FLOOR) in result.stdout
-    assert _team_bundle_calls(log_path, "add") == ["add rq-team %s@%s" % (TEAM_BUNDLE, FLOOR)]
-    assert _manifest_dependencies(dsh_home, "rq-team")[TEAM_BUNDLE] == FLOOR
+    lines = [l for l in result.stdout.splitlines() if RETIRED_TEAM_BUNDLE in l]
+    assert len(lines) == 1, result.stdout
+    assert lines[0].startswith("Removed the retired Agent Teams bundle"), lines
+    assert "base bundle" in lines[0], "the line must say why: %s" % lines[0]
 
-    log_path.unlink()
-    second = _install(env, "rq-team")
-    assert second.returncode == 0, second.stderr
-    assert "Re-pinned" not in second.stdout
-    assert _team_bundle_calls(log_path, "add") == [], "the repair ran twice"
+    assert RETIRED_TEAM_BUNDLE not in _manifest_bundles(dsh_home, "rq-team")
+    assert _bundle_calls(log_path, "remove", RETIRED_TEAM_BUNDLE) == [
+        "remove rq-team %s" % RETIRED_TEAM_BUNDLE]
+    assert _bundle_calls(log_path, "add", RETIRED_TEAM_BUNDLE) == []
+
+
+def test_a_failed_team_bundle_removal_is_a_hard_error(tmp_path):
+    """A profile still listing the old bundle cannot boot on 0.2.2-rc.3."""
+    env, dsh_home, _ = _stub_dsh_env(tmp_path)
+    env["RQ_STUB_FAIL_REMOVE"] = RETIRED_TEAM_BUNDLE
+    _seed_profile(dsh_home, "rq-team",
+                  ["@deepseek-ai/dsh-base", RETIRED_TEAM_BUNDLE])
+
+    result = _install(env, "rq-team")
+    assert result.returncode != 0
+    assert "error:" in result.stderr and RETIRED_TEAM_BUNDLE in result.stderr, result.stderr
+    assert RETIRED_TEAM_BUNDLE in _manifest_bundles(dsh_home, "rq-team")
 
 
 # --- the retired web bundle -------------------------------------------------
@@ -410,7 +385,7 @@ def test_a_stale_team_bundle_is_repinned_to_the_cores_version(tmp_path):
 @pytest.mark.parametrize("recorded", [True, False], ids=["installer-enabled", "operator-enabled"])
 def test_the_web_bundle_is_always_removed_with_one_line_saying_why(tmp_path, recorded):
     """A 0.5.0 profile lists the web bundle (the installer enabled it, or the
-    operator did). On rc.2 it is gone from the harness, so it is removed
+    operator did). On this core it is gone from the harness, so it is removed
     either way -- not only when our marker recorded it."""
     env, dsh_home, log_path = _stub_dsh_env(tmp_path)
     patch = PATCH_TEMPLATE
@@ -418,10 +393,12 @@ def test_the_web_bundle_is_always_removed_with_one_line_saying_why(tmp_path, rec
         patch = (
             "# >>> dsh-rigorquant BEGIN (managed by ./install.sh; see docs/adr/0001-rigorquant-on-agent-teams.md) >>>\n"
             "# rq-enabled-bundles: %s %s\n"
-            "- id: agent-team\n  config:\n    maxMembers: 64\n"
-            "# <<< dsh-rigorquant END <<<\n" % (TEAM_BUNDLE, WEB_BUNDLE))
-    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base", TEAM_BUNDLE, WEB_BUNDLE],
-                  dependencies={TEAM_BUNDLE: "0.1.6-alpha.2", WEB_BUNDLE: "0.1.6-alpha.2"},
+            "- id: agent-team\n  config:\n    maxTasks: 256\n"
+            "# <<< dsh-rigorquant END <<<\n" % (RETIRED_TEAM_BUNDLE, WEB_BUNDLE))
+    _seed_profile(dsh_home, "rq-team",
+                  ["@deepseek-ai/dsh-base", RETIRED_TEAM_BUNDLE, WEB_BUNDLE],
+                  dependencies={RETIRED_TEAM_BUNDLE: "0.1.6-alpha.2",
+                                WEB_BUNDLE: "0.1.6-alpha.2"},
                   patch=patch)
 
     result = _install(env, "rq-team")
@@ -432,15 +409,16 @@ def test_the_web_bundle_is_always_removed_with_one_line_saying_why(tmp_path, rec
     assert "0.1.7" in lines[0], "the line must say why: %s" % lines[0]
 
     assert WEB_BUNDLE not in _manifest_bundles(dsh_home, "rq-team")
-    assert _team_bundle_calls(log_path, "remove") == ["remove rq-team %s" % WEB_BUNDLE]
-    assert not any(WEB_BUNDLE in l for l in _team_bundle_calls(log_path, "add"))
+    assert _bundle_calls(log_path, "remove", WEB_BUNDLE) == [
+        "remove rq-team %s" % WEB_BUNDLE]
+    assert _bundle_calls(log_path, "add", WEB_BUNDLE) == []
     # The marker's record no longer names a bundle the profile does not have.
     assert WEB_BUNDLE not in _patch_text(dsh_home, "rq-team")
 
 
 def test_a_failed_web_bundle_removal_is_a_hard_error(tmp_path):
-    """A profile that keeps the web bundle cannot boot on rc.2 cleanly, and
-    the operator is about to start it: stop and say so."""
+    """A profile that keeps the web bundle cannot boot cleanly, and the
+    operator is about to start it: stop and say so."""
     env, dsh_home, _ = _stub_dsh_env(tmp_path)
     env["RQ_STUB_FAIL_REMOVE"] = WEB_BUNDLE
     _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base", WEB_BUNDLE])
@@ -451,11 +429,13 @@ def test_a_failed_web_bundle_removal_is_a_hard_error(tmp_path):
     assert WEB_BUNDLE in _manifest_bundles(dsh_home, "rq-team")
 
 
-def test_a_profile_without_the_web_bundle_is_not_asked_to_remove_it(tmp_path):
+def test_a_profile_without_a_retired_bundle_is_not_asked_to_remove_one(tmp_path):
     env, _, log_path = _stub_dsh_env(tmp_path)
     result = _install(env, "rq-team")
     assert result.returncode == 0, result.stderr
-    assert _team_bundle_calls(log_path, "remove") == []
+    assert _bundle_calls(log_path, "remove", RETIRED_TEAM_BUNDLE) == []
+    assert _bundle_calls(log_path, "remove", WEB_BUNDLE) == []
+    assert RETIRED_TEAM_BUNDLE not in result.stdout
     assert WEB_BUNDLE not in result.stdout
 
 
@@ -523,150 +503,138 @@ def test_second_run_writes_nothing_new(tmp_path):
     assert second.returncode == 0, second.stderr
 
     assert "Enabled the Agent Teams bundle" not in second.stdout
-    assert "Wrote the Agent Teams maxMembers override" not in second.stdout
+    assert "Wrote the Agent Teams" not in second.stdout
+    assert "Migrated the Agent Teams" not in second.stdout
     assert _patch_text(dsh_home, "rq-team") == patch_after_first
-    assert _team_bundle_calls(log_path, "add") == [], (
-        "a no-op run must not call `dsh plugin ... add` for a Team bundle again")
+    assert _bundle_calls(log_path, "add", RETIRED_TEAM_BUNDLE) == []
+    assert _bundle_calls(log_path, "remove", RETIRED_TEAM_BUNDLE) == []
 
 
-def test_rerunning_repairs_a_stale_marked_block_from_the_previous_release(tmp_path):
-    """An operator upgrading from 0.7.0 must lose the dead per-member cap.
+def test_rerunning_migrates_a_0_8_0_marked_block(tmp_path):
+    """An operator upgrading from 0.8.0 must lose the three rejected keys.
 
-    The old installer skipped whenever the BEGIN marker existed, so a profile
-    that keeps its marked block across the upgrade would carry
-    `maxPendingMessagesPerMember` forever -- silently inert on 0.2.1-rc.2
-    (seam S3) and exactly what the migration is supposed to remove. A re-run
-    therefore rewrites its own block SURGICALLY: it drops only the dead key's
-    line. An operator-saved edit inside the agent-team row (`maxTasks: 512`),
-    a row the ConfigEditor saved after ours, user-owned lines outside the
-    block, and the `# rq-enabled-bundles:` record all survive byte-for-byte;
-    a block that already lacks the dead key is not written at all.
+    0.2.2-rc.3's agentTeams Config is `{maxTasks, defaultEnabled}`, and its
+    constructor throws TEAM_INVALID_CONFIG naming `maxMembers`,
+    `maxMessageBytes` and `disposalTimeoutMs` -- the three keys 0.8.0's
+    installer wrote and its bundle patch overrides. The migration deletes
+    exactly those keys. An operator-saved edit inside the agent-team row
+    (`maxTasks: 512`), a row the ConfigEditor saved after ours, user-owned
+    lines outside the block, and the enabled-bundles record all survive; the
+    retired Team bundle the profile lists (and the record names) is removed.
     """
     env, dsh_home, log_path = _stub_dsh_env(tmp_path)
     _seed_profile(dsh_home, "rq-team",
-                  ["@deepseek-ai/dsh-base", TEAM_BUNDLE],
-                  dependencies={TEAM_BUNDLE: FLOOR},
-                  patch=PATCH_TEMPLATE.replace("[]\n", "") + STALE_BLOCK)
+                  ["@deepseek-ai/dsh-base", RETIRED_TEAM_BUNDLE],
+                  dependencies={RETIRED_TEAM_BUNDLE: FLOOR},
+                  patch=PATCH_TEMPLATE.replace("[]\n", "") + BLOCK_080)
 
     first = _install(env, "rq-team")
     assert first.returncode == 0, first.stderr
-    assert "Wrote the Agent Teams maxMembers override" in first.stdout
+    assert "Migrated the Agent Teams" in first.stdout
     patch = _patch_text(dsh_home, "rq-team")
-    assert "maxPendingMessagesPerMember" not in patch, patch
-    # The surgical removal keeps every other line, including operator-saved
-    # values: maxTasks stays at the operator's 512 rather than reverting to 256.
-    for line in ("- id: agent-team", "maxMembers: 64", "maxTasks: 512",
-                 "maxMessageBytes: 65536", "disposalTimeoutMs: 5000"):
-        assert line in patch, "the migration dropped %r" % line
-    assert re.search(r"^# rq-enabled-bundles: %s$" % re.escape(TEAM_BUNDLE), patch, re.M), (
-        "the rewrite dropped the enabled-bundles record --uninstall relies on")
+    for gone in ("maxMembers", "maxMessageBytes", "disposalTimeoutMs"):
+        assert gone not in patch, (
+            "the migration kept the key 0.2.2-rc.3's Config rejects (%r):\n%s"
+            % (gone, patch))
+    assert "maxTasks: 512" in patch, (
+        "the migration dropped the operator's saved maxTasks")
+    assert RETIRED_TEAM_BUNDLE not in patch, (
+        "the record still names the bundle the profile no longer lists")
+    assert "# >>> dsh-rigorquant BEGIN" in patch
+    assert "# <<< dsh-rigorquant END <<<" in patch
     assert "# rq-user-settings: keep me" in patch
     assert "- id: ui-settings-general" in patch
     assert "- id: harness-saved-row" in patch, "a row saved inside the block was dropped"
-    assert _team_bundle_calls(log_path, "add") == [], (
-        "a repair rewrite must not re-add the already enabled bundle")
+    assert _bundle_calls(log_path, "remove", RETIRED_TEAM_BUNDLE) == [
+        "remove rq-team %s" % RETIRED_TEAM_BUNDLE]
 
-    # Second run: the repaired block lacks the dead key and has nothing new to
+    # Second run: the migrated block has no rejected key and nothing new to
     # record, so it is byte-identical and nothing is printed.
     log_path.unlink()
     second = _install(env, "rq-team")
     assert second.returncode == 0, second.stderr
-    assert "Wrote the Agent Teams maxMembers override" not in second.stdout
+    assert "Migrated the Agent Teams" not in second.stdout
+    assert "Removed the retired" not in second.stdout
     assert _patch_text(dsh_home, "rq-team") == patch
+    assert _bundle_calls(log_path, "remove", RETIRED_TEAM_BUNDLE) == []
 
-    # The preserved record still lets --uninstall disable what the old install
-    # enabled, and the user-owned lines survive the uninstall too.
+    # --uninstall removes only the lines the installer wrote.
     removed = _install(env, "rq-team", "--uninstall")
     assert removed.returncode == 0, removed.stderr
     after = _patch_text(dsh_home, "rq-team")
-    assert "- id: agent-team" not in after and "maxMembers" not in after
+    assert "dsh-rigorquant" not in after
+    assert "agent-team" not in after and "maxTasks" not in after
     assert "# rq-user-settings: keep me" in after
     assert "- id: ui-settings-general" in after
-    assert TEAM_BUNDLE not in _manifest_bundles(dsh_home, "rq-team")
+    assert "- id: harness-saved-row" in after, after
 
 
-@pytest.mark.parametrize("record_line", ["# rq-enabled-bundles: \n", "# rq-enabled-bundles:\n", ""],
-                         ids=["empty-record", "bare-prefix", "no-record"])
-def test_a_repin_merges_into_an_empty_or_missing_record_without_eating_the_row(tmp_path, record_line):
-    """A 0.7.0 install on a profile whose Team bundle was already on wrote the
-    record as the bare prefix plus a trailing space. Re-pinning a stale bundle
-    after the core upgrade then merges into that record: the merge must read
-    the record line alone (not run on into `- id: agent-team`), and a block
-    with no record at all must gain one on its own line."""
+def test_a_block_with_nothing_but_the_record_is_removed(tmp_path):
+    """Nothing of ours is left to keep: the block goes, the file stays YAML."""
     _needs_yaml()
     env, dsh_home, _ = _stub_dsh_env(tmp_path)
-    block = STALE_BLOCK.replace("# rq-enabled-bundles: %s\n" % TEAM_BUNDLE, record_line)
-    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base", TEAM_BUNDLE],
-                  dependencies={TEAM_BUNDLE: "0.1.6-alpha.2"},
-                  patch=PATCH_TEMPLATE.replace("[]\n", "") + block)
+    record_only = (
+        "# rq-user-settings: keep me\n"
+        "# >>> dsh-rigorquant BEGIN (managed by ./install.sh; see docs/adr/0001-rigorquant-on-agent-teams.md) >>>\n"
+        "# rq-enabled-bundles: %s\n"
+        "# <<< dsh-rigorquant END <<<\n" % RETIRED_TEAM_BUNDLE
+    )
+    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base"], patch=record_only)
 
     result = _install(env, "rq-team")
     assert result.returncode == 0, result.stderr
-    assert "Re-pinned the Agent Teams bundle" in result.stdout
+    assert "Removed the Agent Teams install block" in result.stdout, result.stdout
     patch = _patch_text(dsh_home, "rq-team")
-    records = re.findall(r"^# rq-enabled-bundles:.*$", patch, re.M)
-    assert records == ["# rq-enabled-bundles: %s" % TEAM_BUNDLE], patch
-    assert re.search(r"^- id: agent-team$", patch, re.M), "the merge ate the agent-team row:\n" + patch
-    rows = _patch_rows(tmp_path, dsh_home, "rq-team")
-    assert _config_row(rows, "agent-team")["config"]["maxTasks"] == 512
-    assert _config_row(rows, "harness-saved-row") is not None
+    assert "dsh-rigorquant" not in patch and "rq-enabled-bundles" not in patch, patch
+    assert "# rq-user-settings: keep me" in patch
+    assert _patch_rows(tmp_path, dsh_home, "rq-team") == []
 
 
-def test_uninstall_removes_the_marker_and_disables_the_bundle_it_enabled(tmp_path):
+def test_uninstall_on_a_0_8_0_profile_disables_the_bundle_it_recorded(tmp_path):
+    """`--uninstall` without a prior 0.8.1 run still reads the old record and
+    disables what that installer enabled, then removes the marker block."""
     env, dsh_home, log_path = _stub_dsh_env(tmp_path)
-    install_result = _install(env, "rq-team")
-    assert install_result.returncode == 0, install_result.stderr
+    _seed_profile(dsh_home, "rq-team",
+                  ["@deepseek-ai/dsh-base", RETIRED_TEAM_BUNDLE],
+                  dependencies={RETIRED_TEAM_BUNDLE: FLOOR},
+                  patch=PATCH_TEMPLATE.replace("[]\n", "") + BLOCK_080)
 
-    log_path.unlink()
     result = _install(env, "rq-team", "--uninstall")
     assert result.returncode == 0, result.stderr
-
     patch = _patch_text(dsh_home, "rq-team")
     assert "dsh-rigorquant" not in patch, "the marker block survived --uninstall"
-    assert patch.strip().endswith("[]"), "an emptied user patch must stay valid YAML"
-    assert TEAM_BUNDLE not in _manifest_bundles(dsh_home, "rq-team")
-    assert _team_bundle_calls(log_path, "remove") == ["remove rq-team %s" % TEAM_BUNDLE]
+    assert "agent-team" not in patch and "maxTasks" not in patch
+    assert "# rq-user-settings: keep me" in patch
+    assert RETIRED_TEAM_BUNDLE not in _manifest_bundles(dsh_home, "rq-team")
+    assert _bundle_calls(log_path, "remove", RETIRED_TEAM_BUNDLE) == [
+        "remove rq-team %s" % RETIRED_TEAM_BUNDLE]
 
 
 def test_uninstall_keeps_a_row_the_harness_saved_inside_the_block(tmp_path):
     """The END marker is a trailing comment, so a row the harness's
-    ConfigEditor appends later lands between the markers (seen live on rc.2:
-    dismissing the first-run notice saved `ui-settings-general` there).
-    --uninstall removes only the lines it wrote."""
+    ConfigEditor appends later lands between the markers (seen live: dismissing
+    the first-run notice saved `ui-settings-general` there). --uninstall
+    removes only the lines the installer wrote."""
     env, dsh_home, _ = _stub_dsh_env(tmp_path)
-    assert _install(env, "rq-team").returncode == 0
-    patch_path = dsh_home / "profiles" / "rq-team" / "cordis.patch.yml"
-    text = patch_path.read_text()
-    saved = ("- id: ui-settings-general\n"
-             "  name: \"@deepseek-ai/dsh-client-ui-settings-general\"\n"
-             "  config:\n"
-             "    noticeSeen: true\n")
-    end = text.index("# <<< dsh-rigorquant END")
-    patch_path.write_text(text[:end] + saved + text[end:])
+    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base"],
+                  patch=PATCH_TEMPLATE.replace("[]\n", "") + BLOCK_080)
 
     result = _install(env, "rq-team", "--uninstall")
     assert result.returncode == 0, result.stderr
-    after = patch_path.read_text()
+    after = _patch_text(dsh_home, "rq-team")
     assert "dsh-rigorquant" not in after
-    assert "id: agent-team" not in after and "maxMembers" not in after
-    assert saved in after, after
-
-
-def test_uninstall_leaves_a_team_bundle_the_operator_enabled(tmp_path):
-    env, dsh_home, log_path = _stub_dsh_env(tmp_path)
-    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base", TEAM_BUNDLE])
-    assert _install(env, "rq-team").returncode == 0
-
-    log_path.unlink()
-    result = _install(env, "rq-team", "--uninstall")
-    assert result.returncode == 0, result.stderr
-    assert TEAM_BUNDLE in _manifest_bundles(dsh_home, "rq-team"), (
-        "uninstall disabled a bundle the OPERATOR had enabled before install")
-    assert _team_bundle_calls(log_path, "remove") == []
+    assert "id: agent-team" not in after and "maxTasks" not in after
+    assert "# rq-user-settings: keep me" in after
+    assert "- id: ui-settings-general" in after
+    assert "- id: harness-saved-row" in after, after
 
 
 def test_no_dsh_warns_and_continues(tmp_path):
-    """CI's install smoke test has no `dsh` on PATH; the install must still succeed."""
+    """CI's install smoke test has no `dsh` on PATH; the install must succeed.
+
+    Removing the retired bundles and migrating the profile both need the CLI,
+    so both are skipped with the historical warning -- never a refusal.
+    """
     env = os.environ.copy()
     env["PATH"] = _path_without_dsh()
     env["DSH_HOME"] = str(tmp_path / "dsh-home")
@@ -674,10 +642,9 @@ def test_no_dsh_warns_and_continues(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "warning: dsh is not on PATH" in result.stderr
     assert "Agent Teams" in result.stderr
-    assert TEAM_BUNDLE in result.stderr and WEB_BUNDLE not in result.stderr
     assert "Installed compute lane" in result.stdout
     assert not (tmp_path / "dsh-home" / "profiles").exists(), (
-        "no profile should be touched when dsh cannot enable or locate one")
+        "no profile should be touched when dsh cannot locate one")
 
 
 # --- saved routes and the saved default (Decision 25) -----------------------
@@ -736,9 +703,9 @@ def test_saved_routes_and_the_saved_default_are_ported_into_the_profile_patch(tm
     assert registry == {"id": "agent-preset-registry",
                         "name": "@deepseek-ai/dsh-agent-preset-registry",
                         "config": {"default": "standard", "selectedDefault": "rigorquant"}}
-    # The Team cap block is still there, untouched.
-    assert _config_row(rows, "agent-team")["config"]["maxMembers"] == 64
-    assert "# >>> dsh-rigorquant BEGIN" in _patch_text(dsh_home, "rq-team")
+    # A fresh install writes no Agent Teams row and no marker block.
+    assert _config_row(rows, "agent-team") is None
+    assert "# >>> dsh-rigorquant BEGIN" not in _patch_text(dsh_home, "rq-team")
 
     assert "Ported 4 saved routes from %s" % (dsh_home / source) in result.stdout, result.stdout
     assert "novelPrimary" in result.stdout, "a dropped route must be named"
@@ -748,11 +715,14 @@ def test_saved_routes_and_the_saved_default_are_ported_into_the_profile_patch(tm
 def test_ported_rows_sit_outside_the_marker_block(tmp_path):
     """The marker block's END line is a trailing comment, so a row appended
     to the sequence lands inside it, and --uninstall would delete the user's
-    routes with the block."""
+    routes with the block. The block here is a 0.8.0 one being migrated: the
+    port must insert ahead of it, not after it."""
     _needs_yaml()
     env, dsh_home, _ = _stub_dsh_env(tmp_path)
     dsh_home.mkdir()
     (dsh_home / "settings.yaml").write_text(LEGACY_SETTINGS % {"default": "rigorquant"})
+    _seed_profile(dsh_home, "rq-team", ["@deepseek-ai/dsh-base"],
+                  patch=PATCH_TEMPLATE.replace("[]\n", "") + BLOCK_080)
     assert _install(env, "rq-team").returncode == 0
     patch = _patch_text(dsh_home, "rq-team")
     block = patch[patch.index("# >>> dsh-rigorquant BEGIN"):patch.index("# <<< dsh-rigorquant END")]
@@ -807,8 +777,13 @@ def test_routes_cleared_on_rc2_do_not_come_back(tmp_path):
     patch_path = dsh_home / "profiles" / "rq-team" / "cordis.patch.yml"
     text = patch_path.read_text()
     start = text.index("- id: rq-model-router")
-    end = text.index("# >>> dsh-rigorquant BEGIN")
-    patch_path.write_text(text[:start] + text[end:])
+    # A fresh install writes no marker block; an older profile may still carry
+    # one ahead of which the port inserts. Clearing the routes leaves the
+    # profile's own empty-sequence placeholder, the way the ConfigEditor writes
+    # it.
+    end = text.find("# >>> dsh-rigorquant BEGIN")
+    rest = text[:start] + (text[end:] if end != -1 else "")
+    patch_path.write_text(rest.rstrip() + "\n[]\n")
 
     second = _install(env, "rq-team")
     assert second.returncode == 0, second.stderr
