@@ -1,9 +1,17 @@
-// Exercises dsh/team.js the way a host process would, without one.
+// Exercises dsh/team.js the way a host process would, but only after proving
+// the INSTALLED harness still has the two service surfaces the module and its
+// stubs stand in for. The probe used to exercise hand-written fakes with no
+// harness present, so a core that removed `tryMembership`/`listMembers` left
+// the suite green while the live plugin threw. It now requires the installed
+// packages first: `@deepseek-ai/dsh-agent-team`'s TeamService must define
+// `setEnabled`/`isEnabled`, and `@deepseek-ai/dsh-subagent`'s SubagentRuntime
+// must define `rootOf`/`namesOf`. With no harness (exit 3) or a refused core
+// (exit 2) the Python tests skip; a missing method is a real failure (exit 1).
 //
-// Mounts the plugin against a stub ctx (agentTeams arming, the subagents
-// identity service, agents backfill, agentPresets) and a per-agent stub scope
-// (systemPrompt's section()/context()/getSectionOrder(), tools'
-// restrict()/guard()), then drives these scenarios: agentTeams present (a
+// Then it mounts the plugin against a stub ctx (agentTeams arming, the
+// subagents identity service, agents backfill, agentPresets) and a per-agent
+// stub scope (systemPrompt's section()/context()/getSectionOrder(), tools'
+// restrict()/guard()), and drives these scenarios: agentTeams present (a
 // lead + several teammates of varying tiers, an unparseable name, a
 // non-RigorQuant teammate, a non-RigorQuant ROOT that must never be armed), a
 // service that reports the selection still off (no armed context), agentTeams
@@ -17,6 +25,62 @@
 // and the escalation lane: the Lead's `rq_escalate` tool mounting a stub
 // MCP client into the caller or a named teammate. Prints one JSON verdict.
 const { pathToFileURL } = require('node:url')
+
+const {
+  EXIT_PROBLEM, exitNoHarness, harnessRequireFor,
+  requireSupportedCore, resolveHarness,
+} = require('./harness_locator.cjs')
+
+const PREFIX = 'team_probe'
+
+/** The installed surfaces the probe's stubs are stand-ins for. A rename or a
+ * removal here is exactly the class of break the release must catch: the
+ * module reads these methods, so a probe that stubs a service the core no
+ * longer has proves nothing. */
+const INSTALLED_SURFACES = [
+  { spec: '@deepseek-ai/dsh-agent-team', exported: 'TeamService', methods: ['isEnabled', 'setEnabled'] },
+  { spec: '@deepseek-ai/dsh-subagent', exported: 'SubagentRuntime', methods: ['namesOf', 'rootOf'] },
+]
+
+/**
+ * Require the installed harness and assert the two services still carry the
+ * methods `dsh/team.js` and this probe's stubs model. Exits with the shared
+ * codes: 3 no harness, 2 refused core, 1 a real missing surface.
+ * @returns the surface report (methods found, sorted) for the verdict.
+ */
+async function requireInstalledSurfaces() {
+  const harness = resolveHarness(undefined)
+  if (harness === undefined) {
+    exitNoHarness(PREFIX, 'cannot locate an installed harness; the behaviour seam requires its live service surfaces')
+  }
+  const harnessRequire = harnessRequireFor(harness, PREFIX)
+  await requireSupportedCore(harnessRequire, PREFIX)
+  const surfaces = {}
+  for (const { spec, exported, methods } of INSTALLED_SURFACES) {
+    let mod
+    try {
+      mod = await import(pathToFileURL(harnessRequire.resolve(spec)).href)
+    } catch (error) {
+      process.stderr.write(`${PREFIX}: cannot import the installed ${spec}: ${String(error?.message ?? error)}\n`)
+      process.exit(EXIT_PROBLEM)
+    }
+    const service = mod[exported]
+    if (typeof service !== 'function') {
+      process.stderr.write(`${PREFIX}: the installed ${spec} exports no ${exported} class\n`)
+      process.exit(EXIT_PROBLEM)
+    }
+    const missing = methods.filter((method) => typeof service.prototype?.[method] !== 'function')
+    if (missing.length > 0) {
+      process.stderr.write(
+        `${PREFIX}: the installed ${spec}'s ${exported} no longer defines ${missing.join(', ')};`
+        + ' the plugin is written against that surface\n')
+      process.exit(EXIT_PROBLEM)
+    }
+    surfaces[exported] = [...methods].sort()
+  }
+  return surfaces
+}
+
 
 // The global tools a RigorQuant session mounts (base + preset + Team control)
 // plus a few the core mounts for other modes. The probe's tools stub reports
@@ -806,6 +870,7 @@ async function runEscalationScenario(mod) {
 
 async function main() {
   const [, , modulePath] = process.argv
+  const surfaces = await requireInstalledSurfaces()
   const mod = await import(pathToFileURL(modulePath).href)
 
   const {
@@ -819,6 +884,7 @@ async function main() {
   const escalation = await runEscalationScenario(mod)
 
   process.stdout.write(JSON.stringify({
+    surfaces,
     mountError, beforeSubagentStart, present, guardChecks, arming, classification,
     unarmedService,
     absent, resume, latePresetSelection, unload, escalation,

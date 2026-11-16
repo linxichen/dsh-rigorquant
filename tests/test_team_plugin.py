@@ -67,7 +67,7 @@ import subprocess
 
 import pytest
 
-from conftest import REPO
+from conftest import REPO, require_harness
 
 PROBE = REPO / "tests/team_probe.cjs"
 
@@ -85,8 +85,30 @@ def probe():
     if not module.exists():
         pytest.fail(f"package.json exports ./team but {module} is missing")
     out = subprocess.run([node, str(PROBE), str(module)],
-                         capture_output=True, text=True, check=True)
+                         capture_output=True, text=True)
+    # The behaviour seam requires the installed harness (issue #47, finding 2):
+    # without one the probe exits 3 and these tests skip; a live harness with a
+    # missing service method is a real failure, not a skip.
+    require_harness(out)
+    assert out.returncode == 0, (out.stdout, out.stderr)
     return json.loads(out.stdout)
+
+
+def test_the_probe_requires_the_installed_service_surfaces(probe):
+    """The stubs stand in for real services, so the real methods must exist.
+
+    This is the check that would have caught the 0.2.2 removal of the Team
+    service's `tryMembership`/`listMembers`: the probe used to exercise
+    hand-written fakes with no harness present, so a removed method left the
+    suite green while the live plugin threw. It requires the installed
+    `@deepseek-ai/dsh-agent-team`'s TeamService (`setEnabled`/`isEnabled`) and
+    `@deepseek-ai/dsh-subagent`'s SubagentRuntime (`rootOf`/`namesOf`) before
+    any stub is exercised.
+    """
+    assert probe["surfaces"] == {
+        "TeamService": ["isEnabled", "setEnabled"],
+        "SubagentRuntime": ["namesOf", "rootOf"],
+    }, probe["surfaces"]
 
 
 def test_team_export_points_at_a_shipped_file():
