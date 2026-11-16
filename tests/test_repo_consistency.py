@@ -523,25 +523,51 @@ def test_deprecated_synchronous_history_reads_are_fully_migrated():
         % offenders)
 
 
-def test_router_resolves_role_from_team_membership_only():
-    """Issue #11: the router's only source of role identity is the team
-    plugin's membership — never a persona tag, an assembled prompt, or a
-    session event.
+def test_router_resolves_role_from_the_subagent_identity_api_only():
+    """Issues #11 and #46: the router's only source of role identity is the
+    live subagent tree (0.2.2's `subagents.rootOf` / `namesOf`) — never a
+    persona tag, an assembled prompt, or a session event.
 
-    A regression here would be a role silently resolving again from prompt
-    text or history, exactly the drift Decision 24's "identity by name"
-    retired.
+    The Team service's `tryMembership`/`listMembers` were removed in 0.2.2;
+    reaching for either on a live core throws on every `agent/request`, which
+    only a stubbed probe would hide. The role still comes from the name; only
+    the identity seam moved.
     """
     router = (REPO / "dsh/index.js").read_text()
-    assert "tryMembership" in router, (
-        "dsh/index.js must resolve role through the team plugin's membership")
-    assert "agentTeams" in router, (
-        "dsh/index.js must reach the team service by its duck-typed name"
-    )
+    identity = (REPO / "dsh/identity.js").read_text()
+    assert "identityOf" in router, (
+        "dsh/index.js must resolve role through the shared subagent identity helper")
+    assert "rootOf" in identity and "namesOf" in identity, (
+        "dsh/identity.js must read the surviving subagent identity API")
+    code = "\n".join((REPO / "dsh" / name).read_text()
+                     for name in ("index.js", "lane.js", "team.js", "identity.js"))
+    for gone in ("tryMembership", "listMembers"):
+        assert gone not in code, (
+            "dsh/*.js still calls the removed Agent Teams %r; identity is the "
+            "subagent tree now" % gone)
     for gone in ("[[rq:role=", "TAG.exec", "systemPrompt.assemble", "PERSONA_SECTION"):
         assert gone not in router, (
             "dsh/index.js still names %r; role identity must come only from "
-            "the Team membership name" % gone)
+            "the subagent-tree name" % gone)
+
+
+def test_the_router_and_team_probes_model_the_surviving_identity_api():
+    """Issue #46: the probes must not stub the removed membership/roster API.
+
+    A fake `tryMembership`/`listMembers` keeps the suite green while the live
+    core throws on every routed request and every named escalation. The probes
+    model the real 0.2.2 shape — `rootOf`/`namesOf` keyed by the live Agent —
+    so a regression to a removed method fails a test instead of passing.
+    """
+    for name in ("router_probe.cjs", "team_probe.cjs"):
+        source = (REPO / "tests" / name).read_text()
+        for gone in ("tryMembership", "listMembers"):
+            assert gone not in source, (
+                "tests/%s still defines or names the removed Agent Teams %r"
+                % (name, gone))
+        assert "rootOf" in source and "namesOf" in source, (
+            "tests/%s no longer models the surviving subagent identity service"
+            % name)
 
 
 CLASSIC_ROWS = (
