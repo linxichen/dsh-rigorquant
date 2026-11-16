@@ -279,14 +279,14 @@ function liveRoster(subagents, agents) {
 
 // ── topology by guard (Decision 24; docs/adr/0001-rigorquant-on-agent-teams.md) ──
 //
-// `tools.restrict` (above) masks the GLOBAL catalog and cannot reach the
-// scoped Team tools `tool-agent-team` registers directly in each member's own
-// scope (`send_message`, `list_agents`, `team_task_list`, `team_task_get`,
-// `team_task_update`, `team_task_create`), nor `list_agents`, which is
-// registered by `tool-subagent-control` outside the global restriction
-// universe on some cores. `tools.guard` is the one API that reaches a scoped
-// registration: a monotonic per-call check, registered through `agent.ctx` so
-// it applies only to that one agent.
+// The allow classification above is the first line: it masks the GLOBAL
+// catalog. `tools.guard` is the second: a monotonic per-call check,
+// registered through `agent.ctx` so it applies only to that one agent, and it
+// enforces the topology rules a visibility mask cannot express — which
+// recipient a message may name, which task may be touched, and which command
+// verbs a web-denied role may run. Roster/board blindness is belt and braces:
+// the allow set already hides those tools, and the guard still denies a call
+// on a core that registers them outside the restrictable universe.
 
 /** Hub-and-spoke's one legal `send_message` target for every teammate — the
  * literal name the harness gives the tree root (`ROOT_AGENT_NAME` in
