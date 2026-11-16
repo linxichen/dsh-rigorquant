@@ -1,15 +1,14 @@
 """Team composition (dsh/team.js) — Agent Teams composition AND per-call guard.
 
-DSH 0.1.6 ships native Agent Teams. This host half applies each teammate's
-role composition — persona, tool-tier budget, and (on the Lead) a runtime
-fact that the guard is armed — purely from the teammate's NAME
-(`<role>-<n>`, e.g. `doublechecker-1`), resolved through the harness's
-`subagents` identity service (`rootOf`/`namesOf`; 0.2.2 removed the Team
-service's membership/roster API). It is purely additive: the classic
-`[[rq:role=...]]`
-tag mechanism (dsh/index.js) and the seven classic delegation rows
-(agent-presets/rigorquant/agent.cordis.yml) are untouched and coexist with
-this module until a later issue removes them.
+Agent Teams has been native to DSH since 0.1.6, and 0.2.2-rc.3 is this
+release's floor. This host half applies each teammate's role composition —
+persona, tool-tier budget, and (on the Lead) a runtime fact that the guard is
+armed — purely from the teammate's NAME (`<role>-<n>`, e.g.
+`doublechecker-1`), resolved through the harness's `subagents` identity
+service (`rootOf`/`namesOf`; 0.2.2 removed the Team service's
+membership/roster API). The classic `[[rq:role=...]]` persona-tag mechanism
+and the per-role delegation rows are gone (Decision 24): this module is the
+only source of a teammate's persona, tool budget and topology.
 
 `tools.restrict` cannot mask the scoped Team tools (`send_message`,
 `list_agents`, `team_task_list`, `team_task_get`, `team_task_update`,
@@ -42,7 +41,7 @@ module (via tests/team_probe.cjs, not by re-implementing it in Python):
    `team_task_list` denied; a foreign task's `team_task_get`/
    `team_task_update` denied, an unowned or own task allowed; a bash
    network verb denied for a web-denied role and allowed for an open role;
-   a bad `spawn_teammate` name or `context: 'fork'` denied on the Lead.
+   a bad `subagent` name or a `subagent_fork` denied on the Lead.
 8. a session composed as rigorquant only AFTER its own `agent/created`
    already ran (found live on the harness 0.5.0 ran on, Decision 24 — a "New Session" switched to the RigorQuant
    preset in the picker, rather than created with it already selected)
@@ -366,7 +365,7 @@ def test_a_late_preset_switch_to_rigorquant_installs_the_lead_composition(probe)
     """Once `agent-preset/selected` announces the switch (after the harness's
     own recompose already landed on agent.ctx), the Lead gets exactly what it
     would have gotten from a same-preset agent/created: the armed context and
-    its spawn_teammate guard — found missing live on the installed harness
+    its `subagent` guard — found missing live on the installed harness
     (Decision 24) before this second trigger existed."""
     after = probe["latePresetSelection"]["afterSwitch"]
     assert after["sections"] == []

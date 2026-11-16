@@ -64,10 +64,10 @@
     # Decision 24; docs/adr/0001-rigorquant-on-agent-teams.md). Declares the
     # `agentTeams` service OPTIONAL and reaches it duck-typed by service name,
     # never importing the experimental Agent Teams packages. It also
-    # registers the per-call guards (send_message target, roster-blindness,
-    # own-task-only board access, bash network denial, spawn_teammate
-    # refusal). The preset carries no classic delegation row, so this row is
-    # the only source of a teammate's composition.
+    # registers the per-call guards (send_message recipient, roster-blindness,
+    # own-task-only board access, bash network denial, subagent name /
+    # subagent_fork refusal). The preset carries no classic delegation row, so
+    # this row is the only source of a teammate's composition.
     - id: rq-team
       name: 'dsh-rigorquant/team'
 

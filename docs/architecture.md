@@ -724,18 +724,23 @@ a persona slot).
 **Topology-by-guard shipped under issue #10**: a `tools.guard` per composed member enforces what `tools.restrict`
 cannot mask on the scoped Team tools — hub-and-spoke messaging, roster/board
 blindness, own-task-only board access, the bash network-verb denial for
-web-denied roles, and the orchestrator's `spawn_teammate` name/fork refusal.
+web-denied roles, and the orchestrator's `subagent` name / `subagent_fork`
+refusal.
 **A Lead-only composition gap, found live and fixed**: a session composed as `rigorquant` only *after* its own
 `agent/created` already ran (the ordinary "New Session, then pick a preset"
-UI flow) left the Lead's guard-armed context and `spawn_teammate` guard
+UI flow) left the Lead's guard-armed context and `subagent` guard
 uninstalled for the session's entire life — teammates are unaffected, since
 a teammate's preset is already settled at spawn time. `dsh/team.js` now
 also re-triggers composition on the harness's `agent-preset/selected` event.
-**Router role-resolution by membership shipped under issue #11**: `dsh/index.js` resolves a routed agent's
-role the same way `dsh/team.js` resolves composition — through
-`agentTeams.tryMembership(agent)`, the Lead as `root`, every other member
-by its name — and carries the shipped tier matrix itself, since no native
-per-role model row exists once a teammate is created by `spawn_teammate`.
+**Router role-resolution by name shipped under issue #11, restated on the
+0.2.2 identity API (0.8.1)**: `dsh/index.js` resolves a routed agent's role
+the same way `dsh/team.js` resolves composition — through the shared helpers
+in `dsh/identity.js`, which read the live subagent tree:
+`subagents.rootOf(agent)` selects the tree's root (the Lead, model-facing
+name `lead`), and `subagents.namesOf(agent)` returns the member's name
+(`lead`, a `<role>-<n>` path, or a Session id for unnamed history) — and
+carries the shipped tier matrix itself, since no native per-role model row
+exists once a teammate is created with the standard `subagent` tool.
 The persona-tag regex, the persona-assembly probe, and the deprecated
 synchronous session-event reads are gone from the router; the classic
 per-role delegation rows still use the persona tag until a later issue
@@ -785,7 +790,7 @@ has no carrier left. The orchestrator persona's ISOLATION paragraph now says
 role by name, tool budget by scope, topology by guard — still not a network
 wall — and states that a RigorQuant study is the explicit request the Team
 policy asks for, spawning only while the "guard armed" line is present.
-SKILL.md Step 3 runs the round as five moves on `spawn_teammate` /
+SKILL.md Step 3 runs the round as five moves on the standard `subagent` tool /
 `wait_agent` / `send_message` over a layered task DAG (explore → ground-truth
 → attack → certify, one `blocked_by` layer per move, which is exactly what
 the move pill reads); protocol.md carries the brief contract, the roster

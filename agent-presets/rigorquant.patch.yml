@@ -262,16 +262,18 @@
 
           # Team-only (docs/architecture.md, Decision 24;
           # docs/adr/0001-rigorquant-on-agent-teams.md). Teammates are created by the
-          # Agent Teams bundles' `spawn_teammate`, not by any row here: the seven
-          # per-role delegation rows, the subagent control and list rows, and the fork
-          # row are gone. The Team tools register `send_message`, `list_agents` and
-          # `interrupt_agent` under the legacy names, so the classic control rows would
-          # have mounted a second tool per name. Each teammate's persona, tool budget
+          # base layer's standard `subagent` tool, carrying an explicit `<role>-<n>`
+          # name — not by any row here: the seven per-role delegation rows, the
+          # subagent control and list rows, and the fork row are gone. The base
+          # layer mounts the standard subagent control tools (`send_message`,
+          # `list_agents`, `wait_agent`), so the classic control rows would have
+          # mounted a second tool per name. Each teammate's persona, tool budget
           # and hub-and-spoke guard are applied from its NAME (`<role>-<n>`) by the
           # bundle's `dsh-rigorquant/team` row, and its model by the router — none of
-          # that lives in this composition any more. No other delegation tool is
-          # mounted, so depth-one delegation holds by construction: the rows left in
-          # this group are all disabled.
+          # that lives in this composition any more. The team plugin refuses a
+          # `subagent_fork` and a `subagent` whose name does not parse to a role. No
+          # other delegation tool is mounted, so depth-one delegation holds by
+          # construction: the rows left in this group are all disabled.
           - id: delegation
             name: cordis:group
             group: true
