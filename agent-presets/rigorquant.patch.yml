@@ -15,10 +15,12 @@
 # not this package. No child may resolve a path from it.
 #
 # The package requires DSH `>=0.2.2-rc.3` — an open floor, with no ceiling and
-# no restated peer range (package.json `engines.dsh`, enforced by `install.sh`,
-# pinned by tests/test_repo_consistency.py; Decision 28,
-# docs/adr/0005-rigorquant-on-dsh-0.2.2.md). The loader reads `engines.dsh`
-# alone and skips a bundle whose floor the running core does not satisfy; a
+# no restated peer range (package.json `engines.dsh`, enforced by the loader's
+# own compatibility gate and pinned by tests/test_repo_consistency.py;
+# Decision 28, docs/adr/0005-rigorquant-on-dsh-0.2.2.md). There is no
+# pre-flight version check in this distribution (Decision 29). The loader reads
+# `engines.dsh` alone and skips a bundle whose floor the running core does not
+# satisfy; a
 # core above the floor installs.
 - insert:
     # An override by id (a patch keyed `preset-rigorquant` in the profile, or

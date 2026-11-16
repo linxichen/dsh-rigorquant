@@ -6,8 +6,9 @@
 // derived state with absolute paths, and node_modules is volatile and
 // version-pathed (recorded `env_lane` paths in existing studies' study.json
 // would churn). So this row lands the lane, and the files the skill cites
-// next to it, where install.sh would, for users who only ran
-// `dsh plugin add`:
+// next to it, at the profile's boot. It is the whole of the lane's install:
+// distribution is the plugin manager (Decision 29), and `dsh plugin add` runs
+// this row at the next profile start.
 //
 //   env/ mcp/ docs/ → $DSH_HOME/share/rigorquant/<same>
 //
@@ -27,8 +28,9 @@
 //   (managedBy + version + syncedAt), so what this plugin owns stays
 //   discoverable after the plugin is gone. There is no uninstall hook in
 //   DSH's plugin CLI — `dsh plugin remove` is pnpm delete plus a manifest
-//   reconcile, and code that no longer exists cannot run — so removal stays
-//   explicit (install.sh --uninstall).
+//   reconcile, and code that no longer exists cannot run. The lane stays on
+//   uninstall as well: it is study evidence (a study's study.json records
+//   that path), not plugin state, so `dsh plugin remove` does not delete it.
 //
 // Failure is soft by design: a sync problem logs a warning and never blocks
 // the rest of the profile (nor the other rows sharing this package).
@@ -163,7 +165,8 @@ export function syncManagedDir(sourceDir, targetDir, { version }) {
   const pruned = pruneExtras(targetDir, sourceDir)
   // A tree that needed no writes and already carries this version's stamp is
   // left exactly as it was; anything else is (re)stamped. An unstamped
-  // identical tree (installed by ./install.sh) is adopted without a rewrite.
+  // identical tree — copied by hand, or by a release older than the marker —
+  // is adopted without a rewrite.
   if (copied.length === 0 && pruned === 0 && stampedCurrent) {
     return { status: 'current', copied, pruned }
   }
