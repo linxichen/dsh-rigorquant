@@ -327,18 +327,21 @@ if (record !== null) {
 }
 
 // 2. Delete the rejected keys, inside the agent-team row only: a row the
-//    ConfigEditor saved inside the block keeps whatever it holds.
+//    ConfigEditor saved inside the block keeps whatever it holds. The match
+//    is shape-agnostic on purpose: a re-saved block may indent its keys
+//    differently or quote the values, and a four-space/integer-only match
+//    left the rejected key in place, so the team service never mounted.
 const rejected = []
 const rows = []
 let inAgentTeamRow = false
 for (const line of region.split('\n')) {
-  if (/^- id: agent-team\s*$/.test(line)) {
+  if (/^\s*- id: agent-team\s*$/.test(line)) {
     inAgentTeamRow = true
     rows.push(line)
     continue
   }
-  if (/^- id: /.test(line)) inAgentTeamRow = false
-  if (inAgentTeamRow && /^\s{4}(maxMembers|maxMessageBytes|disposalTimeoutMs)\s*:\s*\d+\s*$/.test(line)) {
+  if (/^\s*- id: /.test(line)) inAgentTeamRow = false
+  if (inAgentTeamRow && /^\s+(maxMembers|maxMessageBytes|disposalTimeoutMs)\s*:\s*(?:\x22[^\x22]*\x22|\x27[^\x27]*\x27|[^\s#]+)?\s*(?:#.*)?$/.test(line)) {
     rejected.push(line.trim().split(':')[0])
     continue
   }
@@ -349,7 +352,7 @@ region = rows.join('\n')
 // 3. Nothing but the record left (and no other row of ours or the harness):
 //    the whole block goes. The profile template [] placeholder comes back
 //    if the file would otherwise hold no sequence at all.
-if (!/^- (?:id:|insert:)/m.test(region)) {
+if (!/^\s*- (?:id:|insert:)/m.test(region)) {
   let rest = content.slice(0, begin) + content.slice(end + markEnd.length)
   rest = rest.replace(/\n{3,}/g, '\n\n')
   if (!/^\s*-\s/m.test(rest.replace(/^#.*$/gm, ''))) rest = rest.replace(/\s+$/, '') + '\n[]\n'

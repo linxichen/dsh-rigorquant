@@ -569,6 +569,83 @@ def test_rerunning_migrates_a_0_8_0_marked_block(tmp_path):
     assert "- id: harness-saved-row" in after, after
 
 
+# The migration's match must not depend on the exact YAML shape a previous
+# run (or the harness's ConfigEditor) happened to leave: a re-saved block can
+# indent its keys differently or quote the values, and either shape keeps the
+# rejected key and prevents the Team service from mounting. (indent, value
+# format) — `maxTasks: 512` stays bare in every shape, because it must survive.
+MIGRATION_SHAPES = [
+    ("three-space bare", 3, "%d"),
+    ("six-space bare", 6, "%d"),
+    ("four-space double-quoted", 4, '"%d"'),
+    ("six-space single-quoted", 6, "'%d'"),
+]
+
+
+def _block_080_in_shape(indent, value_format):
+    """BLOCK_080 with the three rejected keys re-saved in the given shape."""
+    pad = " " * indent
+    value = lambda n: value_format % n
+    return (
+        "# rq-user-settings: keep me\n"
+        "- id: ui-settings-general\n"
+        "  config:\n"
+        "    noticeSeen: true\n"
+        "# >>> dsh-rigorquant BEGIN (managed by ./install.sh; see docs/adr/0001-rigorquant-on-agent-teams.md) >>>\n"
+        f"# rq-enabled-bundles: {RETIRED_TEAM_BUNDLE}\n"
+        "- id: agent-team\n"
+        "  config:\n"
+        f"{pad}maxMembers: {value(64)}\n"
+        f"{pad}maxTasks: 512\n"
+        f"{pad}maxMessageBytes: {value(65536)}\n"
+        f"{pad}disposalTimeoutMs: {value(5000)}\n"
+        "- id: harness-saved-row\n"
+        "  config:\n"
+        "    keep: true\n"
+        "# <<< dsh-rigorquant END <<<\n"
+    )
+
+
+@pytest.mark.parametrize("indent,value_format", [(i, f) for _, i, f in MIGRATION_SHAPES],
+                         ids=[name for name, _, _ in MIGRATION_SHAPES])
+def test_the_migration_matches_a_re_saved_block_of_any_shape(tmp_path, indent, value_format):
+    """A block re-saved at another indent, or with quoted values, still migrates.
+
+    The key deletion used to be anchored to four spaces and an integer value,
+    so the rejected key survived a block the ConfigEditor, a YAML serializer,
+    or an operator's editor had re-emitted differently -- and the Team service
+    then refused to mount with no error in the installer. The match is now
+    indent- and quote-agnostic; maxTasks (the operator's saved value) still
+    survives, and the block is still removed on uninstall.
+    """
+    env, dsh_home, log_path = _stub_dsh_env(tmp_path)
+    _seed_profile(dsh_home, "rq-team",
+                  ["@deepseek-ai/dsh-base", RETIRED_TEAM_BUNDLE],
+                  dependencies={RETIRED_TEAM_BUNDLE: FLOOR},
+                  patch=PATCH_TEMPLATE.replace("[]\n", "") + _block_080_in_shape(indent, value_format))
+
+    result = _install(env, "rq-team")
+    assert result.returncode == 0, result.stderr
+    assert "Migrated the Agent Teams" in result.stdout, result.stdout
+    patch = _patch_text(dsh_home, "rq-team")
+    for gone in ("maxMembers", "maxMessageBytes", "disposalTimeoutMs"):
+        assert re.search(r"^\s*%s\s*:" % gone, patch, re.MULTILINE) is None, (
+            "the migration kept the rejected key %r from a re-saved block:\n%s" % (gone, patch))
+    assert "maxTasks: 512" in patch, (
+        "the migration dropped the operator's saved maxTasks:\n%s" % patch)
+    assert "# rq-user-settings: keep me" in patch
+    assert "- id: harness-saved-row" in patch
+    assert _bundle_calls(log_path, "remove", RETIRED_TEAM_BUNDLE) == [
+        "remove rq-team %s" % RETIRED_TEAM_BUNDLE]
+
+    removed = _install(env, "rq-team", "--uninstall")
+    assert removed.returncode == 0, removed.stderr
+    after = _patch_text(dsh_home, "rq-team")
+    assert "dsh-rigorquant" not in after and "agent-team" not in after, after
+    assert "# rq-user-settings: keep me" in after
+    assert "- id: harness-saved-row" in after, after
+
+
 def test_a_block_with_nothing_but_the_record_is_removed(tmp_path):
     """Nothing of ours is left to keep: the block goes, the file stays YAML."""
     _needs_yaml()
