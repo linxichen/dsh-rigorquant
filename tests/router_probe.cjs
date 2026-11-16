@@ -23,8 +23,9 @@
 //   the model catalog — API-key only stays on `deepseek-official`, account
 //   only moves to `deepseek-account`, neither takes the #22 degradation.
 const fs = require('node:fs')
-const { dirname, resolve } = require('node:path')
 const vm = require('node:vm')
+
+const { inlineRelativeImports } = require('./harness_locator.cjs')
 
 // The shipped tier matrix as the probe expects it. The router's own constants
 // are compared against these below, so a retarget of the fallback cannot pass
@@ -58,16 +59,7 @@ function equal(actual, expected, label) {
 // from its own file the same way, so the probe follows the shipped module
 // rather than restating it.
 function loadHostModule(modulePath) {
-  let source = fs.readFileSync(modulePath, 'utf8')
-  source = source.replace(
-    /^import \{ ([^}]+) \} from '\.\/([^']+)'$/gm,
-    (_, names, spec) => {
-      let helper = fs.readFileSync(resolve(dirname(modulePath), spec), 'utf8')
-      helper = helper.replace(/^export const /gm, 'const ')
-      helper = helper.replace(/^export \{ ([^}]+) \}$/m, '')
-      return `const { ${names} } = (() => { ${helper}; return { ${names} } })()`
-    },
-  )
+  let source = inlineRelativeImports(fs.readFileSync(modulePath, 'utf8'), modulePath)
   source = source.replace("import z from '@deepseek-ai/schemastery'", 'const z = schemaStub')
   source = source.replace(/^export const /gm, 'const ')
   source = source.replace(/^export \{ ([^}]+) \}$/m, 'module.exports = { $1 }')

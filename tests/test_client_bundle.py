@@ -177,6 +177,36 @@ def test_card_registers_on_the_bundle_config_slot_keyed_by_the_package(verdict):
     assert verdict["cardKey"] == verdict["id"] == PLUGIN_ID
 
 
+def test_the_plugins_card_does_not_read_the_removed_bundle_update_field(verdict):
+    """0.2.2-rc.1 replaced `BundleInfo.updatable` with the optional `update`.
+
+    The routing card is registered on the Plugins page's bundle-config ring,
+    so a read of a removed field would be a page-load break waiting for a
+    core that stops sending it. The probe renders the card with a bundle
+    record whose `updatable` and `update` are read-recording getters: neither
+    may be touched, and the source must not name the removed field at all.
+    """
+    assert "error" not in verdict["bundleUpdate"], verdict["bundleUpdate"]
+    assert verdict["bundleUpdate"]["reads"] == [], (
+        "the card read a bundle update field: %r" % (verdict["bundleUpdate"],))
+    client = (REPO / manifest()["exports"]["./client"]).read_text()
+    assert "updatable" not in client, (
+        "the client bundle still names the removed BundleInfo.updatable field")
+
+
+def test_the_plugins_card_tolerates_a_bundle_record_without_update(verdict):
+    """A bundle `updateBundle` cannot replace carries no `update` field.
+
+    The page may hand the card a bundle record at any time; rendering must
+    survive both the absent shape and the `'registry'` shape, so a missing
+    optional field cannot blank the Plugins page.
+    """
+    assert "error" not in verdict["bundleUpdate"], verdict["bundleUpdate"]
+    assert verdict["bundleUpdate"]["rendered"] == {
+        "withoutBundle": True, "withoutUpdate": True, "withUpdate": True,
+    }, verdict["bundleUpdate"]
+
+
 def test_card_is_its_own_settings_section(verdict):
     """The routes are reachable from the Settings nav, not only the Plugins page.
 

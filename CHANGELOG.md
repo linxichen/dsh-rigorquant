@@ -86,7 +86,12 @@ new core.
   team plugin arms Team **per Session**: for a root RigorQuant Session it calls
   the Agent Teams service's `setEnabled(agent, true, signal)` and publishes the
   guard-armed context only when the service confirms the selection, and it
-  never touches another preset's session.
+  never touches another preset's session. Teammate composition has a third
+  trigger: a teammate has no subagent-tree name at its own `agent/created`
+  (the manager records the activation only after the child exists), so its
+  persona, budget and guard are applied on `subagent/start`, the creation
+  edge on which its `<role>-<n>` name is readable; the Lead keeps
+  `agent/created` plus the late `agent-preset/selected` switch.
 - **Delegation is by name.** The Orchestrator creates a Teammate with the
   standard `subagent` tool and an explicit `<role>-<n>` name; the guard
   refuses a name that does not parse and refuses `subagent_fork`;
@@ -143,8 +148,9 @@ new core.
   `disposalTimeoutMs`; keeping any of the three prevents the team service from
   mounting. `maxMembers` was the lifetime member cap, so there is no cap left
   to raise.
-- **`EVERY_TEAMMATE_DENY`**, replaced by the per-tier tool classification (see
-  Changed).
+- **The exported `EVERY_TEAMMATE_DENY` list**, deleted outright: the per-tier
+  tool classification is the only source of a Teammate's scope now (see
+  Changed), and no second exported list sits beside it.
 
 ### Fixed
 

@@ -146,7 +146,7 @@ RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到
 
 ## 安装
 
-需要 DSH `>=0.2.2-rc.3`——**开放下限（open floor）**，没有上限（决策 28，
+需要 DSH `>=0.2.2-rc.3`——**开放下限（open floor）**（决策 28，
 `docs/adr/0005-rigorquant-on-dsh-0.2.2.md`）。下限是本版本实际验证过的 core：
 等于或高于它的 core 都会被接受，只有在新 core 上验证过的版本才会抬高下限。
 **0.8.0 是 0.2.1-rc.2 版 harness 的最后一个版本**：不做任何回移，暂时无法升级
@@ -207,7 +207,7 @@ goal 的连续阻塞轮数 3，以及注入的工作区说明 8 KiB 且只读 `A
 
 容量是一个 study 的**存活队友池**：**同时最多 12 个队友**，由 bundle patch 的
 `subagent` 覆盖行钉住（覆盖基础服务的 `maxActiveSubagents`），而且
-**没有生命周期上限**：队友结束后就释放名额。
+池子只约束同时运行的数量：队友结束后就释放名额。
 超过池容量时 spawn 会抛出 `ACTIVATION_LIMIT_REACHED`，除了队友结束没有任何
 东西能清除它——本轮存证并以 BUDGET 结果收尾，而不是循环重试。
 
@@ -232,7 +232,7 @@ RigorQuant 会话开启 Team；这条路径既不迁移 0.8.0 的 profile，也�
 路由——这两件事由安装脚本完成：
 
 ```sh
-dsh --version                 # 必须 >= 0.2.2-rc.3；没有上限
+dsh --version                 # 必须 >= 0.2.2-rc.3；更高的 core 都可接受
 dsh plugin --profile web add github:linxichen/dsh-rigorquant
 ```
 

@@ -289,8 +289,8 @@ running, wait on it first (hard-lessons L3, protocol.md).
 
 **The live-teammate pool bounds every Fan out.** The bundle patch raises the
 `subagent` service's `maxActiveSubagents` to **12**: that is the study's live
-pool, and there is **no lifetime cap** — a settled teammate frees its slot for
-the next one. Fan out is batched to at most twelve live teammates at a time:
+pool, and it bounds concurrency, never the study's lifetime count — a settled
+teammate frees its slot for the next one. Fan out is batched to at most twelve live teammates at a time:
 count before you create — four literature lines plus two explorers plus a
 second DoubleChecker is seven, comfortably inside the pool, but two rounds'
 worth of fresh teammates at once is not. Over the bound a spawn fails with

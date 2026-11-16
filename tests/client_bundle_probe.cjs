@@ -369,6 +369,41 @@ if (verdict.applyIsFunction) {
     }
   }
 
+  // The Plugins page's bundle-config entry: 0.2.2-rc.1 replaced
+  // `BundleInfo.updatable` with the optional `update`, and the card must read
+  // neither. Trap property reads so a future read fails a test, and render the
+  // three bundle-record shapes the page can hand it: none, one with no
+  // `update` (a bundle `updateBundle` cannot replace), and `'registry'`.
+  const bundleCard = registrations.find((reg) => reg.descriptor.name === 'plugins.bundle.config')
+  if (bundleCard !== undefined) {
+    try {
+      const cardProps = propsOf(bundleCard.descriptor.inject())
+      const reads = []
+      const trapped = {}
+      for (const key of ['updatable', 'update']) {
+        Object.defineProperty(trapped, key, {
+          enumerable: true,
+          get() { reads.push(key); return key === 'updatable' ? true : 'registry' },
+        })
+      }
+      const render = (bundle) => bundleCard.component({ ...cardProps, view: 'page', bundle })
+      const withoutBundle = render(undefined)
+      const withoutUpdate = render({})
+      const withUpdate = render({ update: 'registry' })
+      render(trapped)
+      verdict.bundleUpdate = {
+        reads,
+        rendered: {
+          withoutBundle: withoutBundle !== undefined && withoutBundle !== null,
+          withoutUpdate: withoutUpdate !== undefined && withoutUpdate !== null,
+          withUpdate: withUpdate !== undefined && withUpdate !== null,
+        },
+      }
+    } catch (error) {
+      verdict.bundleUpdate = { error: `${error.name}: ${error.message}` }
+    }
+  }
+
   // The shell renders the active section with only `{ close }` as owner
   // props: no `view`. The section must still draw the full form.
   const section = registrations.find((reg) => reg.descriptor.name === 'settings.section')

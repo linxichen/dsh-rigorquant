@@ -164,8 +164,8 @@ mean done) and reads task ownership from the board's `owner` name.
 
 ## Install
 
-Requires DSH `>=0.2.2-rc.3` — an **open floor**, with no upper bound (Decision
-28, `docs/adr/0005-rigorquant-on-dsh-0.2.2.md`). The floor is the core this
+Requires DSH `>=0.2.2-rc.3` — an **open floor** (Decision 28,
+`docs/adr/0005-rigorquant-on-dsh-0.2.2.md`). The floor is the core this
 release was validated on; every core at or above it is admitted, and the floor
 moves only when a release is validated on a newer one. **0.8.0 is the last
 release for the 0.2.1-rc.2 harness**: nothing is backported, so stay on 0.8.0
@@ -237,7 +237,8 @@ enters the prompt rather than after the fact.
 
 Capacity is a study's **live-teammate pool of 12**, pinned by the bundle
 patch's `subagent` override (the base service's `maxActiveSubagents`), and
-there is **no lifetime cap**: a settled teammate frees its slot for the next.
+the pool bounds concurrency, never the study's lifetime count:
+a settled teammate frees its slot for the next.
 Over the pool a spawn raises `ACTIVATION_LIMIT_REACHED`, which nothing but a
 teammate finishing clears — the round checkpoints and ends the turn as a
 BUDGET outcome rather than retrying in a loop.
@@ -287,7 +288,7 @@ per Session itself; this path neither migrates a 0.8.0 profile nor carries
 saved routes over — the installer does both:
 
 ```sh
-dsh --version                 # must be >= 0.2.2-rc.3; there is no upper bound
+dsh --version                 # must be >= 0.2.2-rc.3; every newer core is admitted
 dsh plugin --profile web add dsh-rigorquant
 ```
 

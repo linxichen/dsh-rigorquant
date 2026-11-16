@@ -179,25 +179,8 @@ export const TEAMMATE_ALLOW_BY_TIER = {
 }
 
 /**
- * Tools denied to every teammate even when a tier would otherwise allow
- * them. This is documentation and the audit list, not the enforcement: the
- * allow set above is the enforcement, and the guards below reach the scoped
- * tools a restriction cannot. It names the orchestrator-owned study goal
- * (Decision 10), todo, the unattended-contract tools, the 0.2.1 host-plane
- * `working_directory` (Decision 27, seam S7), roster/board listing, the
- * interruption control the shipped configs leave off (Decision 24's
- * "interruption is not restored"), and delegation itself — a teammate never
- * creates another teammate.
+ * Parse a teammate's role from its name, or `null` when it doesn't parse.
  */
-export const EVERY_TEAMMATE_DENY = [
-  'working_directory',
-  'create_goal', 'update_goal', 'get_goal', 'todo_write',
-  'ask_user_question', 'exit_plan_mode',
-  'list_agents', 'team_task_list', 'interrupt_agent',
-  'subagent', 'subagent_fork', 'subagent_codex', 'subagent_claude_code',
-]
-
-/** Parse a teammate's role from its name, or `null` when it doesn't parse. */
 function roleFromName(teammateName) {
   const match = typeof teammateName === 'string' ? NAME_PATTERN.exec(teammateName) : null
   return match !== null ? match[1] : null
@@ -301,7 +284,10 @@ function treeRootId(subagents, agent) {
  * A teammate's guard: hub-and-spoke messaging, roster/board blindness,
  * own-task-only board access, and (for web-denied roles) the bash
  * network-verb denial. Ownership is read live through the service
- * (`teams.getTask`), never cached, so a CAS race cannot stale-allow.
+ * (`teams.getTask`), never cached, so a CAS race cannot stale-allow. The live
+ * row carries `ownerId` (the owning Session's id) plus an OPTIONAL
+ * `ownerName`, so a task owned by id alone is still recognised as foreign:
+ * a name-only read would let every id-owned task pass the guard.
  * @param agent - the exact live teammate this guard is scoped to.
  * @param membership - that teammate's resolved Team identity (`name`).
  * @param role - the parsed role, deciding whether bash network verbs apply.
@@ -332,8 +318,15 @@ function teammateGuard(agent, membership, role, teams, subagents) {
       } catch {
         return undefined // unknown/inaccessible task: let the real call surface the authoritative error
       }
-      if (task !== undefined && task.ownerName !== undefined && task.ownerName !== membership.name) {
-        return `rq-team: ${membership.name} does not own task '${taskId}' (owned by ${task.ownerName})`
+      // Both halves of the live ownership shape are authoritative. A row
+      // owned by a Session id with no name is foreign when the id is not this
+      // teammate's; a row carrying a name is foreign when the name is not its
+      // own. Either mismatch refuses, so no partially-populated row can pass.
+      const foreignById = task?.ownerId !== undefined && task.ownerId !== agent?.id
+      const foreignByName = task?.ownerName !== undefined && task.ownerName !== membership.name
+      if (foreignById || foreignByName) {
+        const owner = task.ownerName ?? task.ownerId
+        return `rq-team: ${membership.name} does not own task '${taskId}' (owned by ${owner})`
       }
       return undefined
     }
@@ -372,7 +365,13 @@ function nextNameFor(role, roster) {
  * authors instead of briefing new teammates. Settled is read live from the
  * roster: a running teammate may still be answered (a blocking question
  * mid-turn), the reused roles are untouched, and a name the roster does not
- * hold is left to the tool's own error.
+ * hold is left to the tool's own error. The 0.2.1 Team roster also carried a
+ * `provisioning` status, and 0.8.0 treated it (with `running`) as in-flight;
+ * the 0.2.2 subagent tree has no such state — `running` is the only in-flight
+ * status and `inactive`/`corrupt`/`unsupported`/`unavailable` are settled — so
+ * the guard has no provisioning branch to keep. Every non-`running` status is
+ * refused, which is exactly the old rule's behaviour for a state the new
+ * roster cannot produce: dropping it narrows nothing.
  */
 function leadGuard(agent, subagents, agents) {
   return (execution) => {
@@ -437,13 +436,13 @@ function apply(ctx, config = {}) {
     }
   }
 
-  const installLead = (agent, systemPrompt, tools) => {
+  const installLead = (agent, systemPrompt, tools, subagents, agents) => {
     const disposeContext = systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT })
     const disposeGuard = tools !== undefined
-      ? tools.guard(leadGuard(agent, ctx.get('subagents'), ctx.get('agents')))
+      ? tools.guard(leadGuard(agent, subagents, agents))
       : () => {}
     const disposeEscalate = tools !== undefined
-      ? tools.register(escalationTool(lane, agent, ctx.get('subagents'), ctx.get('agents')))
+      ? tools.register(escalationTool(lane, agent, subagents, agents))
       : () => {}
     installed.set(agent, () => {
       disposeContext()
@@ -452,7 +451,7 @@ function apply(ctx, config = {}) {
     })
   }
 
-  const installTeammate = (agent, membership, systemPrompt, tools, teams) => {
+  const installTeammate = (agent, membership, systemPrompt, tools, teams, subagents) => {
     const role = roleFromName(membership.name)
     if (role === null) return // unparseable name: skip silently (see module header)
     const persona = personas.get(role)
@@ -461,7 +460,7 @@ function apply(ctx, config = {}) {
     const disposePersona = systemPrompt.section({ name: PERSONA_PREFIX_SECTION, order, text: persona })
     const disposeTools = tools !== undefined ? tools.restrict({ allow: allowListFor(role, tools) }) : () => {}
     const disposeGuard = tools !== undefined
-      ? tools.guard(teammateGuard(agent, membership, role, teams, ctx.get('subagents')))
+      ? tools.guard(teammateGuard(agent, membership, role, teams, subagents))
       : () => {}
     installed.set(agent, () => {
       disposePersona()
@@ -471,12 +470,18 @@ function apply(ctx, config = {}) {
   }
 
   const maybeInstall = async (agent, signal) => {
+    // Read the three services this pass uses ONCE and thread them down: every
+    // composition and guard needs the same live instances, and re-reading
+    // them at each call site made "which instance did this guard capture?"
+    // depend on where the call was written.
     const teams = ctx.get('agentTeams')
+    const subagents = ctx.get('subagents')
+    const agents = ctx.get('agents')
     if (teams === undefined) {
       warnAbsentOnce()
       return
     }
-    const identity = identityOf(ctx.get('subagents'), agent)
+    const identity = identityOf(subagents, agent)
     if (identity === undefined) return
     const inRigorQuant = ctx.get('agentPresets')?.composedPreset(agent.ctx) === presetId
     if (!inRigorQuant) {
@@ -516,10 +521,10 @@ function apply(ctx, config = {}) {
     if (systemPrompt === undefined) return
     const tools = agent.ctx.get('tools')
     if (identity.isRoot) {
-      installLead(agent, systemPrompt, tools)
+      installLead(agent, systemPrompt, tools, subagents, agents)
       return
     }
-    installTeammate(agent, { role: 'teammate', name: identity.name }, systemPrompt, tools, teams)
+    installTeammate(agent, { name: identity.name }, systemPrompt, tools, teams, subagents)
   }
 
   const install = (agent, signal) => {

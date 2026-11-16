@@ -67,7 +67,7 @@ import subprocess
 
 import pytest
 
-from conftest import REPO
+from conftest import REPO, require_harness
 
 PROBE = REPO / "tests/team_probe.cjs"
 
@@ -85,8 +85,30 @@ def probe():
     if not module.exists():
         pytest.fail(f"package.json exports ./team but {module} is missing")
     out = subprocess.run([node, str(PROBE), str(module)],
-                         capture_output=True, text=True, check=True)
+                         capture_output=True, text=True)
+    # The behaviour seam requires the installed harness (issue #47, finding 2):
+    # without one the probe exits 3 and these tests skip; a live harness with a
+    # missing service method is a real failure, not a skip.
+    require_harness(out)
+    assert out.returncode == 0, (out.stdout, out.stderr)
     return json.loads(out.stdout)
+
+
+def test_the_probe_requires_the_installed_service_surfaces(probe):
+    """The stubs stand in for real services, so the real methods must exist.
+
+    This is the check that would have caught the 0.2.2 removal of the Team
+    service's `tryMembership`/`listMembers`: the probe used to exercise
+    hand-written fakes with no harness present, so a removed method left the
+    suite green while the live plugin threw. It requires the installed
+    `@deepseek-ai/dsh-agent-team`'s TeamService (`setEnabled`/`isEnabled`) and
+    `@deepseek-ai/dsh-subagent`'s SubagentRuntime (`rootOf`/`namesOf`) before
+    any stub is exercised.
+    """
+    assert probe["surfaces"] == {
+        "TeamService": ["isEnabled", "setEnabled"],
+        "SubagentRuntime": ["namesOf", "rootOf"],
+    }, probe["surfaces"]
 
 
 def test_team_export_points_at_a_shipped_file():
@@ -159,23 +181,23 @@ def test_a_teammates_visible_tools_are_all_classified(probe):
     """Visibility is exactly the classification, and interruption stays out.
 
     A tool the core newly mounts is invisible until it is classified, so the
-    assertion is one-directional by construction: the visible set must equal
-    the tier's allow set for this session, and no every-teammate denial (the
-    roster/board, interruption, delegation, the orchestrator's goal tools)
-    may appear.
+    visible set is the tier's allow set intersected with this session's
+    mounted catalog, and it must equal the tier's classification — nothing
+    filtered out by accident, nothing widened. The roster/board, interruption,
+    delegation and the orchestrator's goal tools are absent because no tier
+    classifies them, not because a second deny list names them.
     """
-    denied = set(probe["denied"])
     for member in ("doublechecker1", "explorer1", "adversary1"):
         entry = probe["classification"][member]
-        visible = set(entry["visible"])
+        allow = set(entry["allow"])
         assert entry["tier"] in {"blind", "webDenied", "open"}, entry
-        assert visible == set(entry["classification"]), member
-        assert not visible & denied, (member, sorted(visible & denied))
-        assert "interrupt_agent" not in visible, member
+        assert allow == set(entry["classification"]), member
+        assert not set(entry["unmounted"]), (member, entry["unmounted"])
+        assert "interrupt_agent" not in allow, member
         for gone in ("list_agents", "team_task_list", "subagent", "subagent_fork",
                      "working_directory", "create_goal", "todo_write",
                      "ask_user_question", "exit_plan_mode"):
-            assert gone not in visible, (member, gone)
+            assert gone not in allow, (member, gone)
 
 
 def test_an_unparseable_teammate_name_is_skipped_silently(probe):
@@ -304,9 +326,20 @@ def test_every_teammate_is_roster_and_board_blind(probe):
 
 
 def test_a_teammate_touches_only_its_own_task(probe):
+    """Ownership is read from both owner fields the live row can carry.
+
+    A Team task row carries `ownerId` — the owning Session's id — and an
+    optional `ownerName` that older or reconstructed rows may omit (or carry
+    alone). Reading only the name would let a task owned by an id pass as
+    unowned, so the guard compares its Session id and its name against the
+    row and treats either mismatch as foreign.
+    """
     checks = probe["guardChecks"]
     assert checks["ownTaskGetAllowed"] is None
+    assert checks["ownTaskBothAllowed"] is None
     assert isinstance(checks["foreignTaskGetDenied"], str)
+    assert isinstance(checks["foreignTaskNamedDenied"], str)
+    assert isinstance(checks["foreignTaskBothDenied"], str)
     assert checks["unownedTaskClaimAllowed"] is None, (
         "an unclaimed task must stay reachable, or team_task_update(action: "
         "'claim') could never succeed")

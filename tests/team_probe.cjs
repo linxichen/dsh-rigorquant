@@ -1,9 +1,17 @@
-// Exercises dsh/team.js the way a host process would, without one.
+// Exercises dsh/team.js the way a host process would, but only after proving
+// the INSTALLED harness still has the two service surfaces the module and its
+// stubs stand in for. The probe used to exercise hand-written fakes with no
+// harness present, so a core that removed `tryMembership`/`listMembers` left
+// the suite green while the live plugin threw. It now requires the installed
+// packages first: `@deepseek-ai/dsh-agent-team`'s TeamService must define
+// `setEnabled`/`isEnabled`, and `@deepseek-ai/dsh-subagent`'s SubagentRuntime
+// must define `rootOf`/`namesOf`. With no harness (exit 3) or a refused core
+// (exit 2) the Python tests skip; a missing method is a real failure (exit 1).
 //
-// Mounts the plugin against a stub ctx (agentTeams arming, the subagents
-// identity service, agents backfill, agentPresets) and a per-agent stub scope
-// (systemPrompt's section()/context()/getSectionOrder(), tools'
-// restrict()/guard()), then drives these scenarios: agentTeams present (a
+// Then it mounts the plugin against a stub ctx (agentTeams arming, the
+// subagents identity service, agents backfill, agentPresets) and a per-agent
+// stub scope (systemPrompt's section()/context()/getSectionOrder(), tools'
+// restrict()/guard()), and drives these scenarios: agentTeams present (a
 // lead + several teammates of varying tiers, an unparseable name, a
 // non-RigorQuant teammate, a non-RigorQuant ROOT that must never be armed), a
 // service that reports the selection still off (no armed context), agentTeams
@@ -17,6 +25,62 @@
 // and the escalation lane: the Lead's `rq_escalate` tool mounting a stub
 // MCP client into the caller or a named teammate. Prints one JSON verdict.
 const { pathToFileURL } = require('node:url')
+
+const {
+  EXIT_PROBLEM, exitNoHarness, harnessRequireFor,
+  requireSupportedCore, resolveHarness,
+} = require('./harness_locator.cjs')
+
+const PREFIX = 'team_probe'
+
+/** The installed surfaces the probe's stubs are stand-ins for. A rename or a
+ * removal here is exactly the class of break the release must catch: the
+ * module reads these methods, so a probe that stubs a service the core no
+ * longer has proves nothing. */
+const INSTALLED_SURFACES = [
+  { spec: '@deepseek-ai/dsh-agent-team', exported: 'TeamService', methods: ['isEnabled', 'setEnabled'] },
+  { spec: '@deepseek-ai/dsh-subagent', exported: 'SubagentRuntime', methods: ['namesOf', 'rootOf'] },
+]
+
+/**
+ * Require the installed harness and assert the two services still carry the
+ * methods `dsh/team.js` and this probe's stubs model. Exits with the shared
+ * codes: 3 no harness, 2 refused core, 1 a real missing surface.
+ * @returns the surface report (methods found, sorted) for the verdict.
+ */
+async function requireInstalledSurfaces() {
+  const harness = resolveHarness(undefined)
+  if (harness === undefined) {
+    exitNoHarness(PREFIX, 'cannot locate an installed harness; the behaviour seam requires its live service surfaces')
+  }
+  const harnessRequire = harnessRequireFor(harness, PREFIX)
+  await requireSupportedCore(harnessRequire, PREFIX)
+  const surfaces = {}
+  for (const { spec, exported, methods } of INSTALLED_SURFACES) {
+    let mod
+    try {
+      mod = await import(pathToFileURL(harnessRequire.resolve(spec)).href)
+    } catch (error) {
+      process.stderr.write(`${PREFIX}: cannot import the installed ${spec}: ${String(error?.message ?? error)}\n`)
+      process.exit(EXIT_PROBLEM)
+    }
+    const service = mod[exported]
+    if (typeof service !== 'function') {
+      process.stderr.write(`${PREFIX}: the installed ${spec} exports no ${exported} class\n`)
+      process.exit(EXIT_PROBLEM)
+    }
+    const missing = methods.filter((method) => typeof service.prototype?.[method] !== 'function')
+    if (missing.length > 0) {
+      process.stderr.write(
+        `${PREFIX}: the installed ${spec}'s ${exported} no longer defines ${missing.join(', ')};`
+        + ' the plugin is written against that surface\n')
+      process.exit(EXIT_PROBLEM)
+    }
+    surfaces[exported] = [...methods].sort()
+  }
+  return surfaces
+}
+
 
 // The global tools a RigorQuant session mounts (base + preset + Team control)
 // plus a few the core mounts for other modes. The probe's tools stub reports
@@ -100,17 +164,20 @@ function pick(recorder) {
 
 /** One role's classification verdict, read from the module's own data and
  * from what its composition installed: the allow filter `tools.restrict`
- * received, the un-filtered tier, and the visible set (the allow set the
- * session's catalog intersects, which is what the model actually sees). */
+ * received (what the model sees) and the un-filtered tier. `unmounted` is the
+ * tier entry this session's catalog lacks — a non-empty list would mean
+ * `allowListFor` silently narrowed a role, so the test requires it to be
+ * empty rather than treating the filter as a second, unfalsifiable view. */
 function classificationOf(mod, role, recorder) {
   const filter = recorder.restricts[0] ?? {}
   const allow = Array.isArray(filter.allow) ? filter.allow.slice() : []
+  const classification = [...mod.classificationFor(role)]
   return {
     role,
     tier: mod.tierOf(role),
     allow,
-    classification: [...mod.classificationFor(role)],
-    visible: allow.slice(),
+    classification,
+    unmounted: classification.filter((tool) => !allow.includes(tool)),
   }
 }
 
@@ -189,14 +256,20 @@ const ROSTER_STATUS = {
   'lit-line-1': 'inactive',
 }
 
-// Fixture task board for the ownership guard: 'own-task' is owned by
-// doublechecker-1, 'foreign-task' by explorer-1, 'unowned-task' has no owner
-// yet (still claimable), and any other id is unknown (getTask throws, the
-// way the real service does for a bad id).
+// Fixture task board for the ownership guard, in the shapes the live board
+// actually carries: a row owned by a Session id alone (`ownerId`, optional
+// `ownerName` absent), by a name alone (history), or by both. 'own-task' and
+// 'own-task-both' belong to doublechecker-1 (agent id 'dc-1' / its name);
+// 'foreign-task' and 'foreign-task-both' belong to explorer-1; 'unowned-task'
+// has no owner yet (still claimable). Any other id is unknown (getTask throws,
+// the way the real service does for a bad id).
 const TASKS_BY_ID = new Map([
-  ['own-task', { id: 'own-task', ownerName: 'doublechecker-1' }],
-  ['foreign-task', { id: 'foreign-task', ownerName: 'explorer-1' }],
-  ['unowned-task', { id: 'unowned-task', ownerName: undefined }],
+  ['own-task', { id: 'own-task', ownerId: 'dc-1' }],
+  ['own-task-both', { id: 'own-task-both', ownerId: 'dc-1', ownerName: 'doublechecker-1' }],
+  ['foreign-task', { id: 'foreign-task', ownerId: 'ex-1' }],
+  ['foreign-task-named', { id: 'foreign-task-named', ownerName: 'explorer-1' }],
+  ['foreign-task-both', { id: 'foreign-task-both', ownerId: 'ex-1', ownerName: 'explorer-1' }],
+  ['unowned-task', { id: 'unowned-task', ownerId: undefined, ownerName: undefined }],
 ])
 
 const ARM_SIGNAL = 'signal:agent-created'
@@ -313,9 +386,14 @@ async function runPresentScenario(mod) {
     // Roster/board blindness: unconditional for every teammate.
     listAgentsDenied: drive(doublechecker1Guard, 'list_agents', {}),
     taskListDenied: drive(doublechecker1Guard, 'team_task_list', {}),
-    // Own-task-only board access, read live through the (fake) service.
+    // Own-task-only board access, read live through the (fake) service. The
+    // live row carries `ownerId` (a Session id) plus an OPTIONAL `ownerName`,
+    // so a task owned by id alone must still be recognised as foreign.
     ownTaskGetAllowed: drive(doublechecker1Guard, 'team_task_get', { task_id: 'own-task' }),
+    ownTaskBothAllowed: drive(doublechecker1Guard, 'team_task_get', { task_id: 'own-task-both' }),
     foreignTaskGetDenied: drive(doublechecker1Guard, 'team_task_get', { task_id: 'foreign-task' }),
+    foreignTaskNamedDenied: drive(doublechecker1Guard, 'team_task_get', { task_id: 'foreign-task-named' }),
+    foreignTaskBothDenied: drive(doublechecker1Guard, 'team_task_get', { task_id: 'foreign-task-both' }),
     unownedTaskClaimAllowed: drive(doublechecker1Guard, 'team_task_update', { task_id: 'unowned-task', action: 'claim' }),
     foreignTaskUpdateDenied: drive(doublechecker1Guard, 'team_task_update', { task_id: 'foreign-task', action: 'complete' }),
     // Bash network verbs: denied for a web-denied role (blind and
@@ -349,7 +427,6 @@ async function runPresentScenario(mod) {
     mountError,
     beforeSubagentStart,
     guardChecks,
-    denied: [...mod.EVERY_TEAMMATE_DENY],
     classification: {
       doublechecker1: classificationOf(mod, 'doublechecker', doublechecker1.recorder),
       explorer1: classificationOf(mod, 'explorer', explorer1.recorder),
@@ -793,10 +870,11 @@ async function runEscalationScenario(mod) {
 
 async function main() {
   const [, , modulePath] = process.argv
+  const surfaces = await requireInstalledSurfaces()
   const mod = await import(pathToFileURL(modulePath).href)
 
   const {
-    mountError, beforeSubagentStart, present, guardChecks, arming, classification, denied,
+    mountError, beforeSubagentStart, present, guardChecks, arming, classification,
   } = await runPresentScenario(mod)
   const unarmedService = await runUnarmedServiceScenario(mod)
   const absent = await runAbsentScenario(mod)
@@ -806,8 +884,9 @@ async function main() {
   const escalation = await runEscalationScenario(mod)
 
   process.stdout.write(JSON.stringify({
+    surfaces,
     mountError, beforeSubagentStart, present, guardChecks, arming, classification,
-    denied, unarmedService,
+    unarmedService,
     absent, resume, latePresetSelection, unload, escalation,
   }))
 }

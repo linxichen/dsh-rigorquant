@@ -68,6 +68,30 @@ function harnessRequireFor(harness, probe) {
 }
 
 /**
+ * Evaluate a shipped host module's relative ES imports as CommonJS, the way
+ * the repository probes load `dsh/index.js` and `dsh/team.js` without an npm
+ * install: the module source is read as text, each `import { names } from
+ * './helper.js'` is replaced by an IIFE evaluating that helper's source (its
+ * `export` keywords stripped), and the rest of the loader stays in the probe.
+ * One copy for both router probes (behaviour and schema), so they cannot
+ * inline a different helper the next time the router gains a relative import.
+ * @param source - the module's source text.
+ * @param modulePath - the module's absolute path; anchors relative imports.
+ * @returns the source with every relative import inlined.
+ */
+function inlineRelativeImports(source, modulePath) {
+  return source.replace(
+    /^import \{ ([^}]+) \} from '\.\/([^']+)'$/gm,
+    (_, names, spec) => {
+      let helper = readFileSync(join(dirname(modulePath), spec), 'utf8')
+      helper = helper.replace(/^export const /gm, 'const ')
+      helper = helper.replace(/^export \{ ([^}]+) \}$/m, '')
+      return `const { ${names} } = (() => { ${helper}; return { ${names} } })()`
+    },
+  )
+}
+
+/**
  * Report that a probe has nothing to validate against and exit with the
  * shared code; the Python side skips on the code, never on the wording.
  */
@@ -94,13 +118,12 @@ function installedCoreVersion(harnessRequire) {
 
 /**
  * The `@deepseek-ai/dsh` range this package declares, read from its manifest.
- * `engines.dsh` first: it is the field a 0.2.1+ gate reads alone. 0.8.1
- * declares no peer range at all, so the fallback only serves a manifest from
- * an older release.
+ * `engines.dsh` is the only band: 0.8.1 declares no peer range, and the gate
+ * reads `engines.dsh` alone when it is present, so a peer fallback would be a
+ * second band nothing enforces.
  */
 function declaredRange() {
-  const manifest = ownManifest()
-  return manifest.engines?.dsh ?? manifest.peerDependencies?.['@deepseek-ai/dsh']
+  return ownManifest().engines?.dsh
 }
 
 /** The harness's own `evaluatePluginCompatibility`; throws when it cannot load. */
@@ -181,6 +204,7 @@ module.exports = {
   findHarnessModules,
   harnessRequireFor,
   installedCoreVersion,
+  inlineRelativeImports,
   judgeCore,
   loadCompatibilityGate,
   requireSupportedCore,
