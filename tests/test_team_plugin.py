@@ -108,6 +108,20 @@ def _allow(probe, member):
     return set(probe["classification"][member]["allow"])
 
 
+def test_a_teammate_is_composed_on_subagent_start_not_on_agent_created(probe):
+    """A teammate has no tree identity during its own `agent/created`.
+
+    The subagent manager records the activation (the `<role>-<n>` path) only
+    after the child is created, so `agent/created` cannot name it;
+    `subagent/start` is published after that residency step and is where the
+    composition can be read. Before it, the teammate must be untouched.
+    """
+    assert probe["beforeSubagentStart"] == {
+        "sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
+    assert probe["present"]["doublechecker1"]["sections"], (
+        "the teammate was never composed on subagent/start")
+
+
 def test_doublechecker_gets_the_blind_tier_classification(probe):
     """A teammate's catalog is an ALLOW set, not a short deny list.
 
@@ -220,6 +234,8 @@ def test_a_service_that_reports_the_selection_off_leaves_the_guard_disarmed(prob
 
 def test_reapplication_on_a_resume_sourced_creation(probe):
     resume = probe["resume"]
+    assert resume["beforeResident"] == {
+        "sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
     assert len(resume["firstSections"]) == 1
     assert resume["disposedAfterResume"] == ["deployment:persona-prefix"]
     assert len(resume["secondSections"]) == 1

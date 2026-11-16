@@ -116,12 +116,19 @@ function classificationOf(mod, role, recorder) {
 
 /** The 0.2.2 subagent identity service: `rootOf` and `namesOf`, keyed by the
  * exact live Agent. A member absent from either map throws, the way the real
- * service does for an agent outside a live tree. */
-function makeSubagents({ roots, names }) {
+ * service does for an agent outside a live tree.
+ *
+ * `resident` models the real ordering: a delegate has no tree identity during
+ * its own `agent/created` (the manager records the activation only after the
+ * child is created), so it becomes nameable only when `subagent/start`
+ * publishes it. A root is always nameable. */
+function makeSubagents({ roots, names, resident = new Set() }) {
   return {
+    resident,
     rootOf: (agent) => {
       const root = roots.get(agent)
       if (root === undefined) throw new Error('agent has no active runtime owner')
+      if (root !== agent && !resident.has(agent)) throw new Error('agent has no active runtime owner')
       return root
     },
     namesOf: (agent) => {
@@ -207,7 +214,9 @@ async function runPresentScenario(mod) {
       listeners.get(name).push(handler)
     },
     get: (name) => {
-      if (name === 'agents') return { list: () => allAgents }
+      if (name === 'agents') {
+        return { list: () => allAgents, get: (id) => allAgents.find((agent) => agent.id === id) }
+      }
       if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
       if (name === 'agentTeams') return teams.service
       if (name === 'subagents') return subagents
@@ -262,6 +271,7 @@ async function runPresentScenario(mod) {
   allAgents.push(lead.agent, offgrid1.agent, litLine1.agent)
 
   let mountError = null
+  let beforeSubagentStart = null
   try {
     mod.apply(ctx)
     await flush() // the live-lead backfill arms asynchronously
@@ -270,13 +280,19 @@ async function runPresentScenario(mod) {
       doublechecker1.agent, explorer1.agent, adversary1.agent, unparseable.agent,
       nonRigorQuant.agent, standardRoot.agent, secondRoot.agent,
     )
-    await emit('agent/created', { agent: doublechecker1.agent, source: 'startup', signal: ARM_SIGNAL })
-    await emit('agent/created', { agent: explorer1.agent, source: 'startup', signal: ARM_SIGNAL })
-    await emit('agent/created', { agent: adversary1.agent, source: 'startup', signal: ARM_SIGNAL })
-    await emit('agent/created', { agent: unparseable.agent, source: 'startup', signal: ARM_SIGNAL })
-    await emit('agent/created', { agent: nonRigorQuant.agent, source: 'startup', signal: ARM_SIGNAL })
+    for (const made of [doublechecker1, explorer1, adversary1, unparseable, nonRigorQuant]) {
+      await emit('agent/created', { agent: made.agent, source: 'startup', signal: ARM_SIGNAL })
+    }
     await emit('agent/created', { agent: standardRoot.agent, source: 'startup', signal: ARM_SIGNAL })
     await emit('agent/created', { agent: secondRoot.agent, source: 'startup', signal: ARM_SIGNAL })
+    // A teammate's tree identity exists only after the subagent manager
+    // records the activation: `agent/created` cannot compose it, and
+    // `subagent/start` is the edge that can.
+    beforeSubagentStart = pick(doublechecker1.recorder)
+    for (const made of [doublechecker1, explorer1, adversary1, unparseable, nonRigorQuant]) {
+      subagents.resident.add(made.agent)
+      await emit('subagent/start', { id: made.agent.id, parentSessionId: 'lead-1', local: true })
+    }
   } catch (error) {
     mountError = `${error.name}: ${error.message}`
   }
@@ -329,6 +345,7 @@ async function runPresentScenario(mod) {
 
   return {
     mountError,
+    beforeSubagentStart,
     guardChecks,
     denied: [...mod.EVERY_TEAMMATE_DENY],
     classification: {
@@ -424,8 +441,10 @@ async function runResumeScenario(mod) {
   const listeners = new Map()
   const roots = new Map()
   const names = new Map()
+  const subagents = makeSubagents({ roots, names })
   const dc = makeAgent('dc-resume', 'rigorquant')
   const lead = makeAgent('lead-resume', 'rigorquant')
+  const agentsById = new Map([[dc.agent.id, dc.agent], [lead.agent.id, lead.agent]])
   roots.set(dc.agent, lead.agent)
   roots.set(lead.agent, lead.agent)
   names.set(lead.agent, { self: 'lead' })
@@ -439,10 +458,10 @@ async function runResumeScenario(mod) {
       listeners.get(name).push(handler)
     },
     get: (name) => {
-      if (name === 'agents') return { list: () => [] }
+      if (name === 'agents') return { list: () => [], get: (id) => agentsById.get(id) }
       if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
       if (name === 'agentTeams') return teams.service
-      if (name === 'subagents') return makeSubagents({ roots, names })
+      if (name === 'subagents') return subagents
       return undefined
     },
   }
@@ -452,12 +471,21 @@ async function runResumeScenario(mod) {
 
   mod.apply(ctx)
   await emit('agent/created', { agent: dc.agent, source: 'startup' })
+  const beforeResident = pick(dc.recorder)
+  subagents.resident.add(dc.agent)
+  await emit('subagent/start', { id: dc.agent.id, parentSessionId: 'lead-resume', local: true })
   const firstSections = dc.recorder.sections.slice()
+  // A cold resume re-announces agent/created before the manager records the
+  // activation: the teammate is unnameable at that edge again, and only its
+  // own subagent/start can re-apply the composition.
+  subagents.resident.delete(dc.agent)
   await emit('agent/created', { agent: dc.agent, source: 'resume' })
+  subagents.resident.add(dc.agent)
+  await emit('subagent/start', { id: dc.agent.id, parentSessionId: 'lead-resume', local: true })
   const disposedAfterResume = dc.recorder.disposedSections.slice()
   const secondSections = dc.recorder.sections.slice(firstSections.length)
 
-  return { firstSections, disposedAfterResume, secondSections }
+  return { beforeResident, firstSections, disposedAfterResume, secondSections }
 }
 
 /**
@@ -568,6 +596,7 @@ async function runUnloadScenario(mod) {
     [dc.agent, { self: 'doublechecker-1', parent: 'lead' }],
   ])
   const teams = makeTeams()
+  const resident = new Set([dc.agent]) // both were created before the toggle
 
   // One plugin fiber: its listeners, and the effects it registered, which
   // cordis disposes in reverse order when the fiber unloads.
@@ -581,7 +610,7 @@ async function runUnloadScenario(mod) {
         if (name === 'agents') return { list: () => [lead.agent, dc.agent], get: () => undefined }
         if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
         if (name === 'agentTeams') return teams.service
-        if (name === 'subagents') return makeSubagents({ roots, names })
+        if (name === 'subagents') return makeSubagents({ roots, names, resident })
         return undefined
       },
     }
@@ -658,6 +687,8 @@ async function runEscalationScenario(mod) {
   names.set(broken.agent, { self: 'adversary-1', parent: 'lead' })
   for (const member of [lead, dc, broken]) agentsById.set(member.agent.id, member.agent)
   const teams = makeTeams({ roster })
+  const resident = new Set()
+  const subagents = makeSubagents({ roots, names, resident })
   const ctx = {
     logger: { warn: () => {} },
     effect: () => {},
@@ -669,7 +700,7 @@ async function runEscalationScenario(mod) {
       if (name === 'agents') return { list: () => [], get: (id) => agentsById.get(id) }
       if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
       if (name === 'agentTeams') return teams.service
-      if (name === 'subagents') return makeSubagents({ roots, names })
+      if (name === 'subagents') return subagents
       if (name === 'loader') {
         return {
           import: async (spec) => { imports.push(spec); return { default: stubClient } },
@@ -684,8 +715,11 @@ async function runEscalationScenario(mod) {
   }
 
   mod.apply(ctx)
-  for (const member of [lead, dc, broken]) {
+  await emit('agent/created', { agent: lead.agent, source: 'startup' })
+  for (const member of [dc, broken]) {
     await emit('agent/created', { agent: member.agent, source: 'startup' })
+    resident.add(member.agent)
+    await emit('subagent/start', { id: member.agent.id, parentSessionId: 'lead-esc', local: true })
   }
 
   const tool = lead.recorder.registered.find((definition) => definition.name === 'rq_escalate')
@@ -742,7 +776,9 @@ async function main() {
   const [, , modulePath] = process.argv
   const mod = await import(pathToFileURL(modulePath).href)
 
-  const { mountError, present, guardChecks, arming, classification, denied } = await runPresentScenario(mod)
+  const {
+    mountError, beforeSubagentStart, present, guardChecks, arming, classification, denied,
+  } = await runPresentScenario(mod)
   const unarmedService = await runUnarmedServiceScenario(mod)
   const absent = await runAbsentScenario(mod)
   const resume = await runResumeScenario(mod)
@@ -751,7 +787,8 @@ async function main() {
   const escalation = await runEscalationScenario(mod)
 
   process.stdout.write(JSON.stringify({
-    mountError, present, guardChecks, arming, classification, denied, unarmedService,
+    mountError, beforeSubagentStart, present, guardChecks, arming, classification,
+    denied, unarmedService,
     absent, resume, latePresetSelection, unload, escalation,
   }))
 }

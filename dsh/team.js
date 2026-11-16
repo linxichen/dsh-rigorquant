@@ -9,15 +9,16 @@
 // delegation row any more, so this module is the ONLY place a teammate's
 // persona, tool budget and topology come from.
 //
-// Two harness services are involved, both OPTIONAL and reached duck-typed by
-// name: `agentTeams` (`ctx.get('agentTeams')`) for the per-Session Team
-// selection, and `subagents` for identity (the 0.2.2 contract replaced the
-// removed `agentTeams` membership/roster API with `subagents.rootOf` /
-// `namesOf` / `listDescendants`; upgrade guide v0.2.1-rc.2, "Agent Teams uses
-// subagents and Session ids"). This module never imports any of the
-// `@deepseek-ai/dsh-agent-team` packages. When `agentTeams` is absent this
-// plugin warns once and disarms: no persona, no tool restriction, and no
-// armed line for anyone, on any session.
+// Two harness services are involved. `subagents` is a required base service
+// on this release's floor (injected, so its async initialization is done
+// before composition runs) and supplies identity: the 0.2.2 contract replaced
+// the removed `agentTeams` membership/roster API with `subagents.rootOf` /
+// `namesOf` (upgrade guide v0.2.1-rc.2, "Agent Teams uses subagents and
+// Session ids"). `agentTeams` is OPTIONAL and reached duck-typed
+// (`ctx.get('agentTeams')`) for the per-Session Team selection; this module
+// never imports any of the `@deepseek-ai/dsh-agent-team` packages. When
+// `agentTeams` is absent this plugin warns once and disarms: no persona, no
+// tool restriction, and no armed line for anyone, on any session.
 //
 // Arming is per SESSION, never for the whole profile: on `agent/created`
 // (and on the late `agent-preset/selected` switch), a ROOT Session composed as
@@ -28,10 +29,12 @@
 // touched, so installing this plugin does not turn Team on for the operator's
 // other presets.
 //
-// Composition is applied per teammate on every `agent/created` — fresh
-// (`startup`), `resume`, `clear`, and `compact` all fire it, and none of
-// the four persists prior composition in the agent's descriptor, so every
-// firing disposes the previous registration (if any) and reinstalls fresh.
+// Composition is applied per teammate on `subagent/start` (the creation edge
+// on which the child's tree identity — its `<role>-<n>` name — exists) and per
+// root on every `agent/created`: fresh (`startup`), `resume`, `clear`, and
+// `compact` all re-announce, and none of them persists prior composition in
+// the agent's descriptor, so every firing disposes the previous registration
+// (if any) and reinstalls fresh.
 // The persona is registered as a system-prompt SECTION at the harness's own
 // `deployment:persona-prefix` slot — the same shadowing contract every
 // preset persona already uses. The "RigorQuant team guard: armed" line, in
@@ -88,7 +91,12 @@ import { fileURLToPath } from 'node:url'
 import { ESCALATE_TOOL, createLane, escalationTool } from './lane.js'
 
 const name = 'rq-team'
-const inject = ['agents', 'tools', 'systemPrompt']
+// `subagents` is a required base service on the 0.2.2 floor: every identity
+// read below goes through it, and injecting it makes cordis finish its async
+// initialization (the manager binding) before this plugin's apply/backfill
+// runs. `agentTeams` stays OPTIONAL and duck-typed: a core/profile without it
+// must disarm with a warning, never fail to mount.
+const inject = ['agents', 'tools', 'systemPrompt', 'subagents']
 const PRESET_ID = 'rigorquant'
 
 /**
@@ -573,6 +581,18 @@ function apply(ctx, config = {}) {
 
   for (const agent of ctx.get('agents')?.list() ?? []) install(agent)
   ctx.on('agent/created', ({ agent, signal }) => install(agent, signal))
+  // A teammate is NOT a member of the live tree yet when its own
+  // `agent/created` fires: the subagent manager records the activation
+  // (which is what gives the child its `<role>-<n>` path) only after the
+  // child's creation resolves. `subagent/start` is published after that
+  // residency step and after the child is published as a live Agent, so it
+  // is the one creation edge on which a teammate's own composition can be
+  // read. It also fires for a cold resume, like `agent/created` does.
+  ctx.on('subagent/start', ({ id }) => {
+    const agent = ctx.get('agents')?.get(id)
+    if (agent !== undefined) return install(agent)
+    return undefined
+  })
   ctx.on('agent/disposed', ({ agent }) => disposeFor(agent))
   // A session composed as rigorquant only AFTER its own agent/created already
   // ran (see module header) needs a second trigger, once the recompose that
