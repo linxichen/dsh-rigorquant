@@ -464,11 +464,23 @@ the deliverables tool (`present`) and the right Sidebar land. Decision:
 
 **Amended for 0.1.6 (0.4.2, the last classic release):** two browser seams
 broke silently and are followed, not worked around, and the floor rose to
-`DSH ≥ 0.1.6-alpha.2` (Decision 25 raises it again) — enforced by
+`DSH ≥ 0.1.6-alpha.2` (Decision 25 raised it again) — enforced by
 `install.sh`, documented in both READMEs and the preset header, and pinned by
 `test_repo_consistency.py`. The floor is above every row's own requirement
 because the two seams below are browser-side: on 0.1.5 the preset still mounts
 while the card and the floater render nothing at all.
+
+**Amended for 0.8.1 (Decision 28): the harness range is an open floor.** From
+0.8.1 `engines.dsh` is `>=0.2.2-rc.3` — no ceiling, and no restated
+`peerDependencies` range. The floor names the core the release was validated
+on; a core at or above it is admitted, and the floor moves only when a release
+is validated on a newer one. A ceiling could not tell "this core will break
+the plugin" from "this core did not exist when the release was cut" — it
+asserted the latter as the former, so every later core drew the same
+incompatibility warning and forced the operator to grant a risk exemption on a
+plugin the gate called unsafe. The installer keeps the one refusal that
+protects an older core and replaces the ceiling refusal with an advisory
+naming the validated core.
 
 - **The routing card is the bundle's configuration entry on the Plugins
   page.** 0.1.6 retired `settings.plugin.item` (plugin configuration moved
@@ -954,6 +966,10 @@ pinned by `test_repo_consistency.py`. The floor moves because on 0.2.1-rc.2
 `peerDependencies` — and one range is evaluated against one running core.
 0.7.0 is the last release for the 0.2.0-rc.2 line; nothing is backported.
 
+*(Superseded by Decision 28: from 0.8.1 `engines.dsh` is `>=0.2.2-rc.3`, an
+open floor with no ceiling; the installer refuses a core below it and advises
+above it. 0.8.0 is the last release for the 0.2.1-rc.2 line.)*
+
 **Why the ceiling moved (a false green, not a guard).** The previous band,
 `>=0.2.0-rc.2 <0.2.1`, **already admitted 0.2.1-rc.2**: the compatibility gate
 matches with `includePrerelease`, so `<0.2.1` excludes 0.2.1 stable, not a
@@ -966,6 +982,11 @@ harness's own `evaluatePluginCompatibility` and asserts the real manifest
 accepts `0.2.1-rc.2` and `0.2.1` and refuses `0.2.2-rc.1`, `0.2.2` and
 `0.2.0-rc.2` — a string-equality test of the band cannot catch a prerelease
 ordering mistake.
+
+*(Superseded by Decision 28: the `-0` ceiling is gone by policy. 0.8.1
+declares an open floor — `engines.dsh: ">=0.2.2-rc.3"` — and the verdict test
+now pins acceptance on the live core, 0.2.2, 0.3.0 and 1.0.0, and refusal of
+0.2.1-rc.2 and 0.2.2-rc.2 with the floor named.)*
 
 **The gate reads `engines.dsh` alone.** When a manifest declares `engines.dsh`,
 the 0.2.1 gate evaluates that range and ignores `peerDependencies`; the issue
@@ -986,6 +1007,13 @@ were never the delegation path — Agent Teams' `spawn_teammate` is) and keep
 `provider`, `toolName` and `maxDepth`. Both removals were silent no-ops before:
 schemastery preserves an unknown key and a disabled row is never imported,
 which is why the tests that pinned them are inverted in the same release.
+
+*(Superseded by Decision 28: 0.2.2-rc.3's `agentTeams` config is
+`{maxTasks, defaultEnabled}` and its constructor **throws**
+`TEAM_INVALID_CONFIG` on `maxMembers`, `maxMessageBytes` and
+`disposalTimeoutMs`, so the cap override is deleted rather than trimmed. The
+`agent-team` row and the extra keys are the base bundle's now, and Team is
+armed per Session; there is no lifetime cap to raise.)*
 
 **The new host-plane tool is denied.** 0.2.1's base bundle mounts
 `working_directory`, a model-facing tool that changes the session's working
@@ -1049,23 +1077,191 @@ Amends:
 - **25:** the floor and the last-release statement.
 - **26:** the band it set is superseded by the one above.
 
+## Decision 28 — DSH 0.2.2-rc.3: an open floor, Agent Teams ownership to the base bundle, delegation by name (0.8.1)
+
+Recorded as an ADR: `docs/adr/0005-rigorquant-on-dsh-0.2.2.md`.
+
+**Harness (an open floor).** From 0.8.1 the harness range is
+`engines.dsh: ">=0.2.2-rc.3"` — **no ceiling and no restated
+`peerDependencies` range**, because the gate reads `engines.dsh` alone when it
+is declared. The floor names the core the release was validated on: every core
+at or above it is admitted, and the floor moves only when a release is
+validated on a newer one. `install.sh` keeps one refused bound
+(`MIN_DSH_VERSION`), replaces the ceiling refusal with a **validated-through
+advisory** (`VALIDATED_DSH_VERSION`, the same version) that names the core and
+continues, and bypasses both under `--skill-only`. **0.8.0 is the last release
+for the 0.2.1-rc.2 line**; nothing is backported. The manifest field, the
+installer pair and the ADR are pinned by `test_repo_consistency.py`.
+
+**Why the ceiling was the announcement.** 0.8.0's `<0.2.2-0` excluded every
+0.2.2 prerelease, so on 0.2.2-rc.3 the gate printed `Plugin
+dsh-rigorquant@0.8.0 is incompatible with dsh 0.2.2-rc.3` and profile startup
+denied the bundle until the operator granted an exact-version exemption and
+accepted a warning about crashes and data loss. A ceiling cannot tell a core
+that will break from a core nobody has run yet; it schedules the same warning
+for every future core, and a warning that fires on every upgrade stops being a
+signal. The floor keeps the refusal that protects an older core; the
+incompatibility announcement is retired by policy.
+
+**Three verified breaks, not one range problem.** The exemption would not have
+made 0.8.0 work, which is why this is a fix and not a band edit:
+
+- **The Team bundle was renamed into the base bundle.**
+  `@deepseek-ai/dsh-experimental-agent-team-profile` is published only through
+  0.2.2-rc.1; `@deepseek-ai/dsh-agent-team` exists from 0.2.2-rc.2, and the
+  base bundle mounts `agent-team` (`maxTasks: 256`) and `tool-agent-team`
+  itself. A fresh install could not enable the retired bundle, and a profile
+  still listing it cannot resolve it.
+- **The `agentTeams` config the installer wrote now throws.** 0.2.2-rc.3's
+  config is `{maxTasks, defaultEnabled}`, and its constructor throws
+  `TEAM_INVALID_CONFIG` naming `maxMembers`, `maxMessageBytes` and
+  `disposalTimeoutMs` — the three keys the installer wrote and the bundle
+  patch overrode — so the team service does not mount at all. Schemastery
+  preserves unknown keys, which is why 0.8.0 mounted on 0.2.1 with them inert
+  and nothing noticed; the mount seam pins the rejection so a migration cannot
+  be validated against the friendly old schema.
+- **The delegation and identity API was removed.** `spawn_teammate` is gone;
+  the standard `subagent` tool creates a teammate and accepts an optional
+  `name`; `send_message` and `interrupt_agent` take `agent`, not `agent_id`;
+  `list_agents` rows are `{name, status, description}`; Team task ownership is
+  `owner`, a name; `tryMembership`/`listMembers` are replaced by the live
+  subagent tree (`subagents.rootOf`/`namesOf`). The guards were written against
+  the removed names — the role-name guard hooked `spawn_teammate`, so the
+  surviving `subagent` tool reached no guard, and the hub-and-spoke guard read
+  `args.target`, so it never saw the `agent` argument — and the router and lane
+  probes **stubbed** `tryMembership`/`listMembers`, so the suite stayed green
+  while a live core threw `teams.listMembers is not a function`. A study on the
+  current core would then lose the mechanism that gives a Teammate its Role —
+  every teammate mounting the root persona and the full catalog, which is the
+  failure the framework exists to prevent — with no error to say so.
+
+**Agent Teams is the base bundle's; arming is per Session.** The installer no
+longer adds, pins, enables or configures a Team bundle, and the bundle patch
+drops its `agent-team` override so the base bundle's `maxTasks` is the value.
+`dsh/team.js` keeps its composition half and adds the arming half: on
+`agent/created` (and the late `agent-preset/selected` switch), for a **root**
+Session composed as `rigorquant`, it calls the service's
+`setEnabled(agent, true, signal)` and publishes the guard-armed runtime
+context only when `isEnabled` confirms the selection. A non-RigorQuant root is
+never touched — installing the plugin does not turn Team on for the operator's
+other presets — a teammate is never armed, and the service stays optional and
+duck-typed, so a core without it disarms instead of failing.
+
+**Delegation is by name, and the router reads the same identity.** The
+role-name guard hooks the standard `subagent` tool: a spawn whose `name` does
+not parse as `<role>-<n>` is refused, and `subagent_fork` is refused outright.
+The hub-and-spoke guard reads `send_message`'s `agent` argument, resolves it to
+the root `lead` through the subagent catalog, and refuses anything else with a
+message naming the legal target. Roster and board guards keep using names.
+`dsh/identity.js` is the one copy of the 0.2.2 tree reads for the router, the
+team module and the escalation lane, and the probes model the surviving
+service rather than stubbing the removed one.
+
+**Capacity is a live-teammate pool.** The base subagent service defaults to 8
+live children per root; the preset's id-targeted `subagent` override sets
+`maxActiveSubagents: 12` and restates `maxDepth: 1` because such a patch
+replaces the row's config wholesale. There is **no lifetime member cap** — a
+settled teammate frees its slot. Over the pool a spawn raises
+`ACTIVATION_LIMIT_REACHED`, which nothing but a settling teammate clears, so an
+exhausted pool is a BUDGET-class outcome: checkpoint, end the turn, never retry
+in a loop. The skill's Step 3, the protocol's roster and BUDGET rules, both
+READMEs and this record state the same numbers.
+
+**A Teammate's tools are a classification.** `dsh/team.js` replaces
+`EVERY_TEAMMATE_DENY` with per-Role-tier allow sets: every tool a Teammate may
+see is named, and anything unclassified is denied. The blind and web-denied
+tiers keep their semantics (`skill` denied only to blind roles; web denied to
+blind and adversary roles). The classification is data, so a Role or a tool is
+a one-line change, and a test fails when the installed core gains a
+model-facing tool nobody classified. `apply_patch` is not adopted — the
+filesystem package and the base both default it off.
+
+**Interruption stays off.** The base and Web presets set
+`tool-subagent-control`'s `interrupt: false`, so a Team session never sees
+`interrupt_agent`; the framework's round loop never depended on it, and the
+skill stops offering it as an available action. This is the shipped contract,
+not a regression to repair.
+
+**The installer's contract.** Full install: refuse a core below the floor
+before copying anything; print an advisory naming the validated core and
+continue above it; manage no Team bundle; remove the retired Team and web
+bundle names from a profile that lists either, one line each saying why;
+migrate a marked 0.8.0 block by deleting the three rejected keys inside its
+`agent-team` row and keeping everything else, including an operator-saved
+`maxTasks`, removing the block when nothing but the enabled-bundles record
+remains and retaining that record while an older block still needs removal
+because `--uninstall` reads it; carry saved routes over; change nothing on a
+re-run. With no `dsh` on the path the step warns and is skipped. `--skill-only`
+is independent of core version.
+
+**The skill and the pins.** `SKILL.md` and `references/` teach `subagent` +
+`name`, `send_message({agent, message})`, `list_agents` rows and the board's
+`owner`, and treat `inactive` as not-done. The static suite pins the open-floor
+policy in the manifest, the installer and both READMEs, the last-release
+statement and the Decision/ADR references, the repo-wide 12-live-teammate
+pool, and the absence of `spawn_teammate`, `agent_id`, `target` and `ownerId`
+from every current teaching document. The client half changes not at all: the
+only plugin-manager surface that moved is `BundleInfo.update` replacing
+`updatable`, and the routing card reads neither.
+
+**A patch release raises the floor (a semver exception).** Every prior band
+move here was a minor because the band move was the release's headline. Here
+the headline is "0.8.0 does not work on the current core", a fix; the floor
+rise is a consequence, not a feature. 0.9.0 was rejected because it would read
+as "a new line of support started" instead of "your current plugin is broken
+here", and would invite dual-support questions for a line that is not
+supported. 0.8.0 is the last release for 0.2.1-rc.2; nothing is backported.
+
+**The upgrade guides are the citations.** The 0.2.2-rc.3 package ships
+`docs/upgrade-guide/`, one guide per migration, and ADR 0005 cites them rather
+than re-deriving a seam ledger against an installed tree: `v0.2.1-rc.2`
+`agent-team-subagents` and `session-team-mode`, `v0.2.2-alpha.3`
+`subagent-names`, `v0.2.2-rc.1` `subagent-interrupt-default` and
+`plugin-update-method`, and `v0.2.2-alpha.2`
+`fs-observation-policy-default-off`.
+
+**Considered and rejected.** Keeping the ceiling and adding a release per core
+(manufactures the risk the exemption warns about); dual support for 0.2.1-rc.2
+(two Team ownership models and an installer that branches on the core's minor,
+for a line whose bundle the new core no longer publishes); re-registering
+`spawn_teammate` as a plugin tool (it would recreate identity, messaging and
+the task board the subagent tree now owns); restoring `interrupt_agent` (the
+shipped configurations disable it and the round loop never used it); adopting
+`apply_patch` (off by default on both sides, and no tool is added); keeping a
+deny list (a newly mounted host tool would silently widen a teammate's scope);
+and letting the installer keep configuring Team (the bundle is not published
+for this core and the keys are rejected).
+
+Amends:
+- **20:** the harness range — an open floor by policy, with no ceiling.
+- **24:** Team ownership moves from the installer to the base bundle; Team is
+  armed per Session; delegation is the standard `subagent` tool by name; the
+  lifetime member cap is gone.
+- **25:** the floor and the last-release statement.
+- **27:** the band (its `-0` ceiling is superseded) and the `agentTeams` key
+  set (deleted, not trimmed).
+
 ## Repo map
 
 ```
 package.json                dsh.bundle manifest; dsh.manifestVersion + engines.dsh
-                            and peerDependencies pin the harness range
-                            (>=0.2.1-rc.2 <0.2.2-0); icon + locale/ are the
-                            bundle's native display metadata
+                            declare the open floor (>=0.2.2-rc.3, no ceiling and
+                            no peer range); icon + locale/ are the bundle's
+                            native display metadata
 agent-presets/rigorquant.patch.yml  the declared preset (persona + child rows)
 agent-presets/rigorquant/   the rigorquant skill and its sibling skills
   skills/rigorquant/        SKILL.md, references/, scripts/rq_check.py, schemas/
 dsh/                        host halves: rq-model-router (routes as volatile
-                            profile config) + rq-team (composition, per-call
-                            guard, and the rq_escalate lane in dsh/lane.js) +
-                            rq-lane-sync, dsh/personas/ (one role persona per
-                            file), and the client bundle (routing card on
-                            configForms)
-cordis.patch.yml            bundle patch: skill layer + router + team + lane sync
+                            profile config) + rq-team (per-Session Team arming,
+                            composition, per-call guard, and the rq_escalate
+                            lane in dsh/lane.js) + rq-lane-sync; identity.js is
+                            the one copy of the subagent-tree reads the router,
+                            team and lane share; dsh/personas/ holds one role
+                            persona per file, and the client bundle is the
+                            routing card on configForms
+cordis.patch.yml            bundle patch: skill layer + router + team + lane sync,
+                             plus the study's capacity (subagent: maxDepth 1,
+                             maxActiveSubagents 12)
 env/                        pinned uv compute lane (pyproject + lockfile)
 mcp/jacobian.md             escalation lane wiring (mounted by rq_escalate)
 locale/en.json, locale/zh.json  native bundle display metadata (title, description)
@@ -1075,13 +1271,15 @@ docs/token-efficiency.md    token-efficiency record: limits adopted in 0.8.0,
                             deferred follow-ups, rejected native mechanisms
 docs/adr/                   ADR 0001 (Agent Teams), ADR 0002 (declared preset
                             on DSH 0.1.7), ADR 0003 (DSH 0.2.0), ADR 0004
-                            (DSH 0.2.1)
+                            (DSH 0.2.1), ADR 0005 (DSH 0.2.2-rc.3, open floor)
 docs/hard-lessons-…md       the run record the skill cites
 docs/showcase.html          the showcase page
 tests/                      the validator's suite; a forged study must FAIL
-install.sh                  installs the compute lane and the plugin, enables
-                            the one Team bundle, removes the retired web bundle,
-                            ports saved routes (or --skill-only: the skills)
+install.sh                  installs the compute lane and the plugin; refuses a
+                            core below the validated floor, advises above it;
+                            removes the retired Team bundles, migrates a 0.8.0
+                            profile block, ports saved routes (or --skill-only:
+                            the skills)
 ```
 
 A study folder (`studies/<slug>/` in Mode B, the repo root in Mode A) lives in

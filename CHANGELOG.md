@@ -8,6 +8,152 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-16
+
+RigorQuant on DSH 0.2.2-rc.3, and on the release that folds Agent Teams into
+the base bundle. It requires a DSH core at or above `0.2.2-rc.3` — an open
+floor, not a band: no ceiling, and no restated peer range. **0.8.0 is the last
+release for the 0.2.1-rc.2 harness**, and nothing is backported. The release
+amends Decisions 20 (the harness range: an open floor by policy), 24 (Team
+ownership moves to the base bundle; delegation by name; no lifetime cap), 25
+(the floor and the last-release statement) and 27 (its `-0` ceiling and
+`agentTeams` key set are superseded), and records Decision 28
+(`docs/adr/0005-rigorquant-on-dsh-0.2.2.md`).
+
+The version is a patch on purpose: 0.8.0 does not work on the current core, so
+this is a fix that happens to raise the floor, not a new line of support. If
+you cannot move the harness yet, stay on 0.8.0.
+
+### Upgrading
+
+Finish or archive the RigorQuant studies in progress first: resuming a session
+started on the previous core is not promised. The subagent catalog now
+persists payload version 3, and releases before that change cannot open
+Sessions that create subagents after upgrading. Then:
+
+1. Stop dsh (every running process, the web app included).
+2. Install a core the registry serves, named by version or by tag:
+
+   ```sh
+   npm i -g @deepseek-ai/dsh@0.2.2-rc.3
+   # or: npm i -g @deepseek-ai/dsh@next
+   ```
+
+   Do not install unqualified: npm's `latest` dist-tag still points at
+   `0.2.2-rc.1`, which is below this release's floor, and the installer
+   refuses it.
+3. Run `./install.sh` before starting dsh. A full install refuses only a core
+   below the floor; above the validated `0.2.2-rc.3` it prints an advisory
+   naming that core and continues. Expect the profile migration: when your
+   profile still lists the retired Agent Teams bundle (or the retired web
+   bundle), the installer removes it with one line saying why; when a 0.8.0
+   install left its marked block, it deletes the three `agentTeams` keys
+   0.2.2-rc.3's config rejects — `maxMembers`, `maxMessageBytes`,
+   `disposalTimeoutMs` — while keeping a `maxTasks` you saved. Saved routes
+   carry over, and a re-run changes nothing.
+4. Start the web app and pick **RigorQuant** in the new-session picker. If the
+   picker is missing, switch **Coding Tools** back on in General Settings.
+
+An operator on any earlier release upgrades straight to 0.8.1: the installer
+still performs the migrations those releases needed, and `--skill-only` is
+unaffected by the core version.
+
+### Why the ceiling is gone
+
+0.8.0's band, `>=0.2.1-rc.2 <0.2.2-0`, excluded every 0.2.2 prerelease, so the
+first 0.2.2 core announced the bundle as incompatible:
+`Plugin dsh-rigorquant@0.8.0 is incompatible with dsh 0.2.2-rc.3: requirements
+{"engines.dsh":">=0.2.1-rc.2 <0.2.2-0"}`. The gate reads `engines.dsh` alone
+when it is declared, so the ceiling was the thing producing the announcement —
+at that core and at every later one, identically, each time requiring an
+exact-version exemption and a warning about crashes and data loss. The floor
+keeps the refusal that protects an operator on an older core; the ceiling is
+gone by policy, and the floor moves only when a release is validated on the
+new core.
+
+### Changed
+
+- **`engines.dsh` is `>=0.2.2-rc.3`**, an open floor enforced by the manifest
+  and by `install.sh` (`MIN_DSH_VERSION`). The ceiling constant is replaced by
+  a validated-through constant that drives an advisory, and the
+  `@deepseek-ai/dsh` peer range is gone. The gate probe judges the real
+  manifest with the installed `evaluatePluginCompatibility`: accepted on the
+  live core and on every version above the floor, refused below it with the
+  floor named. Pinned by `test_repo_consistency.py`.
+- **Agent Teams is the base bundle's.** The installer adds, pins, enables and
+  configures no Team bundle, writes no `agent-team` row, and the bundle patch
+  drops its override, so the base bundle's `maxTasks: 256` is the value. The
+  team plugin arms Team **per Session**: for a root RigorQuant Session it calls
+  the Agent Teams service's `setEnabled(agent, true, signal)` and publishes the
+  guard-armed context only when the service confirms the selection, and it
+  never touches another preset's session.
+- **Delegation is by name.** The Orchestrator creates a Teammate with the
+  standard `subagent` tool and an explicit `<role>-<n>` name; the guard
+  refuses a name that does not parse and refuses `subagent_fork`;
+  `send_message` addresses `agent` (a name or a Session id) and only `lead`;
+  `list_agents` rows are `{name, status, description}`; Team task ownership is
+  the `owner` name. The skill and its references teach those calls, and no
+  current teaching document names the removed `spawn_teammate`, `agent_id`,
+  `target` or `ownerId`.
+- **A Teammate's visible tools are an explicit classification.** Every tool a
+  Role tier may see is named in that tier's allow set, and anything
+  unclassified is denied. The blind and web-denied semantics are unchanged. A
+  test fails when the installed core gains a model-facing tool nobody
+  classified, so a new host tool cannot widen a teammate's scope.
+- **Interruption is not restored.** The base and Web presets set
+  `tool-subagent-control`'s `interrupt: false`, so a Team session does not
+  register `interrupt_agent`; the skill stops offering it, matching the shipped
+  configurations.
+- **The bundle patch pins the study's capacity**: the id-targeted `subagent`
+  override sets `maxActiveSubagents: 12` and restates `maxDepth: 1` (a
+  wholesale config replacement), replacing the retired lifetime member cap. A
+  settled teammate frees its slot; over the pool a spawn raises
+  `ACTIVATION_LIMIT_REACHED`, a BUDGET-class outcome — checkpoint and end the
+  turn, never retry in a loop.
+- **The client half needs no change.** The routing card reads none of the
+  plugin-manager fields that moved (`BundleInfo.update` replaced
+  `updatable`).
+
+### Added
+
+- **Decision 28 and ADR 0005** record the hop: the open floor and why the
+  ceiling was the announcement; the three verified breaks (the retired Team
+  bundle, the `agentTeams` keys that now throw, and the removed delegation and
+  identity API — including the probes that stubbed `tryMembership` /
+  `listMembers` and hid it); the adoption decisions; the semver exception; and
+  the shipped upgrade guides (`docs/upgrade-guide/` in the 0.2.2-rc.3 package)
+  this release cites instead of a re-derived seam ledger.
+- **The installer migrates a 0.8.0 profile.** It removes the retired Team and
+  web bundle names, deletes the three rejected keys from the marked block
+  inside its `agent-team` row while keeping an operator-saved `maxTasks`,
+  removes the block when nothing but the enabled-bundles record remains (and
+  retains that record while an older block still needs removal, because
+  `--uninstall` reads it), and leaves a re-run with nothing to do.
+- **The static suite pins the release's claims**: the open floor in the
+  manifest, the installer and both READMEs; the last-release statement and the
+  Decision/ADR references; the repo-wide 12-live-teammate pool; and the
+  absence of the removed delegation names from every current document.
+
+### Removed
+
+- **The `agent-team` override in the bundle patch** and the installer's marked
+  `agent-team` block. 0.2.2-rc.3's `agentTeams` config is
+  `{maxTasks, defaultEnabled}`, and its constructor throws
+  `TEAM_INVALID_CONFIG` on `maxMembers`, `maxMessageBytes` and
+  `disposalTimeoutMs`; keeping any of the three prevents the team service from
+  mounting. `maxMembers` was the lifetime member cap, so there is no cap left
+  to raise.
+- **`EVERY_TEAMMATE_DENY`**, replaced by the per-tier tool classification (see
+  Changed).
+
+### Fixed
+
+- **The team service mounts on 0.2.2-rc.3 again**, and a study keeps the
+  mechanism that gives a Teammate its Role: a teammate created with the
+  standard `subagent` tool and a `<role>-<n>` name reaches the composition and
+  guard path, instead of mounting the root persona and the full catalog with
+  no error to say so.
+
 ## [0.8.0] - 2026-10-19
 
 RigorQuant on DSH 0.2.1-rc.2, and on the five native limits that release

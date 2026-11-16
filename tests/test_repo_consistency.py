@@ -114,10 +114,22 @@ def test_the_open_floor_is_declared_once_and_enforced_before_copying():
 
     The installer's floor and its validated-through constant are the same
     version, and equal to the manifest's floor: a one-sided edit would change
-    what an operator is told without changing what the loader enforces. The
-    READMEs and the decision record restate the same number; that documentation
-    pin returns with the release record (ticket #44), which owns those pages.
+    what an operator is told without changing what the loader enforces. Both
+    READMEs and ADR 0005 restate the same floor and say it has no ceiling
+    (ticket #44 wrote the release record); a page that states the floor but
+    omits the open policy would send the next reader looking for the ceiling
+    this release deliberately removed.
     """
+    for name in ("README.md", "README.zh-CN.md"):
+        text = " ".join((REPO / name).read_text().split())
+        assert ">=0.2.2-rc.3" in text, "%s does not state the open floor" % name
+        assert "no upper bound" in text or "没有上限" in text, (
+            "%s does not state that the band has no ceiling" % name)
+    adr = ((REPO / "docs/adr/0005-rigorquant-on-dsh-0.2.2.md").read_text())
+    flat_adr = " ".join(adr.split())
+    assert "`engines.dsh` is `>=0.2.2-rc.3`" in flat_adr, (
+        "ADR 0005 does not state the open floor")
+    assert "no ceiling" in flat_adr, "ADR 0005 does not retire the ceiling"
     floor = "0.2.2-rc.3"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
@@ -475,12 +487,12 @@ def test_the_procedure_states_the_live_teammate_pool_rule():
             "%s does not carry an exhausted pool to the BUDGET outcome" % name)
 
 
-# The historical record and the pages ticket #44 owns still state the core's
-# default or the old lifetime cap. Their documentation pin lands with the
-# release record (the same deferral as the open-floor pin above).
-POOL_DOCS_OWNED_BY_THE_RELEASE_RECORD = {
-    "README.md", "README.zh-CN.md", "CHANGELOG.md", "docs/architecture.md",
-}
+# Ticket #44 wrote the release record, so no page is deferred to it any more:
+# the READMEs, the changelog, the architecture record and the ADR all state
+# the study's pool. A historical release note keeps the wording of its era,
+# but a document that names the setting must still state the pool the current
+# release ships.
+POOL_DOCS_OWNED_BY_THE_RELEASE_RECORD = set()
 
 
 def test_every_document_that_names_the_pool_states_twelve():
@@ -488,8 +500,8 @@ def test_every_document_that_names_the_pool_states_twelve():
 
     A reader who finds "eight" in one document and "12" in another has
     learned nothing. Every document that names the setting states the 0.8.1
-    live-teammate pool; the historical documents and the pages ticket #44
-    owns are excluded until the release record moves them.
+    live-teammate pool; the deferral to the release record is closed, so the
+    sweep is repo-wide.
     """
     offenders = []
     for name in tracked_files():
@@ -1269,50 +1281,55 @@ def test_both_readmes_describe_the_team_through_the_native_surface():
                 "%s's team section still describes the retired %r" % (name, retired))
 
 
-def test_both_readmes_install_sections_carry_the_beta_toggle_and_the_cap():
-    """Issue #15: the Install section answers "what will this do to my profile".
+def test_both_readmes_install_sections_carry_the_teams_ownership_and_the_pool():
+    """Decision 28: the Install section answers "what will this do to my profile".
 
-    The floor is pinned elsewhere; what a reader cannot infer is that the
-    Agent Teams bundle is a Beta card on the Plugins page under Official, that
-    a full install turns it on and raises the lifetime member cap through a
-    marked block in the profile's user patch, and that the whole release
-    rests on an experimental bundle and a prerelease harness.
+    Team is no longer a Beta card an operator toggles and the installer no
+    longer enables or configures it: DSH 0.2.2 mounts the service from the base
+    bundle, and the plugin arms it for a RigorQuant Session. The other
+    operator-visible fact is capacity — a study's live-teammate pool is 12
+    with no lifetime cap — and the band is a prerelease open floor, so the
+    section states both.
     """
     for name, heading, words in (
-        ("README.md", "Install", ("Beta", "Official", "cordis.patch.yml",
-                                  "member cap to 64", "experimental",
-                                  "0.2.1-rc.2")),
-        ("README.zh-CN.md", "安装", ("Beta", "官方", "cordis.patch.yml",
-                                    "提高到 64", "实验性", "0.2.1-rc.2")),
+        ("README.md", "Install", ("base bundle", "arms Team for a", "12",
+                                  "no lifetime", "settled teammate frees its slot",
+                                  "open floor", "0.2.2-rc.3")),
+        ("README.zh-CN.md", "安装", ("基础 bundle", "为该会话开启 Team",
+                                    "12", "没有生命周期上限", "开放下限",
+                                    "0.2.2-rc.3")),
     ):
         _pin_section_words(name, heading, words)
 
 
-def test_both_readmes_carry_the_0_2_1_operator_facts():
-    """The 0.7.0 -> 0.8.0 operator facts (Decision 27).
+def test_both_readmes_carry_the_0_2_2_operator_facts():
+    """The 0.8.0 -> 0.8.1 operator facts (Decision 28).
 
     The upgrade is one cutover, so the Install section carries the operator
-    sequence (the CLI pinned to 0.2.1-rc.2; npm `latest` points at the same
-    core, so the pin is reproducibility rather than a workaround), Coding
-    Tools as the picker's gate, 0.7.0 as the last release for the 0.2.0-rc.2
-    harness, and finishing or archiving studies first. Routing says an
-    account-only sign-in routes to `deepseek-account` on account quota; the
-    team section says the roster's model column is the selection, not the
-    route; the deployment notes say scheduled tasks are neither used nor
-    guarded; and the compute lane mounts at runtime.
+    sequence (a core named by version or the `next` tag, because npm `latest`
+    still points below the floor), the advisory above the validated core,
+    Coding Tools as the picker's gate, 0.8.0 as the last release for the
+    0.2.1-rc.2 harness, and finishing or archiving studies first because
+    resuming a session started on the previous core is not promised. Routing
+    says an account-only sign-in routes to `deepseek-account` on account
+    quota; the team section says the roster's model column is the selection,
+    not the route; the deployment notes say scheduled tasks are neither used
+    nor guarded; and the compute lane mounts at runtime.
     """
     for name, pins in (
         ("README.md", (
-            ("Install", ("stop dsh", "npm i -g @deepseek-ai/dsh@0.2.1-rc.2", "npm `latest`",
-                         "./install.sh", "Coding Tools", "0.7.0", "last release",
-                         "finish or archive")),
+            ("Install", ("stop dsh", "npm i -g @deepseek-ai/dsh@0.2.2-rc.3",
+                         "npm's `latest`", "@next", "./install.sh", "Coding Tools",
+                         "0.8.0", "last release", "finish or archive",
+                         "not promised")),
             ("Role-routed models", ("deepseek-account", "account quota")),
             ("Deployment notes", ("scheduled tasks",)),
             ("Compute lane", ("rq_escalate", "at runtime")),
         )),
         ("README.zh-CN.md", (
-            ("安装", ("停止 dsh", "npm i -g @deepseek-ai/dsh@0.2.1-rc.2", "npm 的 `latest`",
-                      "./install.sh", "代码工作工具", "0.7.0", "最后一个版本", "完成或归档")),
+            ("安装", ("停止 dsh", "npm i -g @deepseek-ai/dsh@0.2.2-rc.3",
+                      "npm 的 `latest`", "@next", "./install.sh", "代码工作工具",
+                      "0.8.0", "最后一个版本", "完成或归档", "不保证")),
             ("角色模型路由", ("deepseek-account", "账号额度")),
             ("部署须知", ("定时任务",)),
             ("计算通道", ("rq_escalate", "运行时")),
@@ -1348,6 +1365,42 @@ def test_the_0_8_0_release_record_is_present():
         "the Unreleased section no longer sits above the 0.8.0 entry")
     assert "0.7.0 is the last release for the 0.2.0-rc.2 harness" in " ".join(
         changelog.split()), "the 0.8.0 entry omits the last-release statement"
+
+
+def test_the_0_8_1_release_record_is_present():
+    """Decision 28 is recorded where a reader looks for WHY the floor is open.
+
+    The release contract is exact: one Decision-28 section in the architecture
+    record, one ADR file, and a dated CHANGELOG entry. The pin is by
+    heading/date/statement rather than by prose, so the argument can be
+    rewritten without touching this test — but the three sentences an
+    operator must find without reading the ADR stay: which harness 0.8.0 was
+    the last release for, that nothing is backported, and that resuming a
+    session started on the previous core is not promised (the subagent
+    catalog now persists payload version 3).
+    """
+    architecture = (REPO / "docs/architecture.md").read_text()
+    heading = ("## Decision 28 \u2014 DSH 0.2.2-rc.3: an open floor, Agent Teams "
+               "ownership to the base bundle, delegation by name (0.8.1)")
+    assert heading in architecture, "docs/architecture.md has no Decision 28 heading"
+    adr = REPO / "docs/adr/0005-rigorquant-on-dsh-0.2.2.md"
+    assert adr.is_file(), "the 0.2.2-rc.3 ADR is missing"
+    flat_adr = " ".join(adr.read_text().split())
+    assert ">=0.2.2-rc.3" in flat_adr and "no ceiling" in flat_adr, (
+        "ADR 0005 does not state the open floor")
+    raw_changelog = (REPO / "CHANGELOG.md").read_text()
+    changelog = " ".join(raw_changelog.split())
+    assert "## [0.8.1] - 2026-11-16" in changelog, "CHANGELOG has no dated 0.8.1 entry"
+    assert "## [Unreleased]" in raw_changelog.split("## [0.8.1]", 1)[0], (
+        "the Unreleased section no longer sits above the 0.8.1 entry")
+    assert "0.8.0 is the last release for the 0.2.1-rc.2 harness" in changelog, (
+        "the 0.8.1 entry omits the last-release statement")
+    assert "nothing is backported" in changelog, (
+        "the 0.8.1 entry omits the no-backports statement")
+    assert ("resuming a session started on the previous core is not promised"
+            in changelog), "the 0.8.1 entry omits the session-resumption corollary"
+    assert "payload version 3" in changelog, (
+        "the 0.8.1 entry does not say why session resumption is not promised")
 
 
 def test_both_readmes_carry_the_deployment_notes():
@@ -2172,8 +2225,9 @@ def test_no_current_document_teaches_a_removed_delegation_name():
     by `agent`, read `name`/`status` from `list_agents`, read `owner` on the
     board. The historical record and the cleanup code are exempt by the same
     rule as the 0.1.6 sweep: they describe or remove what is gone. Ticket #44
-    narrows this sweep to the READMEs and the decision record when it writes
-    the release's documentation pins.
+    rewrote the READMEs and wrote the decision record, so every page that
+    describes the current contract is swept; the history exemption now covers
+    only the records that quote the removed era.
     """
     offenders = []
     for rel in tracked_files():
