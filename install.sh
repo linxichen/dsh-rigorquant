@@ -29,7 +29,7 @@ VALIDATED_DSH_VERSION="0.2.2-rc.3"
 # published only through 0.2.2-rc.1: a full install therefore REMOVES it from a
 # profile that still lists it, whoever enabled it. `--uninstall` still reads the
 # old enabled-bundles record to disable anything an older installer turned on
-# (the 0.8.1 open-floor policy; the release record lands in #44).
+# (Decision 28; docs/adr/0005-rigorquant-on-dsh-0.2.2.md).
 RETIRED_TEAM_BUNDLE="@deepseek-ai/dsh-experimental-agent-team-profile"
 # DSH 0.1.7 folded the team panel into the base bundle and dropped the
 # separate web bundle; npm has no build of it for a 0.1.7-or-later core, and a
@@ -176,7 +176,7 @@ require_dsh_version() {
 }
 
 # The full distribution is only mountable on a harness that serves the surfaces
-# it is written against (the 0.8.1 open-floor policy, amending the record): the preset is a
+# it is written against (Decision 28; docs/adr/0005-rigorquant-on-dsh-0.2.2.md): the preset is a
 # declared `@deepseek-ai/dsh-agent-preset` row, the router's routes are
 # `.volatile()` profile config, the card edits them through `configForms`, and
 # the unattended intake ask uses the timed `ask_user_question` mode — none of
