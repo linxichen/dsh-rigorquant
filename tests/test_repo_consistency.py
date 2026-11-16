@@ -487,27 +487,18 @@ def test_the_procedure_states_the_live_teammate_pool_rule():
             "%s does not carry an exhausted pool to the BUDGET outcome" % name)
 
 
-# Ticket #44 wrote the release record, so no page is deferred to it any more:
-# the READMEs, the changelog, the architecture record and the ADR all state
-# the study's pool. A historical release note keeps the wording of its era,
-# but a document that names the setting must still state the pool the current
-# release ships.
-POOL_DOCS_OWNED_BY_THE_RELEASE_RECORD = set()
-
-
 def test_every_document_that_names_the_pool_states_twelve():
     """The number is the part that drifts, and the study's pool is now 12.
 
     A reader who finds "eight" in one document and "12" in another has
-    learned nothing. Every document that names the setting states the 0.8.1
-    live-teammate pool; the deferral to the release record is closed, so the
-    sweep is repo-wide.
+    learned nothing. Every tracked markdown or YAML document that names the
+    setting states the 0.8.1 live-teammate pool; source files that configure
+    it are pinned by their own probes. No page is deferred to the release
+    record.
     """
     offenders = []
     for name in tracked_files():
         if not name.endswith((".md", ".yml", ".yaml")):
-            continue
-        if name in POOL_DOCS_OWNED_BY_THE_RELEASE_RECORD:
             continue
         text = " ".join((REPO / name).read_text(errors="ignore").split())
         if "maxActiveSubagents" not in text:

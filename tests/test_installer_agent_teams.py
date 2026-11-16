@@ -245,11 +245,6 @@ def _seed_profile(dsh_home, profile, bundles, dependencies=None, patch=PATCH_TEM
     return profile_dir
 
 
-def _manifest_dependencies(dsh_home, profile):
-    manifest = dsh_home / "profiles" / profile / "package.json"
-    return json.loads(manifest.read_text()).get("dependencies", {})
-
-
 def _copy_installer_tree(tmp_path, name):
     """A standalone copy of the tree the installer runs from.
 

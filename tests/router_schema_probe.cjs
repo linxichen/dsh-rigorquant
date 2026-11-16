@@ -23,10 +23,12 @@
 const { readFileSync } = require('node:fs')
 const { createRequire } = require('node:module')
 const { pathToFileURL } = require('node:url')
-const { join, resolve } = require('node:path')
+const { join } = require('node:path')
 const vm = require('node:vm')
 
-const { EXIT_NO_HARNESS, EXIT_PROBLEM, REPO, requireSupportedCore, resolveHarness } = require('./harness_locator.cjs')
+const {
+  EXIT_NO_HARNESS, EXIT_PROBLEM, REPO, inlineRelativeImports, requireSupportedCore, resolveHarness,
+} = require('./harness_locator.cjs')
 
 const harness = resolveHarness(process.argv[2])
 if (harness === undefined) {
@@ -43,16 +45,7 @@ const harnessRequire = createRequire(join(harness, '__probe__.cjs'))
  */
 function loadRouter(z) {
   const modulePath = join(REPO, 'dsh', 'index.js')
-  let source = readFileSync(modulePath, 'utf8')
-  source = source.replace(
-    /^import \{ ([^}]+) \} from '\.\/([^']+)'$/gm,
-    (_, names, spec) => {
-      let helper = readFileSync(join(REPO, 'dsh', spec), 'utf8')
-      helper = helper.replace(/^export const /gm, 'const ')
-      helper = helper.replace(/^export \{ ([^}]+) \}$/m, '')
-      return `const { ${names} } = (() => { ${helper}; return { ${names} } })()`
-    },
-  )
+  let source = inlineRelativeImports(readFileSync(modulePath, 'utf8'), modulePath)
   source = source.replace("import z from '@deepseek-ai/schemastery'", 'const z = schemaStub')
   source = source.replace(/^export const /gm, 'const ')
   source = source.replace(/^export \{ ([^}]+) \}$/m, 'module.exports = { $1 }')
