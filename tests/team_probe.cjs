@@ -1,8 +1,8 @@
 // Exercises dsh/team.js the way a host process would, without one.
 //
-// Mounts the plugin against a stub ctx (agentTeams arming/membership, the
-// subagents identity service, agents backfill, agentPresets) and a per-agent
-// stub scope (systemPrompt's section()/context()/getSectionOrder(), tools'
+// Mounts the plugin against a stub ctx (agentTeams arming, the subagents
+// identity service, agents backfill, agentPresets) and a per-agent stub scope
+// (systemPrompt's section()/context()/getSectionOrder(), tools'
 // restrict()/guard()), then drives these scenarios: agentTeams present (a
 // lead + several teammates of varying tiers, an unparseable name, a
 // non-RigorQuant teammate, a non-RigorQuant ROOT that must never be armed), a
@@ -140,8 +140,11 @@ function makeSubagents({ roots, names, resident = new Set() }) {
 }
 
 /** The Team service surface the plugin uses: the per-root selection plus the
- * live task board. Every `setEnabled` call is recorded, including the signal. */
-function makeTeams({ tasks = new Map(), roster = [] } = {}) {
+ * live task board. Every `setEnabled` call is recorded, including the signal.
+ * It deliberately carries no `tryMembership` / `listMembers`: 0.2.2 removed
+ * both, so a regression that reads membership from this service must throw
+ * here rather than pass against a friendly fake. */
+function makeTeams({ tasks = new Map() } = {}) {
   const enabled = new Set()
   const calls = []
   return {
@@ -158,7 +161,6 @@ function makeTeams({ tasks = new Map(), roster = [] } = {}) {
         if (task === undefined) throw new Error(`team-task-not-found: ${taskId}`)
         return task
       },
-      listMembers: () => roster,
     },
   }
 }
@@ -661,7 +663,9 @@ function makeMountableAgent(id, preset, { failing = false } = {}) {
 /**
  * `rq_escalate` on a live Lead: mount into the caller, into a named live
  * teammate, idempotently, and fail clearly for an unknown or unloaded
- * teammate and for a lane that cannot start.
+ * teammate and for a lane that cannot start. Teammate identity is resolved
+ * through the 0.2.2 `subagents` service (`rootOf`/`namesOf`) against the live
+ * `agents` roster — the Team service has no roster API to read.
  */
 async function runEscalationScenario(mod) {
   const listeners = new Map()
@@ -673,20 +677,27 @@ async function runEscalationScenario(mod) {
   const lead = makeMountableAgent('lead-esc', 'rigorquant')
   const dc = makeMountableAgent('dc-esc', 'rigorquant')
   const broken = makeMountableAgent('ad-esc', 'rigorquant', { failing: true })
-  const roster = [
-    { id: 'lead-esc', name: 'lead', role: 'lead', status: 'running' },
-    { id: 'dc-esc', name: 'doublechecker-1', role: 'teammate', status: 'running' },
-    { id: 'ad-esc', name: 'adversary-1', role: 'teammate', status: 'running' },
-    { id: 'og-esc', name: 'offgrid-1', role: 'teammate', status: 'inactive' },
-  ]
+  // A second tree in the same profile: a same-named path must not resolve
+  // from the Lead's lane.
+  const foreignLead = makeMountableAgent('lead-foreign', 'rigorquant')
+  const foreignDc = makeMountableAgent('dc-foreign', 'rigorquant')
   roots.set(lead.agent, lead.agent)
   roots.set(dc.agent, lead.agent)
   roots.set(broken.agent, lead.agent)
+  roots.set(foreignLead.agent, foreignLead.agent)
+  roots.set(foreignDc.agent, foreignLead.agent)
   names.set(lead.agent, { self: 'lead' })
   names.set(dc.agent, { self: 'doublechecker-1', parent: 'lead' })
   names.set(broken.agent, { self: 'adversary-1', parent: 'lead' })
-  for (const member of [lead, dc, broken]) agentsById.set(member.agent.id, member.agent)
-  const teams = makeTeams({ roster })
+  names.set(foreignLead.agent, { self: 'lead' })
+  names.set(foreignDc.agent, { self: 'doublechecker-2', parent: 'lead' })
+  for (const member of [lead, dc, broken]) {
+    agentsById.set(member.agent.id, member.agent)
+  }
+  // offgrid-1 is settled: its Agent is unloaded, so no live member carries
+  // that name and the identity service cannot resolve it. The lane reports
+  // the missing teammate instead of inventing one.
+  const teams = makeTeams()
   const resident = new Set()
   const subagents = makeSubagents({ roots, names, resident })
   const ctx = {
@@ -697,7 +708,9 @@ async function runEscalationScenario(mod) {
       listeners.get(name).push(handler)
     },
     get: (name) => {
-      if (name === 'agents') return { list: () => [], get: (id) => agentsById.get(id) }
+      if (name === 'agents') {
+        return { list: () => [...agentsById.values()], get: (id) => agentsById.get(id) }
+      }
       if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
       if (name === 'agentTeams') return teams.service
       if (name === 'subagents') return subagents
@@ -721,6 +734,10 @@ async function runEscalationScenario(mod) {
     resident.add(member.agent)
     await emit('subagent/start', { id: member.agent.id, parentSessionId: 'lead-esc', local: true })
   }
+  // The second tree lives in the same profile but was never composed here;
+  // the lane must still refuse to reach across trees for a name.
+  for (const member of [foreignLead, foreignDc]) agentsById.set(member.agent.id, member.agent)
+  resident.add(foreignDc.agent)
 
   const tool = lead.recorder.registered.find((definition) => definition.name === 'rq_escalate')
   const call = async (args, caller = lead.agent) => {
@@ -738,6 +755,7 @@ async function runEscalationScenario(mod) {
   const intoTeammateAgain = await call({ teammate: 'doublechecker-1' })
   const unknownTeammate = await call({ teammate: 'doublechecker-9' })
   const unloadedTeammate = await call({ teammate: 'offgrid-1' })
+  const foreignTeammate = await call({ teammate: 'doublechecker-2' })
   const failedConnect = await call({ teammate: 'adversary-1' })
   const failedConnectRetried = await call({ teammate: 'adversary-1' })
 
@@ -764,6 +782,7 @@ async function runEscalationScenario(mod) {
     intoTeammateAgain,
     unknownTeammate,
     unloadedTeammate,
+    foreignTeammate,
     failedConnect,
     failedConnectRetried,
     afterReload,

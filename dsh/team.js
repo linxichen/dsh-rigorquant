@@ -89,6 +89,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ESCALATE_TOOL, createLane, escalationTool } from './lane.js'
+import { identityOf, liveRoster } from './identity.js'
 
 const name = 'rq-team'
 // `subagents` is a required base service on the 0.2.2 floor: every identity
@@ -228,54 +229,19 @@ function allowListFor(role, tools) {
 // ── identity (the 0.2.2 subagent tree) ───────────────────────────────────────
 //
 // 0.2.2 removed the Team service's membership/roster API: a member's identity
-// is now its subagent-tree position. `rootOf` selects the tree root (identity
-// `lead`); `namesOf` returns the model-facing name (`lead`, a `<role>-<n>`
-// path, or a Session id for unnamed history). Both are synchronous and read
-// the live tree, so the Lead's guard can decide at call time without an async
-// catalog walk.
+// is now its subagent-tree position, read through the shared helpers in
+// dsh/identity.js (`rootOf` / `namesOf`) — the same copy the router and the
+// escalation lane use. `rootOf` selects the tree root (identity `lead`);
+// `namesOf` returns the model-facing name (`lead`, a `<role>-<n>` path, or a
+// Session id for unnamed history). Both are synchronous and read the live
+// tree, so the Lead's guard can decide at call time without an async catalog
+// walk.
 
 /** The subagent tool the Orchestrator creates teammates with; the harness
  * names it from the row config (`toolName: subagent`). */
 const SUBAGENT_TOOL = 'subagent'
 /** The fork variant: it inherits the Lead's conversation, so it is refused. */
 const SUBAGENT_FORK_TOOL = 'subagent_fork'
-
-/**
- * One live agent's tree identity, through the optional `subagents` service.
- * @returns `{ root, name, isRoot }`, or `undefined` when the service is
- *   absent or the agent has no live tree owner (e.g. an externally resumed
- *   child missing its root).
- */
-function identityOf(subagents, agent) {
-  if (subagents === undefined) return undefined
-  try {
-    const root = subagents.rootOf(agent)
-    const names = subagents.namesOf(agent)
-    return { root, name: names.self, isRoot: root === agent }
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * The live roster the Lead's reuse guard reads: every registered agent's
- * model-facing name and turn status. `agents.list()` holds the live Agents
- * (an idle teammate is resident, an unloaded one simply absent), which is the
- * same source the harness's own `list_agents` uses for `running`/`inactive`.
- * A name that is not on the roster is left to the tool's own error.
- */
-function liveRoster(subagents, agents) {
-  const roster = []
-  for (const member of agents?.list() ?? []) {
-    try {
-      const names = subagents.namesOf(member)
-      roster.push({ name: names.self, status: member.status ?? 'inactive' })
-    } catch {
-      // An agent whose tree link is gone cannot be named; leave it off.
-    }
-  }
-  return roster
-}
 
 // ── topology by guard (Decision 24; docs/adr/0001-rigorquant-on-agent-teams.md) ──
 //
@@ -471,13 +437,13 @@ function apply(ctx, config = {}) {
     }
   }
 
-  const installLead = (agent, systemPrompt, tools, teams) => {
+  const installLead = (agent, systemPrompt, tools) => {
     const disposeContext = systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT })
     const disposeGuard = tools !== undefined
       ? tools.guard(leadGuard(agent, ctx.get('subagents'), ctx.get('agents')))
       : () => {}
     const disposeEscalate = tools !== undefined
-      ? tools.register(escalationTool(lane, agent, teams, ctx.get('agents')))
+      ? tools.register(escalationTool(lane, agent, ctx.get('subagents'), ctx.get('agents')))
       : () => {}
     installed.set(agent, () => {
       disposeContext()
@@ -550,7 +516,7 @@ function apply(ctx, config = {}) {
     if (systemPrompt === undefined) return
     const tools = agent.ctx.get('tools')
     if (identity.isRoot) {
-      installLead(agent, systemPrompt, tools, teams)
+      installLead(agent, systemPrompt, tools)
       return
     }
     installTeammate(agent, { role: 'teammate', name: identity.name }, systemPrompt, tools, teams)

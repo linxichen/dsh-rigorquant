@@ -4,7 +4,9 @@ DSH 0.1.6 ships native Agent Teams. This host half applies each teammate's
 role composition — persona, tool-tier budget, and (on the Lead) a runtime
 fact that the guard is armed — purely from the teammate's NAME
 (`<role>-<n>`, e.g. `doublechecker-1`), resolved through the harness's
-`agentTeams` service. It is purely additive: the classic `[[rq:role=...]]`
+`subagents` identity service (`rootOf`/`namesOf`; 0.2.2 removed the Team
+service's membership/roster API). It is purely additive: the classic
+`[[rq:role=...]]`
 tag mechanism (dsh/index.js) and the seven classic delegation rows
 (agent-presets/rigorquant/agent.cordis.yml) are untouched and coexist with
 this module until a later issue removes them.
@@ -467,6 +469,10 @@ def test_an_unknown_or_unloaded_teammate_is_a_clear_error(probe):
     assert "doublechecker-9" in escalation["unknownTeammate"]["error"]
     assert "offgrid-1" in escalation["unloadedTeammate"]["error"]
     assert "inactive" in escalation["unloadedTeammate"]["error"]
+    assert "error" in escalation["foreignTeammate"], (
+        "the lane resolved a teammate from another tree: %r"
+        % (escalation["foreignTeammate"],))
+    assert "doublechecker-2" in escalation["foreignTeammate"]["error"]
 
 
 def test_a_failed_connect_surfaces_as_an_error_and_can_be_retried(probe):

@@ -22,6 +22,7 @@
 
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { teammateAgent } from './identity.js'
 
 export const ESCALATE_TOOL = 'rq_escalate'
 const LANE_SERVER_NAME = 'rigorquant-jacobian'
@@ -126,21 +127,21 @@ export function createLane(ctx) {
  * The `rq_escalate` tool definition for one Lead.
  * @param lane - the registry from {@link createLane}.
  * @param lead - the exact Lead agent the tool is registered on.
- * @param teams - the `agentTeams` service, for the roster read.
- * @param agents - the `agents` service, for the teammate's live agent.
+ * @param subagents - the `subagents` service, for a teammate's tree identity
+ *   (0.2.2 removed the Team service's roster API; the live tree is the
+ *   roster now). Optional and duck-typed: absent, a named teammate simply
+ *   cannot be resolved.
+ * @param agents - the `agents` service, for the live teammates.
  */
-export function escalationTool(lane, lead, teams, agents) {
+export function escalationTool(lane, lead, subagents, agents) {
   const resolveTarget = (teammate) => {
     if (teammate === undefined) return { name: 'lead', agent: lead }
-    const member = teams.listMembers(lead).find((row) => row.name === teammate && row.role === 'teammate')
-    if (member === undefined) {
-      throw new Error(`${ESCALATE_TOOL}: no teammate named '${teammate}' is on the roster`)
-    }
-    const agent = agents?.get(member.id)
+    const agent = teammateAgent(subagents, agents, lead, teammate)
     if (agent === undefined) {
       throw new Error(
-        `${ESCALATE_TOOL}: teammate '${teammate}' is not loaded (${member.status}); ` +
-        'grant the lane while it is running, or brief a new teammate and grant it then')
+        `${ESCALATE_TOOL}: no live teammate named '${teammate}' is on the roster ` +
+        '(it may be inactive or unloaded); grant the lane while it is running, ' +
+        'or brief a new teammate and grant it then')
     }
     return { name: teammate, agent }
   }

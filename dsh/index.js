@@ -6,8 +6,8 @@
 // the routes to live in). Each `<role>Primary`/`<role>Fallback` field is
 // `.volatile()`, so a saved route reaches the next request without a
 // remount. No native per-role model row remains under Agent Teams — a
-// teammate is created by `spawn_teammate`, which carries no model choice at
-// all — so this router carries the shipped tier matrix itself
+// teammate is created by the standard `subagent` tool, which carries no
+// model choice at all — so this router carries the shipped tier matrix itself
 // (`DEFAULT_PRIMARY`/`DEFAULT_FALLBACK`) and a route the user saved always
 // wins over it. The `agent/request` waterfall remains the small policy
 // overlay that makes live config and fallback possible.
@@ -22,18 +22,19 @@
 // send an account-only user anywhere else.
 //
 // Role identity (docs/architecture.md Decision 24, amending Decision 23):
-// the teammate's NAME is the role. Every agent's Team membership is read
-// duck-typed off the optional `agentTeams` service
-// (`ctx.get('agentTeams').tryMembership(agent)`, the same call
-// `dsh/team.js` resolves composition from) — the Lead is the orchestrator
-// (`root`); every other member's role is parsed from its name
-// (`<role>-<n>`). An agent with no membership, or whose live composition is
-// not this preset, is never touched: it keeps the chatbox/parent model
-// exactly as before. The classic persona-tag regex, the persona-assembly
-// probe that read a one-shot child's live prompt section, and the
-// deprecated synchronous session-event reads that found a continuable
-// child's descriptor are gone — nothing here reads history or prompt text
-// to find a role anymore.
+// the teammate's NAME is the role. Every agent's tree identity is read
+// through the optional, duck-typed `subagents` service (`rootOf` selects the
+// tree root, `namesOf` its model-facing name — the same shared helper
+// `dsh/team.js` resolves composition from): the root of a RigorQuant tree is
+// the orchestrator (`root`); every other member's role is parsed from its
+// name (`<role>-<n>`). The Team service's `tryMembership`/`listMembers` are
+// gone on 0.2.2 and are never read here. An agent with no live tree identity
+// (or an absent service), or whose live composition is not this preset, is
+// never touched: it keeps the chatbox/parent model exactly as before. The
+// classic persona-tag regex, the persona-assembly probe that read a one-shot
+// child's live prompt section, and the deprecated synchronous session-event
+// reads that found a continuable child's descriptor are gone — nothing here
+// reads history or prompt text to find a role anymore.
 //
 // Degrade lane: when the primary route of a routed role fails terminally
 // (no adapter, a model its provider does not declare or cannot resolve, or
@@ -58,6 +59,7 @@
 // exactly as before.
 
 import z from '@deepseek-ai/schemastery'
+import { identityOf } from './identity.js'
 
 const name = 'rq-model-router'
 
@@ -72,13 +74,13 @@ export const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary
  *  three surfaces sharing source and one not, for no behavioural gain. */
 const TEAMMATE_ROLES = ROLES.filter((role) => role !== 'root')
 /** Teammate name convention: `<role>-<suffix>`, e.g. `doublechecker-1` — the
- *  same contract `dsh/team.js`'s `NAME_PATTERN` parses membership by. */
+ *  same contract `dsh/team.js`'s `NAME_PATTERN` parses the tree name by. */
 const NAME_PATTERN = new RegExp(`^(${TEAMMATE_ROLES.join('|')})-.+$`)
 
-/** Parse a teammate's role from its Team membership name, or `null` when it
+/** Parse a teammate's role from its subagent-tree name, or `null` when it
  *  doesn't parse (an unparseable name should already have been refused at
- *  `spawn_teammate` by `dsh/team.js`'s Lead guard; this is defense in depth,
- *  not the enforcement point). */
+ *  `subagent` by `dsh/team.js`'s Lead guard; this is defense in depth, not
+ *  the enforcement point). */
 function roleFromName(teammateName) {
   const match = typeof teammateName === 'string' ? NAME_PATTERN.exec(teammateName) : null
   return match !== null ? match[1] : null
@@ -385,22 +387,22 @@ function apply(ctx, config) {
     noFallbackWarned.delete(agent.id)
   })
 
-  /** The teammate's role, resolved purely from its Team membership — never
-   *  from history or prompt text. `agentTeams` is optional and reached
-   *  duck-typed, the same contract `dsh/team.js` mounts against; absent
-   *  (Agent Teams not enabled) or no membership (not a team member, e.g. a
-   *  classic fork/workflow child) both mean "not routable" here. The Lead is
-   *  the orchestrator (`root`); every other member's role comes from its
-   *  name. Only agents whose LIVE composition is this preset are touched —
-   *  a Lead or teammate of some other team is left alone. */
+  /** The teammate's role, resolved purely from its subagent-tree identity —
+   *  never from history or prompt text. `subagents` is optional and reached
+   *  duck-typed, the same helper `dsh/team.js` mounts against; absent, or no
+   *  live tree identity (not a tree member, e.g. a classic fork/workflow
+   *  child or a root with no runtime owner) both mean "not routable" here —
+   *  an unresolvable identity is never a throw on the request path. The
+   *  root of the tree is the orchestrator (`root`); every other member's
+   *  role comes from its name. Only agents whose LIVE composition is this
+   *  preset are touched — a root or teammate of another preset is left
+   *  alone. */
   function resolveRole(agent) {
-    const teams = ctx.get('agentTeams')
-    if (teams === undefined) return null
-    const membership = teams.tryMembership(agent)
-    if (membership === undefined) return null
+    const identity = identityOf(ctx.get('subagents'), agent)
+    if (identity === undefined) return null
     const inRigorQuant = ctx.get('agentPresets')?.composedPreset(agent.ctx) === config.presetId
     if (!inRigorQuant) return null
-    return membership.role === 'lead' ? 'root' : roleFromName(membership.name)
+    return identity.isRoot ? 'root' : roleFromName(identity.name)
   }
 
   ctx.on('agent/request', async (payload, next) => {
