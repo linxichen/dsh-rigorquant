@@ -80,7 +80,7 @@ rather than forcing PASS, and tag every claim with its evidence level
 (falsification-surviving / independently re-derived / certificate-checked /
 formally verified; see lifecycle.md).
 
-## Delegation discipline (hard-lessons L2, L3, L5, the roster, the pool and the cap)
+## Delegation discipline (hard-lessons L2, L3, L5, the roster and the live pool)
 
 These rules exist because the 20260820 var-expected-return-term run's budget
 was consumed by process, not content: six agents produced complete verdict
@@ -88,22 +88,23 @@ JSON without ever writing the reports, queued messages produced stale
 re-audits of dead documents, and orchestrator-produced numbers went
 unaudited. Decision 24 (docs/architecture.md) carries them onto Agent Teams.
 
-- **Brief contract.** Every brief — a `spawn_teammate` prompt or a later
-  `send_message` — names the board **task id** it serves, the **snapshot
+- **Brief contract.** Every brief — the `prompt` of a `subagent` creation or a
+  later `send_message` — names the board **task id** it serves, the **snapshot
   hash** (SHA-256) of every artifact the teammate is to judge, and the
-  deliverable. The `spawn_teammate` `description` is the role label only
-  (`Explorer`, `DoubleChecker`, `Adversary`, …), never the brief: it is shown
-  on the roster, and a brief there leaks the assignment to every reader. The
-  teammate claims its task by compare-and-swap (`team_task_update` `claim`
-  with the revision from `team_task_get`), works under the task's advisory
-  write scope in its role's scratch directory, completes the task, and ends
-  its turn with its result as the final message.
+  deliverable. The creation carries an explicit `name: '<role>-<n>'`; its
+  `description` is the role label only (`Explorer`, `DoubleChecker`,
+  `Adversary`, …), never the brief: it is shown on the roster, and a brief
+  there leaks the assignment to every reader. The teammate claims its task by
+  compare-and-swap (`team_task_update` `claim` with the revision from
+  `team_task_get`), works under the task's advisory write scope in its role's
+  scratch directory, completes the task, and ends its turn with its result as
+  the final message.
 - **Verdict-first delegation (L2).** The adversarial verdict is structured
   data; the prose report is archival. Every audit/certification brief states
   the deliverable as *"the report, ending with `VERDICT: PASS` or
   `VERDICT: NEEDS-EDITS`"*, and a teammate delivers that verdict as the
   **final message of its turn**, which wakes the orchestrator. (A teammate may
-  also `send_message` the orchestrator — its only legal target — for an
+  also `send_message` the orchestrator — its only legal recipient — for an
   interim finding or a blocking question.) The orchestrator treats a turn that
   ends without a verdict line — in that final message or written — as a failed
   run: read its results once, record the verdict it establishes, and do not
@@ -116,7 +117,7 @@ unaudited. Decision 24 (docs/architecture.md) carries them onto Agent Teams.
   records the audited snapshot's SHA-256. A hash-bound verdict is the only way
   a later reader can tell which document a verdict judged. A reused teammate
   only ever receives a new hash-bound brief, never a follow-up about an
-  artifact under audit, and only while the roster shows it idle or inactive —
+  artifact under audit, and only while the roster shows it `inactive` —
   if it is running, wait on it first. A `send_message` that returns an error
   has failed and the brief was not stored; a successful result means the
   message is stored, not processed — never resend it and never wait on the
@@ -132,29 +133,28 @@ unaudited. Decision 24 (docs/architecture.md) carries them onto Agent Teams.
   DoubleChecker, and a running one may still be answered. Reused across rounds by message: `adversary-<n>`,
   `lit-adversary-<n>`, `doc-adversary-<n>`, and each `lit-line-<n>` (`n` = the
   line number; lines are numbered in creation order, so it is also the
-  counter) — their accumulated knowledge is the job — only while idle or
-  inactive, under L3. `n` is a per-role counter that only increases within a
-  study; on resume `list_agents` shows the highest `n` per role.
-- **Fan out is bounded by the live-teammate pool.** The host runs at most
-  **eight** live teammates at a time (`maxActiveSubagents`, Plugins →
-  Subagent, default 8). Teammates are depth-1 and settle when their turn
-  ends, so the pool bounds concurrency, not the study's headcount — but a
-  round that creates four literature lines, two explorers and a second
-  DoubleChecker at once is seven of the eight slots. Batch Fan out to at most
-  eight live teammates: the literature lines, the method work and the
-  ground-truth work go in waves rather than in one message. A spawn over the
-  bound fails with `ACTIVATION_LIMIT_REACHED`, which reads like a transient
-  error and is not one: **wait for a teammate to settle, never retry in a
-  loop.** Nothing releases a slot but a teammate finishing, so a retry loop
-  spends the budget on the error path. (A literature-heavy study may raise
-  the setting instead — that is the operator's change, in Plugins, not the
-  orchestrator's.)
-- **The teammate cap is a BUDGET outcome.** The team's `maxMembers` is a
-  lifetime cap that counts every teammate ever created, failed ones included
-  (`install.sh` raises it to 64). A `spawn_teammate` that fails on the cap is
-  BUDGET-class: checkpoint the study record, report the cap, end the turn; one
-  human turn re-arms (and may raise the override). Never reuse a fresh-per-
-  brief role to fit under the cap.
+  counter) — their accumulated knowledge is the job — only while `inactive`,
+  under L3. `n` is a per-role counter that only increases within a study;
+  `list_agents` rows are `{name, status, description}`, so on resume the
+  highest `n` per role is the counter. Board rows show each task's `owner` as
+  a teammate's name, and `team_task_list` filters by that name — ownership is
+  never an id.
+- **Fan out is bounded by the live-teammate pool.** The bundle patch raises
+  the `subagent` service's `maxActiveSubagents` to **12**, so a study runs at
+  most twelve live teammates at a time. Teammates are depth-1 and a settled
+  teammate frees its slot, so the pool bounds concurrency, not the study's
+  headcount: there is **no lifetime cap**. Batch Fan out to at most twelve
+  live teammates — the literature lines, the method work and the ground-truth
+  work go in waves rather than in one message. A spawn over the bound fails
+  with `ACTIVATION_LIMIT_REACHED`, which reads like a transient error and is
+  not one: **wait for a teammate to settle, never retry in a loop.** Nothing
+  releases a slot but a teammate finishing, so a retry loop spends the budget
+  on the error path. The pool comes from the bundle patch's `subagent`
+  override; changing it is the operator's edit, not the orchestrator's.
+- **An exhausted pool is a BUDGET outcome.** If all twelve slots are live and
+  the round cannot proceed without another teammate, that is BUDGET-class:
+  checkpoint the study record, report the exhausted pool, end the turn; one
+  human turn re-arms. Never reuse a fresh-per-brief role to save a slot.
 - **Orchestrator-produced numbers are audited like teammate-produced numbers
   (L5).** Anything the orchestrator produces that becomes evidence — a
   generator, a table, a verification script, a status claim — goes through the
