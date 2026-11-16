@@ -193,9 +193,9 @@ Every round the orchestrator returns; the goal-round driver relaunches it.
 Each study carries its own pinned uv lane, so a clone of the record can
 rebuild every result even after RigorQuant ships a newer lane. RigorQuant
 installs a **template** at `$DSH_HOME/share/rigorquant/env` (`$DSH_HOME`
-defaults to `~/.dsh`; `install.sh` and the plugin's boot sync place it
-there). Never run code against the template, and never build a venv inside
-it: the sandbox refuses the write, and a release replaces the template.
+defaults to `~/.dsh`; the plugin's boot sync places it there). Never run code
+against the template, and never build a venv inside it: the sandbox refuses
+the write, and a release replaces the template.
 
 1. **Adopt the lane (once, at intake).** If `env/pyproject.toml` and
    `env/uv.lock` are not already in the study root, copy those two files

@@ -11,8 +11,8 @@ environment, two duties:
 
 ## A template, copied into each study
 
-This directory is a **template**. `install.sh` and the plugin's boot sync
-place it at `$DSH_HOME/share/rigorquant/env`; nothing runs against that copy.
+This directory is a **template**. The plugin's boot sync places it at
+`$DSH_HOME/share/rigorquant/env`; nothing runs against that copy.
 At intake (SKILL.md Step 2) a study copies `pyproject.toml` and `uv.lock`
 into its own `env/` and commits them, so a clone of the study can rebuild the
 exact environment even after a later release replaces this template. The venv

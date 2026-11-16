@@ -162,14 +162,35 @@ RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到
 
 Agent Teams 不再是一张需要你打开的卡片。DSH 0.2.2 由基础 bundle 挂载团队
 服务，插件在 RigorQuant 会话启动时为该会话开启 Team——你的其他 preset 不受
-影响。完整安装不再添加、钉住、启用或配置任何 Team bundle；它只迁移 0.8.0
-写过的东西（见下）。
+影响。本版本不添加、钉住、启用或配置任何 Team bundle，也不迁移任何 profile
+（见下）。
 
-**从 0.8.0 升级**——或从任何更早版本升级，安装脚本仍会处理那些版本留下的
-迁移（见下）——是一次性切换，要在 0.2.2-rc.3 第一次启动之前完成。先把进行中的
-RigorQuant 研究完成或归档：在旧 core 上开始的会话，不保证能在新版上恢复，
-因为 subagent 目录现在写入第 3 版载荷，而更早的版本无法打开升级后创建
-subagent 的会话。然后：
+**安装**。插件管理器是唯一的安装机制（决策 29）：
+
+```sh
+dsh plugin add dsh-rigorquant
+# 或：dsh plugin --profile <name> add dsh-rigorquant   # 安装到其他 profile
+```
+
+同样的操作也可以在 **插件（Plugins）** 页完成。包声明了自己的 bundle、`rigorquant`
+preset 和一条启动同步行，因此这一条命令就是完整的发行方式：profile 下次启动时，
+同步行会把计算通道落盘（见下）。没有单独的安装脚本，没有第二种脚本，也没有第二条
+分发路径。
+
+**卸载**同样由插件管理器完成：
+
+```sh
+dsh plugin remove dsh-rigorquant
+```
+
+之后不会再运行任何东西：插件 CLI 没有卸载钩子。`$DSH_HOME/share/rigorquant`
+处的共享通道**会保留**——它是研究证据（study 的 `study.json` 记录了该路径），
+不是插件状态——所以卸载不会破坏已完成研究的记录。
+
+**从 0.8.0 升级**——或从任何更早版本升级——是一次性切换，要在 0.2.2-rc.3
+第一次启动之前完成。先把进行中的 RigorQuant 研究完成或归档：在旧 core 上开始
+的会话，不保证能在新版上恢复，因为 subagent 目录现在写入第 3 版载荷，而更早的
+版本无法打开升级后创建 subagent 的会话。然后：
 
 1. 停止 dsh（所有正在运行的进程，包括 web 应用）。
 2. 安装钉在验证下限上的宿主，务必写出具体版本或标签：
@@ -180,21 +201,22 @@ subagent 的会话。然后：
    ```
 
    不要不带版本安装：npm 的 `latest` 标签仍指向 `0.2.2-rc.1`，低于本版本的
-   下限，安装脚本会直接拒绝。
-3. 在启动 dsh 之前运行 `./install.sh`（或 `npx dsh-rigorquant`）。它会把你在旧
-   `settings.yaml` 里保存的路由，以及保存过的 RigorQuant 默认 preset 迁移过来；
-   若 profile 仍列出已退役的 Agent Teams bundle（或更早的 web bundle），它会
-   各用一行说明原因并移除；若 0.8.0 留下带标记的配置块，它会
-   删除 0.2.2-rc.3 的配置拒绝的三个 `agent-team` 键——成员、消息字节与回收
-   上限——并保留你保存的 `maxTasks`。若 dsh
-   已经启动过一次，重新运行它会从 `settings.yaml.imported` 中找回路由。
+   下限，未写版本的安装会落在加载器拒绝本 bundle 的 core 上。
+3. **对 ≤0.8.0 的版本不执行任何迁移。** 用插件管理器升级——先
+   `dsh plugin remove dsh-rigorquant`，再 `dsh plugin add dsh-rigorquant`，
+   或在插件页上操作。0.8.0 留在 profile 用户补丁
+   （`$DSH_HOME/profiles/<profile>/cordis.patch.yml`）里的带标记配置块由你
+   自行清理：在首次启动之前，删掉 `BEGIN` 到 `END` 标记之间的内容，因为
+   0.2.2-rc.3 的团队服务会拒绝其中三个 `agent-team` 键。已退役的 Team bundle
+   由 core 从 profile 中移除。你在 0.8.0 profile 上保存的路由会留在 profile
+   补丁里；更早版本保存的路由不会被迁移——请在路由卡片上重新选择。
 4. 启动 web 应用，在新会话选择器里选 **RigorQuant**。若选择器不见了，请在通用
    设置中重新打开 **代码工作工具**（Coding Tools）：它是选择器唯一的开关，默认
    开启，只有你自己或桌面端引导把它关掉时才会关闭。
 
-在高于验证 core 的版本上，安装会打印一条以 `0.2.2-rc.3` 命名验证 core 的
-警告并继续：下限是开放的，本版本只声明它实际验证过什么。`--skill-only` 与
-core 版本无关。
+本发行版没有任何安装前版本检查：加载器自己的兼容性闸门读取 `engines.dsh`，
+拒绝低于下限的 core，并接受其上的每一个 core。本版本声明它实际验证过的 core
+（`0.2.2-rc.3`）；除此之外没有别的版本声明。
 
 bundle 卡片本身带有宿主的原生展示元数据：`locale/en.json` 与
 `locale/zh.json` 为插件页和设置里的插件清单提供标题与描述，`icon.svg` 提供图标
@@ -211,46 +233,19 @@ goal 的连续阻塞轮数 3，以及注入的工作区说明 8 KiB 且只读 `A
 超过池容量时 spawn 会抛出 `ACTIVATION_LIMIT_REACHED`，除了队友结束没有任何
 东西能清除它——本轮存证并以 BUDGET 结果收尾，而不是循环重试。
 
-完整安装会从仍列出它们的 profile 中移除已退役的 bundle 名（0.5.0–0.8.0 的
-*智能体团队（Agent Teams）* bundle，以及更早的 *智能体团队 Web UI* bundle），
-各用一行说明原因；迁移 0.8.0 写入 profile 用户补丁
-（`$DSH_HOME/profiles/<profile>/cordis.patch.yml`）的带 `dsh-rigorquant` 标记
-的配置块：删掉新配置拒绝的三个键，其余内容（包括你保存的 `maxTasks`）原样
-保留，当块里只剩 enabled-bundles 记录时连标记一起移除；并且从不启用、钉住或
-配置任何 Team bundle。迁移完成后重复运行不会再有变化。`--uninstall` 只移除
-安装脚本写过的东西（宿主后来存进标记之间的设置会保留），并且只在一个旧块记录
-了"是安装脚本启用的"时才关闭对应 bundle——你自己手动启用的 bundle 不受影响。
-若 PATH 上没有 `dsh`，这一步会打印警告后跳过，其余安装步骤照常进行。
-
-两种安装形态：
-
-**Bundle（一条命令）**——仓库声明了 `dsh.bundle` manifest，它自己声明
-`rigorquant` preset，其中的 `rq-lane-sync` 行会在 profile 下次启动时，把计算通道
-落盘到 `$DSH_HOME/share/rigorquant/`，因此生态的 `dsh plugin add` 安装路径即可获得
-完整框架（设计记录：docs/architecture.md 决策 22 与 25）。插件本身会为每个
-RigorQuant 会话开启 Team；这条路径既不迁移 0.8.0 的 profile，也不迁移保存过的
-路由——这两件事由安装脚本完成：
-
-```sh
-dsh --version                 # 必须 >= 0.2.2-rc.3；更高的 core 都可接受
-dsh plugin --profile web add github:linxichen/dsh-rigorquant
-```
+包声明了 `dsh.bundle` manifest，它自己声明 `rigorquant` preset，其中的
+`rq-lane-sync` 行会在 profile 下次启动时，把计算通道落盘到
+`$DSH_HOME/share/rigorquant/`，因此 `dsh plugin add dsh-rigorquant` 一条命令即可
+获得完整框架（设计记录：docs/architecture.md 决策 22 与 25）。插件本身会为每个
+RigorQuant 会话开启 Team；它不迁移任何东西：从 0.8.0 或更早版本升级的操作者，
+先移除再添加插件，清理 0.8.0 留下的 profile 配置块（见上），再在路由卡片上
+重新选择旧版本留在 `settings.yaml` 里的路由。
 
 启动同步是幂等的（字节一致的目录不动；`.venv` 等派生状态既不复制也不清除）。
 它还会删除 0.6.0 之前的版本复制到 `$DSH_HOME` 下的目录式 preset，但仅当该目录
-的 `.rq-sync.json` 表明是本包放置的。DSH 的插件 CLI 没有卸载钩子，因此计算通道
-的移除始终是显式操作（`./install.sh --uninstall`）。
-
-**安装脚本（完整框架）**——计算通道，以及插件（声明式 preset、角色模型路由器及其
-设置里的路由卡片）：
-
-```sh
-git clone https://github.com/linxichen/dsh-rigorquant
-cd dsh-rigorquant
-./install.sh                    # 安装计算通道 + 插件，迁移 0.8.0 的 profile 与保存的路由
-# ./install.sh --skill-only     # 或只安装技能（rigorquant、arxiv、academic-paper-search）
-# ./install.sh --uninstall      # 移除技能、共享通道与插件
-```
+的 `.rq-sync.json` 表明是本包放置的。DSH 的插件 CLI 没有卸载钩子，本发行版也
+不提供：`dsh plugin remove dsh-rigorquant` 就是完整的卸载，共享通道会保留
+（它是研究证据，不是插件状态）。
 
 启动一个新的 DSH 会话并选择 **RigorQuant** preset，然后说：
 
@@ -293,8 +288,8 @@ RigorQuant 也不会改变其中任何一件：
 
 ## 计算通道（一次性）
 
-每项研究都带着自己的固定 uv 通道。`install.sh` 或插件的 boot-sync 行会在
-`$DSH_HOME/share/rigorquant/env` 放一份**模板**（两者写入的字节一致；见
+每项研究都带着自己的固定 uv 通道。插件的 boot-sync 行会在
+`$DSH_HOME/share/rigorquant/env` 放一份**模板**（见
 [env/README.md](env/README.md)）。立项时，编排者把其中的 `pyproject.toml` 与
 `uv.lock` 复制到研究的 `env/`，随记录一起提交，并在研究的 `interim/`（已被
 gitignore）下一次性建好 venv——venv 与 uv 缓存都放在那里，这也是
@@ -383,8 +378,8 @@ uv run --frozen --project env python -m pytest tests/ -q
 ### 提交前覆盖率闸门（校验器 ≥95%）
 
 仓库内的 [`.githooks/pre-commit`](.githooks/pre-commit) 会在覆盖率模式下运行同一
-整套测试；已发布的校验器（`rq_check.py`）低于**95% 行覆盖率**时拒绝提交。`./install.sh`
-在 git checkout 中自动启用；已有 checkout 可显式执行：
+整套测试；已发布的校验器（`rq_check.py`）低于**95% 行覆盖率**时拒绝提交。请在
+git checkout 中显式启用一次：
 
 ```sh
 git config core.hooksPath .githooks

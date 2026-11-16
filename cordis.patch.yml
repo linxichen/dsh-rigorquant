@@ -4,10 +4,12 @@
 # `dsh plugin --profile <p> add dsh-rigorquant` (or the github: spec) makes
 # the `rigorquant` skill and the role-model router available to every session
 # of that profile, and declares the `rigorquant` preset through
-# ./agent-presets/rigorquant.patch.yml. ./install.sh installs the plugin,
-# carries saved routes over, and migrates a profile written by 0.8.0; it no
-# longer manages Agent Teams, which DSH 0.2.2 mounts from the base bundle
-# (Decision 28; docs/adr/0005-rigorquant-on-dsh-0.2.2.md).
+# ./agent-presets/rigorquant.patch.yml. The plugin manager is the only install
+# and uninstall mechanism (Decision 29): `dsh plugin add`/`remove` are the
+# commands, the boot-sync row below lands the compute lane, and this release
+# performs no profile migration. It manages no Agent Teams bundle either, which
+# DSH 0.2.2 mounts from the base bundle (Decision 28;
+# docs/adr/0005-rigorquant-on-dsh-0.2.2.md).
 #
 # The skill directory is resolved through the PACKAGE, not through `baseUrl`.
 # A patch file's `!!js` runs against the boot root context, whose `baseUrl` is
@@ -17,14 +19,13 @@
 # the profile's `node_modules` to the installed package, wherever pnpm put it.
 #
 # `includeDefaultRoots: false` keeps THIS provider off the default roots; it
-# does not stop the default provider from serving them. A machine that also ran
-# ./install.sh therefore has rigorquant, arxiv, and academic-paper-search in
-# both places. That resolves deterministically rather than ambiguously: a
-# custom root ranks 300 and $DSH_HOME/skills ranks 400, and the lower rank wins
-# a duplicate name, so the copy shipped with this package is always the one
-# that serves. The $DSH_HOME/skills copies are shadowed, not consulted —
-# running ./install.sh --skill-only alongside the plugin is redundant, not
-# harmful.
+# does not stop the default provider from serving them. A machine with skills
+# in $DSH_HOME/skills therefore has rigorquant, arxiv, and
+# academic-paper-search twice. That resolves deterministically rather than
+# ambiguously: a custom root ranks 300 and $DSH_HOME/skills ranks 400, and the
+# lower rank wins a duplicate name, so the copy shipped with this package is
+# always the one that serves. The $DSH_HOME/skills copies are shadowed, not
+# consulted.
 - insert:
     - id: skill-filesystem-rigorquant
       name: '@deepseek-ai/dsh-skill-filesystem'
@@ -57,8 +58,8 @@
     # $DSH_HOME/share/rigorquant/ at boot (idempotent byte-compare; derived
     # state such as .venv never copied or pruned) and removes the directory
     # preset an older release landed, only when its .rq-sync.json names this
-    # package. Removal of the lane stays
-    # explicit via ./install.sh --uninstall.
+    # package. The lane stays on uninstall: it is study evidence (a study's
+    # study.json records its path), not plugin state.
     - id: rq-lane-sync
       name: 'dsh-rigorquant/sync'
 
