@@ -94,8 +94,9 @@ function installedCoreVersion(harnessRequire) {
 
 /**
  * The `@deepseek-ai/dsh` range this package declares, read from its manifest.
- * `engines.dsh` first: it is the field a 0.2.1 gate reads alone, and the
- * manifest keeps the peer range equal to it.
+ * `engines.dsh` first: it is the field a 0.2.1+ gate reads alone. 0.8.1
+ * declares no peer range at all, so the fallback only serves a manifest from
+ * an older release.
  */
 function declaredRange() {
   const manifest = ownManifest()

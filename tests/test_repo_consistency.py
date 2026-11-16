@@ -101,63 +101,41 @@ def test_install_script_installs_everything_the_runtime_needs():
     assert "schemas" not in install or "agent-presets" in install
 
 
-def test_native_agent_options_floor_is_declared_and_enforced():
-    """The mount-time RANGE cannot be installed outside, at either end.
+def test_the_open_floor_is_declared_once_and_enforced_before_copying():
+    """One enforced bound: refuse below the floor, advise above it, install.
 
-    Decision 27 (amending Decision 26): the preset is a declared
-    `@deepseek-ai/dsh-agent-preset` row, the routes are `.volatile()` profile
-    config, the card edits them through `configForms`, and the unattended
-    intake ask uses the timed `ask_user_question` mode -- none of which exists
-    before 0.2.0-rc.2 -- and the floor is 0.2.1-rc.2, the one line this release
-    is validated on. The ceiling is not decoration: on a newer core the loader
-    SKIPS this bundle, so a profile would boot with no RigorQuant and no error,
-    which is the same silent failure the floor prevents.
+    The 0.8.1 open-floor policy: `engines.dsh` is `>=0.2.2-rc.3`. The manifest
+    is the gate's only input, and on 0.2.2-rc.3 the loader reads
+    `engines.dsh` alone, so the installer keeps one half of the old range: it
+    refuses a core below the validated floor before copying anything (the
+    loader would skip the bundle silently), and a core above it is a warning
+    that names the validated core, not a refusal. The exclusive ceiling is
+    gone, and `MAX_DSH_VERSION` with it.
 
-    The ceiling is written `<0.2.2-0`, the lowest possible 0.2.2 prerelease:
-    that refuses every 0.2.2 prerelease AND 0.2.2 final, while admitting 0.2.1
-    final and its prereleases. The old `<0.2.1` ceiling could not do that in
-    either direction (Decision 27, seam S1): it admitted 0.2.1's release
-    candidates because the gate matches prereleases, and it would have refused
-    0.2.1 final only by a semver ordering accident a reader cannot see.
-
-    The range is stated in several places: a reader who finds a different number
-    in any of them learns the wrong contract. `install.sh` enforces both bounds,
-    and the manifest carries the same pair in BOTH `engines.dsh` and
-    `peerDependencies` -- on 0.2.1-rc.2 the loader reads `engines.dsh` alone
-    (seam S2), so a one-sided edit would silently change the enforced band.
+    The installer's floor and its validated-through constant are the same
+    version, and equal to the manifest's floor: a one-sided edit would change
+    what an operator is told without changing what the loader enforces. The
+    READMEs and the decision record restate the same number; that documentation
+    pin returns with the release record (ticket #44), which owns those pages.
     """
-    floor = "0.2.1-rc.2"
-    ceiling = "0.2.2-0"
+    floor = "0.2.2-rc.3"
     install = (REPO / "install.sh").read_text()
     assert "MIN_DSH_VERSION=\"%s\"" % floor in install
-    assert "MAX_DSH_VERSION=\"%s\"" % ceiling in install
-    assert "version_at_least" in install
-    # Both bounds are actually consulted, not merely declared.
+    assert "VALIDATED_DSH_VERSION=\"%s\"" % floor in install, (
+        "the validated-through constant must equal the floor")
+    assert "MAX_DSH_VERSION" not in install, (
+        "the exclusive ceiling is gone by policy; a MAX constant would "
+        "reintroduce a bound the release does not have")
+    # Both comparisons are consulted: the floor refusal and the above-floor
+    # advisory. The installer has no other runtime bound.
     assert install.count("version_at_least \"$actual\"") == 2, (
-        "install.sh declares a two-sided range but compares only one side")
+        "install.sh must check the floor and the validated core exactly once each")
     pkg = json.loads((REPO / "package.json").read_text())
-    band = ">=%s <%s" % (floor, ceiling)
-    assert pkg["peerDependencies"]["@deepseek-ai/dsh"] == band, (
-        "install.sh enforces [%s, %s) while the manifest declares %s"
-        % (floor, ceiling, pkg["peerDependencies"]["@deepseek-ai/dsh"]))
-    assert pkg["engines"]["dsh"] == band, (
-        "engines.dsh (%s) and peerDependencies (%s) disagree; on 0.2.1-rc.2 "
-        "the loader reads engines.dsh alone"
-        % (pkg["engines"]["dsh"], pkg["peerDependencies"]["@deepseek-ai/dsh"]))
-    stale = "0.1.5-alpha.2"
-    for path in (REPO / "README.md", REPO / "README.zh-CN.md"):
-        text = path.read_text()
-        assert band in text, "%s omits the declared DSH band" % path.name
-        assert stale not in text, (
-            "%s still states the superseded floor %s" % (path.name, stale))
-    # The decision record is where a reader looks for WHY the floor moved, so
-    # its own statement of the floor is pinned to the enforced one. Older
-    # versions may appear there as history; this sentence may not.
-    stated = re.findall(r"required floor is (?:now )?`DSH \u2265 (\S+?)`",
-                        (REPO / "docs/architecture.md").read_text())
-    assert stated == [floor], (
-        "docs/architecture.md states the floor as %s; install.sh enforces %s"
-        % (stated, floor))
+    assert pkg["engines"]["dsh"] == ">=%s" % floor, (
+        "install.sh enforces the floor at %s while the manifest declares %s"
+        % (floor, pkg["engines"]["dsh"]))
+    assert "peerDependencies" not in pkg or pkg["peerDependencies"] == {}, (
+        "a restated peer range is a second band the gate does not read")
 
 
 def test_preset_persona_row_uses_the_prefix_suffix_split():
@@ -226,7 +204,7 @@ def test_every_prompt_variable_the_preset_uses_is_registered():
         % sorted(used - registered))
 
 
-FLOOR = "0.2.1-rc.2"
+FLOOR = "0.2.2-rc.3"
 
 
 def _stub_dsh_env(tmp_path, version=FLOOR):
@@ -252,67 +230,79 @@ def _stub_dsh_env(tmp_path, version=FLOOR):
     return env, dsh_home
 
 
+def _install_full(env):
+    return subprocess.run(
+        [str(REPO / "install.sh"), "--profile", "upgrade-test"],
+        cwd=REPO, env=env, capture_output=True, text=True,
+    )
+
+
 def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
     """A CLI below the floor must not receive the preset at all.
 
-    The stub answers with the prerelease just below the floor: the check has
-    to reject the nearest harness this release cannot run on, not merely some
-    ancient tag.
+    The stub answers with the release candidate just below the floor: the
+    check has to reject the nearest harness this release cannot run on, not
+    merely some ancient tag.
     """
-    env, dsh_home = _stub_dsh_env(tmp_path, version="0.2.1-rc.1")
-    result = subprocess.run(
-        [str(REPO / "install.sh"), "--profile", "upgrade-test"],
-        cwd=REPO,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+    env, dsh_home = _stub_dsh_env(tmp_path, version="0.2.2-rc.2")
+    result = _install_full(env)
     assert result.returncode == 2
     assert "requires dsh >= %s" % FLOOR in result.stderr
     assert not dsh_home.exists(), "the old runtime guard must run before copying"
 
 
-def test_installer_accepts_every_version_inside_the_range(tmp_path):
-    """The whole supported range installs, floor and stable release alike."""
-    for version in (FLOOR, "0.2.1"):
+def test_installer_accepts_the_validated_floor_without_an_advisory(tmp_path):
+    """The floor is supported by definition: the release is validated on it."""
+    env, dsh_home = _stub_dsh_env(tmp_path, version=FLOOR)
+    result = _install_full(env)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert "Installed compute lane" in result.stdout
+    assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file()
+    assert "validated through" not in result.stderr, (
+        "the validated floor is not a core above the validated one")
+
+
+def test_installer_advises_above_the_validated_core_and_continues(tmp_path):
+    """Above the floor the band is open: warn, name the validated core, go on.
+
+    The operator's choice is "install and watch the first session", not "pin
+    an old harness" or "grant a risk exemption". 0.3.0 is a core the registry
+    does not serve yet, which is the point: no future core may be refused.
+    """
+    for version in ("0.2.2", "0.3.0"):
+        env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
+        result = _install_full(env)
+        assert result.returncode == 0, (version, result.stdout, result.stderr)
+        assert "validated through" in result.stderr, (version, result.stderr)
+        assert FLOOR in result.stderr, (
+            "the advisory must name the validated core (%s)" % version)
+        assert "warning:" in result.stderr and "error:" not in result.stderr, (
+            version, result.stderr)
+        assert "Installed compute lane" in result.stdout
+        assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file(), (
+            "an above-floor core must still receive the lane (%s)" % version)
+
+
+def test_skill_only_bypasses_the_floor_and_the_advisory(tmp_path):
+    """`--skill-only` installs skill files, which do not compose with a core.
+
+    Shape is independent of core version: a CLI below the floor and one above
+    the validated core both install the skills, with no refusal and no
+    advisory.
+    """
+    for version in ("0.2.2-rc.2", "0.3.0"):
         env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
         result = subprocess.run(
-            [str(REPO / "install.sh"), "--profile", "upgrade-test"],
-            cwd=REPO,
-            env=env,
-            capture_output=True,
-            text=True,
+            [str(REPO / "install.sh"), "--profile", "upgrade-test", "--skill-only"],
+            cwd=REPO, env=env, capture_output=True, text=True,
         )
         assert result.returncode == 0, (version, result.stdout, result.stderr)
-        assert "Installed compute lane" in result.stdout, version
-        assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file(), version
-
-
-def test_installer_rejects_a_dsh_above_the_supported_range(tmp_path):
-    """A newer core is the same silent failure as an older one.
-
-    The loader skips a bundle whose band the running core does not satisfy, so
-    a full install onto 0.2.2+ would land the lane and enable the Team bundle
-    while the plugin itself mounted nowhere. The ceiling is `<0.2.2-0`, the
-    lowest possible 0.2.2 prerelease: it refuses 0.2.2's release candidates as
-    well as 0.2.2 final, and the guard therefore checks it before copying
-    anything. 0.2.1 final is INSIDE the band and must install.
-    """
-    for version in ("0.2.2-0", "0.2.2", "0.3.0"):
-        env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
-        result = subprocess.run(
-            [str(REPO / "install.sh"), "--profile", "upgrade-test"],
-            cwd=REPO,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 2, (version, result.stdout, result.stderr)
-        assert "requires dsh >= %s" % FLOOR in result.stderr, version
-        assert "< 0.2.2-0" in result.stderr, (
-            "the refusal must name the ceiling it enforced: %s" % result.stderr)
-        assert not dsh_home.exists(), (
-            "the range guard must run before copying (%s)" % version)
+        assert "Installed skills" in result.stdout, version
+        assert "requires dsh >=" not in result.stderr, version
+        assert "validated through" not in result.stderr, version
+        assert (dsh_home / "skills/rigorquant/SKILL.md").is_file(), version
+        assert not (dsh_home / "profiles").exists(), (
+            "--skill-only must not touch a profile (%s)" % version)
 
 
 # ── the Agent Teams bundle: enabling, the cap override, uninstall ──────────
@@ -637,20 +627,21 @@ def test_the_declared_child_list_drops_the_skill_root_and_the_jacobian_row():
         "a child resolves a path from baseUrl, which is the profile root here")
 
 
-def test_the_package_pins_the_same_band_in_engines_and_peers():
-    """The band is declared twice, and on 0.2.1-rc.2 only one is read.
+def test_the_manifest_declares_an_open_floor_and_no_peer_range():
+    """The band is one open floor, in the one field the loader reads.
 
-    Decision 27: from 0.2.1-rc.2 the loader evaluates `engines.dsh` alone when
-    it is declared and ignores `peerDependencies` entirely (seam S2). Keeping
-    both fields equal is therefore not cosmetic -- a one-sided edit silently
-    changes the enforced band, and the 0.2.0-era comment that called
-    `engines.dsh` "declarative / not yet enforced" is now false.
+    `engines.dsh` is `>=0.2.2-rc.3` with no ceiling, and the
+    `@deepseek-ai/dsh` peer entry is gone. On 0.2.2-rc.3 the gate still
+    evaluates `engines.dsh` alone when it is declared, so a restated peer
+    range changes nothing about enforcement while producing an unmet-peer
+    warning on every profile install. One field, one band, nothing to keep in
+    step by hand.
     """
     pkg = json.loads((REPO / "package.json").read_text())
-    band = ">=0.2.1-rc.2 <0.2.2-0"
-    assert pkg["peerDependencies"] == {"@deepseek-ai/dsh": band}
-    assert pkg["engines"] == {"dsh": band}, (
-        "engines.dsh and peerDependencies disagree; the loader reads engines.dsh")
+    assert pkg["engines"] == {"dsh": ">=0.2.2-rc.3"}, pkg["engines"]
+    assert "peerDependencies" not in pkg or pkg["peerDependencies"] == {}, (
+        "the manifest still declares an @deepseek-ai/dsh peer range; the gate "
+        "reads engines.dsh alone, so a second range is a second contract")
 
 
 def _node_probe(probe, *args, env=None):
@@ -661,31 +652,42 @@ def _node_probe(probe, *args, env=None):
                           capture_output=True, text=True, env=env)
 
 
-def test_the_installed_gate_accepts_the_declared_band():
-    """S1: judge the REAL manifest with the INSTALLED harness's own gate.
+def test_the_installed_gate_accepts_the_live_core_and_every_core_above_the_floor():
+    """S1/S2 under the open floor: judge the REAL manifest with the gate.
 
-    A string-equality test cannot catch the false-green ceiling (seam S1):
-    both gates match ranges with prereleases, so under the old band
-    `0.2.1-rc.2` was ACCEPTED while every document claimed it was refused.
-    This runs the shipped `evaluatePluginCompatibility` over the runtime
-    versions that pin the contract: the new floor and 0.2.1 final accepted;
-    0.2.2's release candidates and final, and the old floor, refused.
+    The release's contract is two sentences: no unmet requirement on the core
+    it is installed on, and no ceiling above the validated floor. A
+    string-equality test of the band cannot catch a prerelease-ordering
+    mistake (`<0.2.3` would admit `0.3.0`'s release candidates), so the probe
+    asks the installed `evaluatePluginCompatibility` directly: the live core's
+    verdict (the verdict the profile loader will produce here and now), a
+    fixed set of runtime versions pinning the floor from both sides, and
+    which manifest field decides.
+
+    0.3.0 is deliberately in the accepted set even though the registry does
+    not serve it: the floor is open by policy, so a future core
+    must not draw an incompatibility warning, and a reintroduced ceiling fails
+    this test instead of an operator's first upgrade.
     """
     out = _node_probe(GATE_PROBE)
     require_harness(out)
     assert out.returncode == 0, (out.stdout, out.stderr)
     report = json.loads(out.stdout)
+    assert report["live"] == {"verdict": "accepted"}, (
+        "the installed core %s still draws an unmet requirement (%s); the "
+        "release is unusable there without a risk exemption"
+        % (report["coreVersion"], report["live"]))
     verdicts = report["verdicts"]
     assert set(verdicts) == {
-        "0.2.0-rc.2", "0.2.1-rc.2", "0.2.1", "0.2.2-rc.1", "0.2.2", "0.3.0"}
-    for version in ("0.2.1-rc.2", "0.2.1"):
+        "0.2.1-rc.2", "0.2.2-rc.2", "0.2.2-rc.3", "0.2.2", "0.3.0", "1.0.0"}
+    for version in ("0.2.2-rc.3", "0.2.2", "0.3.0", "1.0.0"):
         assert verdicts[version]["verdict"] == "accepted", (version, verdicts[version])
-    for version in ("0.2.0-rc.2", "0.2.2-rc.1", "0.2.2", "0.3.0"):
+    for version in ("0.2.1-rc.2", "0.2.2-rc.2"):
         assert verdicts[version]["verdict"] == "refused", (version, verdicts[version])
         if report["gateReads"] == "engines":
             assert verdicts[version]["requirements"] == {
-                "engines.dsh": ">=0.2.1-rc.2 <0.2.2-0"}, (
-                "the refusal must name the field the core actually reads: %s"
+                "engines.dsh": ">=0.2.2-rc.3"}, (
+                "the floor refusal must name the field the core actually reads: %s"
                 % (verdicts[version],))
 
 
