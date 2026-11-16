@@ -1,25 +1,31 @@
 // Exercises dsh/index.js against a small host-context stub.
 //
 // The probe is centered on the Teams migration seam (issue #11): role
-// identity comes ONLY from the team plugin's membership
-// (`ctx.get('agentTeams').tryMembership(agent)`, the same call dsh/team.js
+// identity comes ONLY from the surviving 0.2.2 subagent identity API
+// (`subagents.rootOf` / `subagents.namesOf`, the same helper dsh/team.js
 // resolves composition from) plus the agent's live composed preset — never
-// from history or prompt text. It asserts:
-// - a teammate's role resolves from its Team membership NAME;
+// from history or prompt text. The stub deliberately has no `tryMembership`
+// or `listMembers`: those were removed from the service, and a regression to
+// either must fail here instead of passing against a friendly fake. It
+// asserts:
+// - a teammate's role resolves from its subagent-tree NAME;
 // - the shipped tier matrix (DoubleChecker/adversary) applies on its own,
 //   with no native route to lean on, when there is no override;
 // - an explicit user override wins over that shipped matrix;
 // - the degrade-to-fallback lane still fires on a terminal primary failure;
 // - the orchestrator (the Lead) inherits absent an override, same as any
 //   other unrouted role;
-// - an agent with no membership, or whose live composition is not this
-//   preset, is never touched;
+// - an agent with no live tree identity, or whose live composition is not
+//   this preset, is never touched;
+// - an absent `subagents` service disarms the router instead of throwing;
 // - routes live on the row's volatile Config (Decision 25): a saved route is
 //   read per request through its reference, and the shipped matrix follows
 //   the model catalog — API-key only stays on `deepseek-official`, account
 //   only moves to `deepseek-account`, neither takes the #22 degradation.
 const fs = require('node:fs')
 const vm = require('node:vm')
+
+const { inlineRelativeImports } = require('./harness_locator.cjs')
 
 // The shipped tier matrix as the probe expects it. The router's own constants
 // are compared against these below, so a retarget of the fallback cannot pass
@@ -48,9 +54,12 @@ function equal(actual, expected, label) {
 // Load the host module without requiring npm install in a repository-only test
 // checkout. This is not a second implementation: the source is evaluated as
 // CommonJS with only Schemastery's declaration builder stubbed, because the
-// probe exercises apply() and never validates a config document.
+// probe exercises apply() and never validates a config document. The router's
+// one relative import — the shared subagent-identity helper — is evaluated
+// from its own file the same way, so the probe follows the shipped module
+// rather than restating it.
 function loadHostModule(modulePath) {
-  let source = fs.readFileSync(modulePath, 'utf8')
+  let source = inlineRelativeImports(fs.readFileSync(modulePath, 'utf8'), modulePath)
   source = source.replace("import z from '@deepseek-ai/schemastery'", 'const z = schemaStub')
   source = source.replace(/^export const /gm, 'const ')
   source = source.replace(/^export \{ ([^}]+) \}$/m, 'module.exports = { $1 }')
@@ -108,10 +117,26 @@ async function main() {
   const logs = []
   const warnings = []
 
-  // The Team service stub: membership is looked up by agent OBJECT identity,
-  // exactly like the real duck-typed `agentTeams.tryMembership(agent)`.
-  const membershipByAgent = new Map()
-  const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
+  // The 0.2.2 subagent identity service: `rootOf` selects the live tree root
+  // and `namesOf` returns the model-facing name, both keyed by the exact live
+  // Agent. They throw for an agent outside a live tree, the way the installed
+  // service does. No `tryMembership` / `listMembers` here on purpose: the
+  // Agent Teams service lost those in 0.2.2, so a router that reaches for one
+  // must fail this probe instead of passing.
+  const roots = new Map()
+  const names = new Map()
+  const subagentsService = {
+    rootOf: (agent) => {
+      const root = roots.get(agent)
+      if (root === undefined) throw new Error('agent has no active runtime owner')
+      return root
+    },
+    namesOf: (agent) => {
+      const entry = names.get(agent)
+      if (entry === undefined) throw new Error('agent is not a member of this subagent tree')
+      return entry
+    },
+  }
   const agentPresetsService = { composedPreset: (agentCtx) => agentCtx.__preset }
 
   // Reasoning-effort surfaces the stub `llm` service reports per exact route —
@@ -179,7 +204,7 @@ async function main() {
       if (serviceName === 'llm') return llm
       if (serviceName === 'settings') return settings
       if (serviceName === 'credentials') return credentials
-      if (serviceName === 'agentTeams') return teamsService
+      if (serviceName === 'subagents') return subagentsService
       if (serviceName === 'agentPresets') return agentPresetsService
       return undefined
     },
@@ -194,12 +219,16 @@ async function main() {
     return handlers[0](payload, async () => resolved)
   }
 
-  /** A teammate or the Lead: its Team membership is registered by object
-   *  identity, and its live composed preset lives on `ctx.__preset` — the
-   *  same shape dsh/team.js's own probe uses. */
-  const makeAgent = (id, membership, preset = 'rigorquant') => {
+  /** A teammate or the Lead: its tree identity (root + name) is registered by
+   *  object identity, and its live composed preset lives on `ctx.__preset` —
+   *  the same shape dsh/team.js's own probe uses. An agent left out of the
+   *  tree has no identity, exactly as the service answers for one. */
+  const makeAgent = (id, treeName, preset = 'rigorquant', root = undefined) => {
     const agent = { id, ctx: { __preset: preset } }
-    membershipByAgent.set(agent, membership)
+    if (treeName !== undefined) {
+      roots.set(agent, root ?? agent)
+      names.set(agent, { self: treeName })
+    }
     return agent
   }
 
@@ -209,20 +238,20 @@ async function main() {
     ...routeRefs,
   })
 
-  const doublechecker = makeAgent('doublechecker-1', { role: 'teammate', name: 'doublechecker-1' })
-  const explorer = makeAgent('explorer-1', { role: 'teammate', name: 'explorer-1' })
-  const lead = makeAgent('lead-1', { role: 'lead', name: 'lead' })
+  const lead = makeAgent('lead-1', 'lead')
+  const doublechecker = makeAgent('doublechecker-1', 'doublechecker-1', 'rigorquant', lead)
+  const explorer = makeAgent('explorer-1', 'explorer-1', 'rigorquant', lead)
   const placeholderRoute = { provider: 'stale-provider', model: 'stale-model', reasoningEffort: 'medium' }
 
-  // ---- Role from the membership name: the shipped matrix applies on its
-  // own, with nothing native to lean on, purely because the membership name
-  // parses to 'doublechecker'. The incoming (resolved) route is a
-  // placeholder that shares nothing with the shipped route, so a pass-through
-  // bug cannot pass this assertion by accident.
+  // ---- Role from the subagent-tree name: the shipped matrix applies on its
+  // own, with nothing native to lean on, purely because the name parses to
+  // 'doublechecker'. The incoming (resolved) route is a placeholder that
+  // shares nothing with the shipped route, so a pass-through bug cannot pass
+  // this assertion by accident.
   equal(
     await waterfall('agent/request', { agent: doublechecker }, placeholderRoute),
     DEFAULT_PRIMARY,
-    'the shipped matrix applies from the membership name alone',
+    'the shipped matrix applies from the subagent-tree name alone',
   )
 
   // ---- The orchestrator (the Lead) inherits absent an override — same
@@ -242,23 +271,43 @@ async function main() {
     'a role outside the shipped matrix inherits absent an override',
   )
 
-  // ---- An agent with Team membership but composed under a DIFFERENT preset
-  // is never touched, even though its name parses cleanly.
-  const otherPreset = makeAgent('doublechecker-9', { role: 'teammate', name: 'doublechecker-9' }, 'standard')
+  // ---- An agent with a live tree identity but composed under a DIFFERENT
+  // preset is never touched, even though its name parses cleanly.
+  const otherPreset = makeAgent('doublechecker-9', 'doublechecker-9', 'standard', lead)
   equal(
     await waterfall('agent/request', { agent: otherPreset }, inheritedRoute),
     inheritedRoute,
     'a teammate composed under another preset is left alone',
   )
 
-  // ---- An agent with NO Team membership at all (not a team member) is
-  // never touched either.
-  const noMembership = { id: 'no-membership-1', ctx: { __preset: 'rigorquant' } }
+  // ---- An ORDINARY root (a Session root on another preset) is left alone
+  // too: `isRoot` identifies the tree root, never the orchestrator by itself.
+  const standardRoot = makeAgent('lead-9', 'lead', 'standard')
   equal(
-    await waterfall('agent/request', { agent: noMembership }, inheritedRoute),
+    await waterfall('agent/request', { agent: standardRoot }, inheritedRoute),
     inheritedRoute,
-    'an agent with no Team membership is left alone',
+    'a root composed under another preset is left alone',
   )
+
+  // ---- An agent with NO live tree identity (the service throws for it, the
+  // way it does for an agent whose root is gone) is never touched either.
+  const noIdentity = { id: 'no-identity-1', ctx: { __preset: 'rigorquant' } }
+  equal(
+    await waterfall('agent/request', { agent: noIdentity }, inheritedRoute),
+    inheritedRoute,
+    'an agent with no subagent-tree identity is left alone',
+  )
+
+  // ---- `subagents` is optional and duck-typed: a core that does not mount
+  // it leaves every agent unrouted instead of failing the request waterfall.
+  const withSubagents = ctx.get
+  ctx.get = (serviceName) => (serviceName === 'subagents' ? undefined : withSubagents(serviceName))
+  equal(
+    await waterfall('agent/request', { agent: doublechecker }, inheritedRoute),
+    inheritedRoute,
+    'an absent subagents service leaves every agent unrouted',
+  )
+  ctx.get = withSubagents
 
   // ---- A user override wins over the shipped matrix.
   saved = { doublecheckerPrimary: { provider: 'custom-provider', model: 'custom-model' } }
@@ -328,7 +377,7 @@ async function main() {
   // explicit effort. The stored doc-adversary primary keeps its model
   // override but loses the effort; the inherited route's effort was already
   // cleared by applyChoice.
-  const docAdversary = makeAgent('doc-adversary-1', { role: 'teammate', name: 'doc-adversary-1' })
+  const docAdversary = makeAgent('doc-adversary-1', 'doc-adversary-1', 'rigorquant', lead)
   saved = { 'doc-adversaryPrimary': { provider: 'zai', model: 'glm-5.3-flash', reasoningEffort: 'high' } }
   equal(
     await waterfall('agent/request', { agent: docAdversary }, { provider: 'p', model: 'm', reasoningEffort: 'medium' }),
@@ -370,7 +419,7 @@ async function main() {
 
   // (e) A routed role's inherited (passthrough) route is sanitized too: an
   // effort the route does not list drops even without any stored choice.
-  const offgrid = makeAgent('offgrid-1', { role: 'teammate', name: 'offgrid-1' })
+  const offgrid = makeAgent('offgrid-1', 'offgrid-1', 'rigorquant', lead)
   saved = {}
   equal(
     await waterfall('agent/request', { agent: offgrid }, { provider: 'stub-provider', model: 'stub-model', reasoningEffort: 'max' }),
@@ -389,7 +438,7 @@ async function main() {
     message: `pi-ai provider "${provider}" has no configured model "${model}"`,
   })
   const phantom = { provider: 'linxicloud', model: 'deepseek-v4-flash-dspark' }
-  const doublechecker2 = makeAgent('doublechecker-2', { role: 'teammate', name: 'doublechecker-2' })
+  const doublechecker2 = makeAgent('doublechecker-2', 'doublechecker-2', 'rigorquant', lead)
   saved = { doublecheckerPrimary: clone(phantom) }
   equal(
     await waterfall('agent/request', { agent: doublechecker2 }, placeholderRoute),
@@ -439,7 +488,7 @@ async function main() {
   // fallback to degrade into, so the action passes through untouched — but the
   // router still gives up out loud, once per teammate, instead of leaving
   // the cause inside the teammate's compressed session log.
-  const explorer2 = makeAgent('explorer-2', { role: 'teammate', name: 'explorer-2' })
+  const explorer2 = makeAgent('explorer-2', 'explorer-2', 'rigorquant', lead)
   saved = { explorerPrimary: clone(phantom) }
   equal(
     await waterfall('agent/request', { agent: explorer2 }, placeholderRoute),
@@ -464,7 +513,7 @@ async function main() {
 
   // A transient failure on the same route is not route-fatal: no degrade,
   // no warning (the host's own retry policy owns it).
-  const explorer3 = makeAgent('explorer-3', { role: 'teammate', name: 'explorer-3' })
+  const explorer3 = makeAgent('explorer-3', 'explorer-3', 'rigorquant', lead)
   saved = { explorerPrimary: clone(phantom), explorerFallback: clone(DEFAULT_FALLBACK) }
   await waterfall('agent/request', { agent: explorer3 }, placeholderRoute)
   warned = warnings.length
@@ -478,7 +527,7 @@ async function main() {
   assert(warnings.length === warned, 'a transient failure warns nothing')
 
   // An HTTP 4xx on the primary still degrades (a string status included).
-  const adversary4xx = makeAgent('adversary-2', { role: 'teammate', name: 'adversary-2' })
+  const adversary4xx = makeAgent('adversary-2', 'adversary-2', 'rigorquant', lead)
   saved = {}
   await waterfall('agent/request', { agent: adversary4xx }, placeholderRoute)
   equal(
@@ -496,7 +545,7 @@ async function main() {
   // INVALID_CONFIG is llm-pi-ai's other unresolvable-model code (a broken
   // model declaration, or the provider's failed catalog): the same one-shot
   // fallback.
-  const doublechecker3 = makeAgent('doublechecker-3', { role: 'teammate', name: 'doublechecker-3' })
+  const doublechecker3 = makeAgent('doublechecker-3', 'doublechecker-3', 'rigorquant', lead)
   await waterfall('agent/request', { agent: doublechecker3 }, placeholderRoute)
   equal(
     await waterfall('agent/request-error', {
@@ -510,7 +559,7 @@ async function main() {
 
   // A role with no primary follows the picker: a route-fatal failure there
   // is the picker's own, so it is left alone and warns nothing.
-  const offgrid2 = makeAgent('offgrid-2', { role: 'teammate', name: 'offgrid-2' })
+  const offgrid2 = makeAgent('offgrid-2', 'offgrid-2', 'rigorquant', lead)
   await waterfall('agent/request', { agent: offgrid2 }, { provider: 'picker-provider', model: 'picker-model' })
   warned = warnings.length
   equal(
@@ -544,7 +593,7 @@ async function main() {
 
   // (1) API-key only: the shipped matrix stays on the official route.
   catalog = { officialModels: true, officialKey: true, accountModels: false }
-  const keyOnly = makeAgent('doublechecker-10', { role: 'teammate', name: 'doublechecker-10' })
+  const keyOnly = makeAgent('doublechecker-10', 'doublechecker-10', 'rigorquant', lead)
   equal(
     await waterfall('agent/request', { agent: keyOnly }, placeholderRoute),
     DEFAULT_PRIMARY,
@@ -556,7 +605,7 @@ async function main() {
   // account route lists models. The shipped matrix moves to the same ids on
   // `deepseek-account`, primary and fallback alike.
   catalog = { officialModels: true, officialKey: false, accountModels: true }
-  const accountOnly = makeAgent('adversary-10', { role: 'teammate', name: 'adversary-10' })
+  const accountOnly = makeAgent('adversary-10', 'adversary-10', 'rigorquant', lead)
   equal(
     await waterfall('agent/request', { agent: accountOnly }, placeholderRoute),
     onAccount(DEFAULT_PRIMARY),
@@ -601,7 +650,7 @@ async function main() {
   )
   // A role outside the shipped matrix still inherits.
   saved = {}
-  const accountExplorer = makeAgent('explorer-10', { role: 'teammate', name: 'explorer-10' })
+  const accountExplorer = makeAgent('explorer-10', 'explorer-10', 'rigorquant', lead)
   equal(
     await waterfall('agent/request', { agent: accountExplorer }, inheritedRoute),
     inheritedRoute,
@@ -613,7 +662,7 @@ async function main() {
   // one degrade to the fallback, the fallback fails too, one give-up
   // warning, no retry loop.
   catalog = { officialModels: true, officialKey: false, accountModels: false }
-  const neither = makeAgent('doublechecker-11', { role: 'teammate', name: 'doublechecker-11' })
+  const neither = makeAgent('doublechecker-11', 'doublechecker-11', 'rigorquant', lead)
   equal(
     await waterfall('agent/request', { agent: neither }, placeholderRoute),
     DEFAULT_PRIMARY,

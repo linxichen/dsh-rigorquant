@@ -135,6 +135,14 @@ directory (the brief names the one it writes in), and it may read or update
 only a task no other teammate owns (the one its brief names, which it
 claims).
 
+The orchestrator creates each teammate with the standard `subagent` tool and an
+explicit `<role>-<n>` name — the name is the Role: it fixes the persona, the
+tool budget and the model tier, and the guard refuses a spawn whose name does
+not parse as `<role>-<n>` and refuses `subagent_fork` outright. It messages a
+teammate with `send_message({agent, message})`, reads the roster from
+`list_agents` rows of `{name, status, description}` (where `inactive` does not
+mean done) and reads task ownership from the board's `owner` name.
+
 > **Attribution.** The hero banner (`docs/figs/agent-team-hero.svg`) is
 > reworked from the hero graphic of
 > [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) by
@@ -156,53 +164,94 @@ claims).
 
 ## Install
 
-Requires DSH `>=0.2.1-rc.2 <0.2.2-0` (Decision 27,
-`docs/adr/0004-rigorquant-on-dsh-0.2.1.md`). The preset is a declared
-`@deepseek-ai/dsh-agent-preset` row, the routes are the router row's own
-profile config, the card edits them through the harness's config forms (it is
-its own **RigorQuant** section in Settings, and the bundle's form on the
-Plugins page), and the unattended intake ask uses the harness's timed
-`ask_user_question` mode; none of that exists on an older harness, and the installer refuses one.
-**0.7.0 is the last release for the 0.2.0-rc.2 harness**: nothing is
-backported, so stay on 0.7.0 if you cannot move the harness yet. (0.6.1 was
-the last release for 0.1.7-rc.2, for the same reason.)
+Requires DSH `>=0.2.2-rc.3` — an **open floor** (Decision 28,
+`docs/adr/0005-rigorquant-on-dsh-0.2.2.md`). The floor is the core this
+release was validated on; every core at or above it is admitted, and the floor
+moves only when a release is validated on a newer one. **0.8.0 is the last
+release for the 0.2.1-rc.2 harness**: nothing is backported, so stay on 0.8.0
+if you cannot move the harness yet. (0.7.0 was the last release for
+0.2.0-rc.2, and 0.6.1 for 0.1.7-rc.2, for the same reason.)
 
-That band is not a formality. The previous one, `>=0.2.0-rc.2 <0.2.1`, looked
-like it kept 0.2.1 out, but the compatibility gate matches prereleases, so it
-already admitted `0.2.1-rc.2`: 0.7.0 mounted on the new core without ever
-claiming it. This release is that validation, and the ceiling is
-`<0.2.2-0` so a 0.2.2 release candidate cannot slip in the same way.
+The floor is not a formality, and it is not a ceiling either. 0.8.0 declared
+`>=0.2.1-rc.2 <0.2.2-0`, whose `-0` sentinel excluded every 0.2.2 prerelease:
+DSH's compatibility gate read that as "incompatible" on 0.2.2-rc.3 and refused
+to mount the bundle until an operator granted an exact-version exemption and
+accepted a warning about crashes and data loss. A ceiling cannot tell a core
+that will break the plugin from a core that did not exist when the release was
+cut, so it announced the same warning at every future core. This release keeps
+one bound — the floor — and retires the ceiling by policy.
 
-That range is a prerelease and the team layer is experimental: this release
-runs team-only on the **Agent Teams** bundle the harness ships as a **Beta**
-card, *Agent Teams* under **Plugins → Official**. Turn it on there yourself,
-or let a full install do it for you (below).
+Agent Teams is no longer a card you switch on. DSH 0.2.2 mounts the team
+service from its base bundle, and the plugin arms Team for a RigorQuant
+Session when that Session starts — your other presets are untouched. This
+release adds, pins, enables and configures no Team bundle, and it performs no
+profile migration (below).
 
-**Upgrading from 0.7.0** — or from any 0.5.x or 0.6.x, which the installer
-still migrates (see below) — is one cutover, done before the first 0.2.1-rc.2
-boot. First finish or archive the RigorQuant studies in progress: resuming a
-session started on the 0.2.0-rc.2 harness is not promised. Then:
+**Install.** The plugin manager is the only mechanism (Decision 29):
+
+```sh
+dsh plugin add dsh-rigorquant
+# or: dsh plugin --profile <name> add dsh-rigorquant   # another profile
+```
+
+The same operation is on the **Plugins** page. The package declares its
+bundle, the `rigorquant` preset and a boot-sync row, so that one command is
+the whole distribution: at the profile's next start the sync lands the
+compute lane (below). There is no separate installer, no second script and no
+second distribution path.
+
+**Uninstall** is the plugin manager's too:
+
+```sh
+dsh plugin remove dsh-rigorquant
+```
+
+Nothing runs afterwards: the plugin CLI has no uninstall hook. The shared
+lane at `$DSH_HOME/share/rigorquant` **remains** — it is study evidence (a
+study's `study.json` records that path), not plugin state — so removing the
+plugin cannot break the record of a finished study.
+
+**Upgrading from 0.8.0** — or from any earlier release — is one cutover, done
+before the first 0.2.2-rc.3 boot. First finish or archive the RigorQuant
+studies in progress: resuming a session started on the previous core is
+not promised, because the subagent catalog now persists payload version 3 and
+releases before that change cannot open sessions that create subagents after
+upgrading. Then:
 
 1. Stop dsh (every running process, the web app included).
-2. Install the harness pinned to the release this range was tested on:
+2. Install the harness at the validated floor, naming the version or the tag:
 
    ```sh
-   npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+   npm i -g @deepseek-ai/dsh@0.2.2-rc.3
+   # or: npm i -g @deepseek-ai/dsh@next
    ```
 
-   npm `latest` now points at `0.2.1-rc.2` too, so an unqualified install
-   happens to land on this core; the pin is what keeps it there.
-3. Run `./install.sh` (or `npx dsh-rigorquant`) before starting dsh. It
-   carries your saved routes and a saved RigorQuant default over from an old
-   `settings.yaml`. If dsh already booted once, re-running it recovers them
-   from `settings.yaml.imported`.
-4. Start the web app and pick **RigorQuant** in the new-session picker. If
-   the picker is missing, switch **Coding Tools** back on in General
-   Settings: it is the picker's only gate, on by default, and off only if you
-   or Desktop onboarding switched it off.
+   Do not install unqualified: npm's `latest` dist-tag still points at
+   `0.2.2-rc.1`, below this release's floor, so an unqualified install lands
+   on a core the loader refuses the bundle on.
+3. **No migration runs for releases ≤0.8.0.** Upgrade the plugin with the
+   plugin manager — `dsh plugin remove dsh-rigorquant` then
+   `dsh plugin add dsh-rigorquant`, or the Plugins page. A profile patch left
+   over from 0.8.0 — a marked block naming `dsh-rigorquant` in
+   `$DSH_HOME/profiles/<profile>/cordis.patch.yml` — is yours to clear:
+   delete the block between its `BEGIN` and `END` markers before the first
+   boot, because 0.2.2-rc.3's team service rejects the three `agent-team`
+   keys it contains. The core removes the retired Team bundle from the
+   profile itself. Routes you saved on a 0.8.0 profile stay in the profile
+   patch; a route saved on an older release is not ported — set it again on
+   the routing card.
+4. Start the web app and pick **RigorQuant** in the new-session picker. If the
+   picker is missing, switch **Coding Tools** back on in General Settings: it
+   is the picker's only gate, on by default, and off only if you or Desktop
+   onboarding switched it off.
 
-The bundle card itself now carries native display metadata: `locale/en.json`
-and `locale/zh.json` give the Plugins page and the Settings plugin inventory a
+There is no pre-flight version check anywhere in this distribution: the
+loader's own compatibility gate reads `engines.dsh`, refuses a core below the
+floor, and admits every core above it. The release states the core it was
+exercised on (`0.2.2-rc.3`); nothing else does.
+
+The bundle card itself carries native display metadata: `locale/en.json` and
+`locale/zh.json` give the Plugins page and the Settings plugin inventory a
 title and description, and `icon.svg` gives them artwork — read from the
 manifest without activating the plugin.
 
@@ -214,67 +263,31 @@ instructions at 8 KiB from `AGENTS.md` only. They are row configuration —
 there is no custom code behind any of them — and each is bounded where it
 enters the prompt rather than after the fact.
 
-Fan-out is bounded by the host: eight live children per root
-(`maxActiveSubagents`, **Plugins → Subagent**). A literature-heavy study that
-wants four lines running beside its explorers can raise it there.
+Capacity is a study's **live-teammate pool of 12**, pinned by the bundle
+patch's `subagent` override (the base service's `maxActiveSubagents`), and
+the pool bounds concurrency, never the study's lifetime count:
+a settled teammate frees its slot for the next.
+Over the pool a spawn raises `ACTIVATION_LIMIT_REACHED`, which nothing but a
+teammate finishing clears — the round checkpoints and ends the turn as a
+BUDGET outcome rather than retrying in a loop.
 
-A full install turns on that **Beta** bundle, the Plugins page's *Agent
-Teams* card under **Official**, when the target profile does not have it,
-pinned to the core's own version (a profile that lists it at some other
-version is re-pinned; a bundle you enabled without a recorded version is left
-alone). It always removes the separate *Agent Teams Web UI* bundle a 0.5.0
-profile has, saying so in one line: DSH 0.1.7 folded that panel into the one
-bundle and publishes no web bundle for this core, and if the removal fails
-the install stops. It raises the team service's lifetime member cap to 64
-through a marked `dsh-rigorquant` block it appends to the profile's user
-patch (`$DSH_HOME/profiles/<profile>/cordis.patch.yml`), printing every line
-it writes. Re-running changes nothing once installed; `--uninstall` removes
-the lines it wrote in the marked block (a setting the harness later saved
-between the markers stays) and disables the bundle only if that block records the
-installer having turned it on, leaving a bundle you enabled yourself
-untouched. With no `dsh` on the path this step is skipped with a warning,
-same as the rest of the install, and the Beta card on the Plugins page is
-then yours to toggle (docs/adr/0001-rigorquant-on-agent-teams.md).
-
-**One line, everything**: the compute lane and the plugin (the declared
-preset, the role model router and its routing card in Settings):
-
-```sh
-npx dsh-rigorquant
-# npx dsh-rigorquant --profile tui     # a profile other than web
-```
-
-**From a clone**: the same install, from your own working tree. A checkout
-installs itself into the profile, so re-run this after editing `dsh/` to
-refresh the plugin:
-
-```sh
-git clone https://github.com/linxichen/dsh-rigorquant
-cd dsh-rigorquant
-./install.sh
-# ./install.sh --skill-only     # only the skills, for any preset, no plugin
-# ./install.sh --uninstall      # removes everything, plugin included
-```
-
-**Plugin only**: the same everything, via the ecosystem's bundle path. The
-package declares a `dsh.bundle` manifest that declares the `rigorquant` preset
-itself, and one of its rows is a boot-sync half (`rq-lane-sync`): on the
-profile's next start it lands the compute lane into
-`$DSH_HOME/share/rigorquant/`, so `dsh plugin add` alone yields a working
-distribution (docs/architecture.md Decisions 22 and 25). This path neither
-enables Agent Teams nor carries saved routes over; the installer does both:
-
-```sh
-dsh --version                 # must be >= 0.2.1-rc.2 and < 0.2.2-0
-dsh plugin --profile web add dsh-rigorquant
-```
+The package declares a `dsh.bundle` manifest that declares the `rigorquant`
+preset itself, and one of its rows is a boot-sync half (`rq-lane-sync`): on
+the profile's next start it lands the compute lane into
+`$DSH_HOME/share/rigorquant/`, so `dsh plugin add dsh-rigorquant` alone yields
+a working distribution (docs/architecture.md Decisions 22 and 25). The plugin
+arms Team per Session itself, and it migrates nothing: an operator coming
+from 0.8.0 or earlier upgrades by removing and adding the plugin, clearing a
+leftover 0.8.0 profile block (above), and re-selecting any route an older
+release kept in `settings.yaml`.
 
 The sync is idempotent (a byte-identical tree is left untouched; derived state
 like `.venv` is never copied or pruned). It also removes the directory preset
-that releases before 0.6.0 copied under `$DSH_HOME`, but only when that
-copy's `.rq-sync.json` says this package put it there. There is no uninstall
-hook in DSH's plugin CLI, so removal of the lane stays explicit
-(`./install.sh --uninstall`).
+that releases before 0.6.0 copied under `$DSH_HOME`, but only when that copy's
+`.rq-sync.json` says this package put it there. There is no uninstall hook in
+DSH's plugin CLI and this distribution ships none: `dsh plugin remove
+dsh-rigorquant` is the whole uninstall, and the shared lane stays (it is
+study evidence, not plugin state).
 
 Start a new DSH session and pick the **RigorQuant** preset. Then:
 
@@ -325,9 +338,9 @@ RigorQuant's own machinery, and installing RigorQuant changes none of them:
 
 ## Compute lane (one-time)
 
-Each study carries its own pinned uv lane. `install.sh` or the plugin's
-boot-sync row places a **template** at `$DSH_HOME/share/rigorquant/env`
-(both land identical bytes; see [env/README.md](env/README.md)). At intake
+Each study carries its own pinned uv lane. The plugin's boot-sync row places
+a **template** at `$DSH_HOME/share/rigorquant/env` (see
+[env/README.md](env/README.md)). At intake
 the orchestrator copies its `pyproject.toml` and `uv.lock` into the study's
 `env/`, commits them with the record, and builds the venv once under the
 study's gitignored `interim/` (venv and uv cache both live there, which is
@@ -349,9 +362,9 @@ framework still asks for approval before any one-time provisioning
 
 The bundled plugin gives each RigorQuant role a model + reasoning-effort
 policy, with one fallback per role. Role identity comes from the teammate's
-Team membership name (`<role>-<n>`; the Lead is the orchestrator) — the
-router carries the shipped tier matrix itself (DoubleChecker and adversary
-default to `deepseek-v4-pro` @ `high`) and overlays a saved route on top.
+subagent-tree name (`<role>-<n>`; the Lead is the orchestrator) — the router
+carries the shipped tier matrix itself (DoubleChecker and adversary default to
+`deepseek-v4-pro` @ `high`) and overlays a saved route on top.
 Configure routes in **Plugins → dsh-rigorquant** (the bundle's own page,
 under its description): only Save writes, a saved route is the router row's
 own config in the profile's `cordis.patch.yml` and applies from the next
@@ -366,8 +379,8 @@ request, and leaving the page drops staged edits. Shipped defaults:
 On a terminal primary failure (no adapter / HTTP 4xx, including the official
 quota response `1308` / “Usage limit reached”) the role degrades to its
 fallback for one forced retry, and recovers on the next success or after 10
-minutes. An agent outside a RigorQuant team (another preset, or with no Team
-membership at all) is never touched.
+minutes. An agent with no live subagent-tree identity (another preset, an
+unnamed session, or a teammate outside a RigorQuant team) is never touched.
 
 **Signed in with a DeepSeek account only?** The harness splits DeepSeek into
 `deepseek-official` (API key) and `deepseek-account` (account sign-in). When
@@ -427,8 +440,8 @@ install's `@deepseek-ai` directory) and re-run the command above.
 
 The checked-in hook at [`.githooks/pre-commit`](.githooks/pre-commit) runs the
 same full suite under coverage and refuses a commit when the shipped validator
-(`rq_check.py`) drops below **95% line coverage**. `./install.sh` enables it in
-a git checkout; in an existing checkout, enable it explicitly:
+(`rq_check.py`) drops below **95% line coverage**. Enable the checked-in hook
+once in a git checkout:
 
 ```sh
 git config core.hooksPath .githooks

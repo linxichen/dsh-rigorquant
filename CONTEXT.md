@@ -62,6 +62,12 @@ A role agent the orchestrator creates for one study's team; it lives for the
 study and holds its name for life.
 _Avoid_: subagent, child, worker, member
 
+**Live-teammate pool**:
+The teammates a study may have running at once: twelve. A teammate that
+settles frees its slot, so the pool bounds concurrency, never how many
+teammates a study creates over its life.
+_Avoid_: lifetime cap, member limit, roster size, fan-out width
+
 **Role**:
 The job a teammate holds, which fixes its persona, tool budget and model tier:
 Explorer, OffGridThinker, DoubleChecker, Adversary, Literature line, Literature
@@ -100,3 +106,10 @@ _Avoid_: result, status, opinion
 An item on the team's shared task board coordinating one piece of a round's
 work; coordination, never evidence.
 _Avoid_: ticket, todo, job, study (the assignment)
+
+### The harness
+
+**Validated floor**:
+The DSH core a release was exercised on. Every core at or above it is
+admitted; the floor rises only when a release is validated on a newer core.
+_Avoid_: ceiling, version cap, upper bound, supported range

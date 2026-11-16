@@ -72,7 +72,7 @@ try {
   harnessRequire.resolve(PRESET_PACKAGE)
 } catch {
   // Declared presets arrived in 0.1.7; an older harness is outside the
-  // package's `peerDependencies` range, not a failed row.
+  // package's `engines.dsh` range, not a failed row.
   process.stderr.write(`preset_harness_probe: the installed harness predates ${PRESET_PACKAGE}; this package requires dsh ${declaredRange()}\n`)
   process.exit(EXIT_NO_HARNESS)
 }

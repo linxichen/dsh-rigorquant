@@ -14,10 +14,14 @@
 # Child `baseUrl` is the PROFILE root (`file://$DSH_HOME/profiles/<profile>/`),
 # not this package. No child may resolve a path from it.
 #
-# The package requires DSH `>=0.2.1-rc.2 <0.2.2-0` (package.json
-# `engines.dsh`, restated under `peerDependencies` and enforced by `install.sh`);
-# on 0.2.1-rc.2 the loader reads `engines.dsh` alone and skips a bundle whose
-# range the running core does not satisfy.
+# The package requires DSH `>=0.2.2-rc.3` — an open floor, with no ceiling and
+# no restated peer range (package.json `engines.dsh`, enforced by the loader's
+# own compatibility gate and pinned by tests/test_repo_consistency.py;
+# Decision 28, docs/adr/0005-rigorquant-on-dsh-0.2.2.md). There is no
+# pre-flight version check in this distribution (Decision 29). The loader reads
+# `engines.dsh` alone and skips a bundle whose floor the running core does not
+# satisfy; a
+# core above the floor installs.
 - insert:
     # An override by id (a patch keyed `preset-rigorquant` in the profile, or
     # an edit saved from the Web preset editor) replaces this row's WHOLE
@@ -262,16 +266,18 @@
 
           # Team-only (docs/architecture.md, Decision 24;
           # docs/adr/0001-rigorquant-on-agent-teams.md). Teammates are created by the
-          # Agent Teams bundles' `spawn_teammate`, not by any row here: the seven
-          # per-role delegation rows, the subagent control and list rows, and the fork
-          # row are gone. The Team tools register `send_message`, `list_agents` and
-          # `interrupt_agent` under the legacy names, so the classic control rows would
-          # have mounted a second tool per name. Each teammate's persona, tool budget
+          # base layer's standard `subagent` tool, carrying an explicit `<role>-<n>`
+          # name — not by any row here: the seven per-role delegation rows, the
+          # subagent control and list rows, and the fork row are gone. The base
+          # layer mounts the standard subagent control tools (`send_message`,
+          # `list_agents`, `wait_agent`), so the classic control rows would have
+          # mounted a second tool per name. Each teammate's persona, tool budget
           # and hub-and-spoke guard are applied from its NAME (`<role>-<n>`) by the
           # bundle's `dsh-rigorquant/team` row, and its model by the router — none of
-          # that lives in this composition any more. No other delegation tool is
-          # mounted, so depth-one delegation holds by construction: the rows left in
-          # this group are all disabled.
+          # that lives in this composition any more. The team plugin refuses a
+          # `subagent_fork` and a `subagent` whose name does not parse to a role. No
+          # other delegation tool is mounted, so depth-one delegation holds by
+          # construction: the rows left in this group are all disabled.
           - id: delegation
             name: cordis:group
             group: true

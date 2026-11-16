@@ -23,10 +23,12 @@
 const { readFileSync } = require('node:fs')
 const { createRequire } = require('node:module')
 const { pathToFileURL } = require('node:url')
-const { join, resolve } = require('node:path')
+const { join } = require('node:path')
 const vm = require('node:vm')
 
-const { EXIT_NO_HARNESS, EXIT_PROBLEM, REPO, requireSupportedCore, resolveHarness } = require('./harness_locator.cjs')
+const {
+  EXIT_NO_HARNESS, EXIT_PROBLEM, REPO, inlineRelativeImports, requireSupportedCore, resolveHarness,
+} = require('./harness_locator.cjs')
 
 const harness = resolveHarness(process.argv[2])
 if (harness === undefined) {
@@ -37,10 +39,13 @@ const harnessRequire = createRequire(join(harness, '__probe__.cjs'))
 
 /**
  * Load `dsh/index.js` into a fresh context with the REAL schemastery bound to
- * its import, the way the loader would.
+ * its import, the way the loader would. The router's one relative import (the
+ * shared subagent-identity helper) is evaluated from its own file the same
+ * way, so this probe follows the shipped module rather than restating it.
  */
 function loadRouter(z) {
-  let source = readFileSync(join(REPO, 'dsh', 'index.js'), 'utf8')
+  const modulePath = join(REPO, 'dsh', 'index.js')
+  let source = inlineRelativeImports(readFileSync(modulePath, 'utf8'), modulePath)
   source = source.replace("import z from '@deepseek-ai/schemastery'", 'const z = schemaStub')
   source = source.replace(/^export const /gm, 'const ')
   source = source.replace(/^export \{ ([^}]+) \}$/m, 'module.exports = { $1 }')
@@ -51,7 +56,7 @@ function loadRouter(z) {
   const module = { exports: {} }
   vm.runInNewContext(source, {
     module, schemaStub: z, console, Date, Error, Map, Math, Object, Promise, RegExp, Set, String,
-  }, { filename: join(REPO, 'dsh', 'index.js') })
+  }, { filename: modulePath })
   return module.exports
 }
 

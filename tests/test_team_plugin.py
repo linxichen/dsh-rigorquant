@@ -1,23 +1,24 @@
 """Team composition (dsh/team.js) — Agent Teams composition AND per-call guard.
 
-DSH 0.1.6 ships native Agent Teams. This host half applies each teammate's
-role composition — persona, tool-tier budget, and (on the Lead) a runtime
-fact that the guard is armed — purely from the teammate's NAME
-(`<role>-<n>`, e.g. `doublechecker-1`), resolved through the harness's
-`agentTeams` service. It is purely additive: the classic `[[rq:role=...]]`
-tag mechanism (dsh/index.js) and the seven classic delegation rows
-(agent-presets/rigorquant/agent.cordis.yml) are untouched and coexist with
-this module until a later issue removes them.
+Agent Teams has been native to DSH since 0.1.6, and 0.2.2-rc.3 is this
+release's floor. This host half applies each teammate's role composition —
+persona, tool-tier budget, and (on the Lead) a runtime fact that the guard is
+armed — purely from the teammate's NAME (`<role>-<n>`, e.g.
+`doublechecker-1`), resolved through the harness's `subagents` identity
+service (`rootOf`/`namesOf`; 0.2.2 removed the Team service's
+membership/roster API). The classic `[[rq:role=...]]` persona-tag mechanism
+and the per-role delegation rows are gone (Decision 24): this module is the
+only source of a teammate's persona, tool budget and topology.
 
 `tools.restrict` cannot mask the scoped Team tools (`send_message`,
 `list_agents`, `team_task_list`, `team_task_get`, `team_task_update`,
-`spawn_teammate`), so topology-by-guard (docs/architecture.md, Decision 24)
-is `tools.guard`, registered per-agent alongside the restriction: hub-and-
-spoke messaging (a teammate may message only the Lead), roster/board
+`team_task_create`), so topology-by-guard (docs/architecture.md, Decision
+24) is `tools.guard`, registered per-agent alongside the restriction:
+hub-and-spoke messaging (a teammate may message only the Lead), roster/board
 blindness (`list_agents`/`team_task_list` denied outright), own-task-only
 board access (`team_task_get`/`team_task_update` read live ownership
 through the service), the bash network-verb denial for web-denied roles,
-and the orchestrator's `spawn_teammate` name/fork refusal.
+and the orchestrator's `subagent` name / `subagent_fork` refusal.
 
 These checks pin the load-bearing properties against a real execution of the
 module (via tests/team_probe.cjs, not by re-implementing it in Python):
@@ -40,12 +41,16 @@ module (via tests/team_probe.cjs, not by re-implementing it in Python):
    `team_task_list` denied; a foreign task's `team_task_get`/
    `team_task_update` denied, an unowned or own task allowed; a bash
    network verb denied for a web-denied role and allowed for an open role;
-   a bad `spawn_teammate` name or `context: 'fork'` denied on the Lead.
+   a bad `subagent` name or a `subagent_fork` denied on the Lead.
 8. a session composed as rigorquant only AFTER its own `agent/created`
    already ran (found live on the harness 0.5.0 ran on, Decision 24 — a "New Session" switched to the RigorQuant
    preset in the picker, rather than created with it already selected)
-   still gets the Lead's guard-armed context and `spawn_teammate` guard,
+   still gets the Lead's guard-armed context and `subagent` guard,
    via a second trigger on `agent-preset/selected`.
+11. Team is armed per RigorQuant ROOT Session through `setEnabled`, with the
+    creation's own signal; a non-RigorQuant root and every teammate are
+    never armed, and a service that reports the selection still off leaves
+    this module disarmed.
 9. unloading the plugin (the Plugins-page row toggle) disposes every
    composition it installed on a live agent, and reloading it recomposes
    those agents exactly once (found live, Decision 24).
@@ -62,7 +67,7 @@ import subprocess
 
 import pytest
 
-from conftest import REPO
+from conftest import REPO, require_harness
 
 PROBE = REPO / "tests/team_probe.cjs"
 
@@ -80,8 +85,30 @@ def probe():
     if not module.exists():
         pytest.fail(f"package.json exports ./team but {module} is missing")
     out = subprocess.run([node, str(PROBE), str(module)],
-                         capture_output=True, text=True, check=True)
+                         capture_output=True, text=True)
+    # The behaviour seam requires the installed harness (issue #47, finding 2):
+    # without one the probe exits 3 and these tests skip; a live harness with a
+    # missing service method is a real failure, not a skip.
+    require_harness(out)
+    assert out.returncode == 0, (out.stdout, out.stderr)
     return json.loads(out.stdout)
+
+
+def test_the_probe_requires_the_installed_service_surfaces(probe):
+    """The stubs stand in for real services, so the real methods must exist.
+
+    This is the check that would have caught the 0.2.2 removal of the Team
+    service's `tryMembership`/`listMembers`: the probe used to exercise
+    hand-written fakes with no harness present, so a removed method left the
+    suite green while the live plugin threw. It requires the installed
+    `@deepseek-ai/dsh-agent-team`'s TeamService (`setEnabled`/`isEnabled`) and
+    `@deepseek-ai/dsh-subagent`'s SubagentRuntime (`rootOf`/`namesOf`) before
+    any stub is exercised.
+    """
+    assert probe["surfaces"] == {
+        "TeamService": ["isEnabled", "setEnabled"],
+        "SubagentRuntime": ["namesOf", "rootOf"],
+    }, probe["surfaces"]
 
 
 def test_team_export_points_at_a_shipped_file():
@@ -100,34 +127,77 @@ def test_doublechecker_gets_its_persona_under_the_persona_prefix_section(probe):
     assert "DoubleChecker" in sections[0]["text"]
 
 
-def test_doublechecker_loses_web_skill_and_every_teammate_tools(probe):
-    restricts = probe["present"]["doublechecker1"]["restricts"]
-    assert len(restricts) == 1
-    deny = set(restricts[0]["deny"])
-    assert deny == {
-        "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode", "working_directory",
-        "web_search", "web_fetch", "skill",
-    }
+def _allow(probe, member):
+    return set(probe["classification"][member]["allow"])
 
 
-def test_explorer_keeps_web_and_skill_but_loses_the_every_teammate_tools(probe):
-    restricts = probe["present"]["explorer1"]["restricts"]
-    assert len(restricts) == 1
-    deny = set(restricts[0]["deny"])
-    assert deny == {
-        "create_goal", "update_goal", "get_goal", "todo_write",
-        "ask_user_question", "exit_plan_mode", "working_directory",
-    }
-    assert "web_search" not in deny and "skill" not in deny
+def test_a_teammate_is_composed_on_subagent_start_not_on_agent_created(probe):
+    """A teammate has no tree identity during its own `agent/created`.
+
+    The subagent manager records the activation (the `<role>-<n>` path) only
+    after the child is created, so `agent/created` cannot name it;
+    `subagent/start` is published after that residency step and is where the
+    composition can be read. Before it, the teammate must be untouched.
+    """
+    assert probe["beforeSubagentStart"] == {
+        "sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
+    assert probe["present"]["doublechecker1"]["sections"], (
+        "the teammate was never composed on subagent/start")
+
+
+def test_doublechecker_gets_the_blind_tier_classification(probe):
+    """A teammate's catalog is an ALLOW set, not a short deny list.
+
+    The blind tier keeps the shared tools but loses web and skills; anything
+    the tier does not name stays invisible, so a newly mounted host tool
+    cannot widen a teammate's scope by accident.
+    """
+    entry = probe["classification"]["doublechecker1"]
+    assert entry["tier"] == "blind"
+    allow = _allow(probe, "doublechecker1")
+    assert allow == set(entry["classification"])
+    assert "bash" in allow and "team_task_get" in allow and "send_message" in allow
+    assert not {"web_search", "web_fetch", "skill"} & allow
+
+
+def test_explorer_gets_the_open_tier_classification(probe):
+    entry = probe["classification"]["explorer1"]
+    assert entry["tier"] == "open"
+    allow = _allow(probe, "explorer1")
+    assert allow == set(entry["classification"])
+    assert {"web_search", "web_fetch", "skill"} <= allow
 
 
 def test_adversary_is_web_denied_but_keeps_skill(probe):
-    restricts = probe["present"]["adversary1"]["restricts"]
-    assert len(restricts) == 1
-    deny = set(restricts[0]["deny"])
-    assert "web_search" in deny and "web_fetch" in deny
-    assert "skill" not in deny
+    entry = probe["classification"]["adversary1"]
+    assert entry["tier"] == "webDenied"
+    allow = _allow(probe, "adversary1")
+    assert allow == set(entry["classification"])
+    assert "skill" in allow
+    assert not {"web_search", "web_fetch"} & allow
+
+
+def test_a_teammates_visible_tools_are_all_classified(probe):
+    """Visibility is exactly the classification, and interruption stays out.
+
+    A tool the core newly mounts is invisible until it is classified, so the
+    visible set is the tier's allow set intersected with this session's
+    mounted catalog, and it must equal the tier's classification — nothing
+    filtered out by accident, nothing widened. The roster/board, interruption,
+    delegation and the orchestrator's goal tools are absent because no tier
+    classifies them, not because a second deny list names them.
+    """
+    for member in ("doublechecker1", "explorer1", "adversary1"):
+        entry = probe["classification"][member]
+        allow = set(entry["allow"])
+        assert entry["tier"] in {"blind", "webDenied", "open"}, entry
+        assert allow == set(entry["classification"]), member
+        assert not set(entry["unmounted"]), (member, entry["unmounted"])
+        assert "interrupt_agent" not in allow, member
+        for gone in ("list_agents", "team_task_list", "subagent", "subagent_fork",
+                     "working_directory", "create_goal", "todo_write",
+                     "ask_user_question", "exit_plan_mode"):
+            assert gone not in allow, (member, gone)
 
 
 def test_an_unparseable_teammate_name_is_skipped_silently(probe):
@@ -149,8 +219,46 @@ def test_the_lead_gets_the_armed_guard_line_as_a_context_not_a_section(probe):
     assert context["text"] == "RigorQuant team guard: armed"
 
 
+def test_team_is_armed_only_for_a_rigorquant_root(probe):
+    """Arming is per SESSION, through the service's own selection.
+
+    A root composed as rigorquant asks the Team service for `setEnabled`;
+    a non-RigorQuant root, a non-RigorQuant teammate and every RigorQuant
+    teammate are never armed. Installing the plugin must not turn Team on
+    for the operator's other presets.
+    """
+    arming = probe["arming"]
+    armed = {call["agent"] for call in arming["setEnabledCalls"]}
+    assert armed == {"lead-1", "lead-2"}, arming["setEnabledCalls"]
+    assert all(call["enabled"] is True for call in arming["setEnabledCalls"])
+    second = [call for call in arming["setEnabledCalls"] if call["agent"] == "lead-2"]
+    assert second[0]["signal"] == "signal:agent-created", (
+        "the creation's own cancellation signal must reach setEnabled")
+    assert arming["standardRootContexts"] == []
+    assert arming["teammateContexts"] == []
+    assert arming["nonRigorQuantTeammateSetEnabled"] == []
+    assert probe["present"]["standardRoot"] == {
+        "sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
+    assert probe["present"]["secondRoot"]["contexts"] == [{
+        "name": "rq-team:guard-armed", "order": 118,
+        "text": "RigorQuant team guard: armed"}]
+
+
+def test_a_service_that_reports_the_selection_off_leaves_the_guard_disarmed(probe):
+    """No armed line unless the service confirms the selection.
+
+    A guard the Team tools do not honor is worse than no guard: it would
+    tell the orchestrator to delegate into a session whose Team tools are
+    absent.
+    """
+    assert probe["unarmedService"]["lead"] == {
+        "sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
+
+
 def test_reapplication_on_a_resume_sourced_creation(probe):
     resume = probe["resume"]
+    assert resume["beforeResident"] == {
+        "sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
     assert len(resume["firstSections"]) == 1
     assert resume["disposedAfterResume"] == ["deployment:persona-prefix"]
     assert len(resume["secondSections"]) == 1
@@ -204,7 +312,11 @@ def test_every_composed_member_registers_exactly_one_guard(probe):
 def test_hub_and_spoke_denies_a_sibling_and_allows_the_lead(probe):
     checks = probe["guardChecks"]
     assert isinstance(checks["siblingMessageDenied"], str)
+    assert "only the Lead" in checks["siblingMessageDenied"]
+    assert "'lead'" in checks["siblingMessageDenied"], (
+        "a refused message must name the legal target")
     assert checks["leadMessageAllowed"] is None
+    assert checks["leadSessionIdMessageAllowed"] is None
 
 
 def test_every_teammate_is_roster_and_board_blind(probe):
@@ -214,9 +326,20 @@ def test_every_teammate_is_roster_and_board_blind(probe):
 
 
 def test_a_teammate_touches_only_its_own_task(probe):
+    """Ownership is read from both owner fields the live row can carry.
+
+    A Team task row carries `ownerId` — the owning Session's id — and an
+    optional `ownerName` that older or reconstructed rows may omit (or carry
+    alone). Reading only the name would let a task owned by an id pass as
+    unowned, so the guard compares its Session id and its name against the
+    row and treats either mismatch as foreign.
+    """
     checks = probe["guardChecks"]
     assert checks["ownTaskGetAllowed"] is None
+    assert checks["ownTaskBothAllowed"] is None
     assert isinstance(checks["foreignTaskGetDenied"], str)
+    assert isinstance(checks["foreignTaskNamedDenied"], str)
+    assert isinstance(checks["foreignTaskBothDenied"], str)
     assert checks["unownedTaskClaimAllowed"] is None, (
         "an unclaimed task must stay reachable, or team_task_update(action: "
         "'claim') could never succeed")
@@ -232,10 +355,10 @@ def test_bash_network_verbs_are_denied_for_web_denied_roles_and_allowed_for_open
         "the guard must gate on the network verb, not deny bash outright")
 
 
-def test_the_orchestrator_spawn_teammate_guard_refuses_bad_names_and_fork(probe):
+def test_the_orchestrator_subagent_guard_refuses_bad_names_and_fork(probe):
     checks = probe["guardChecks"]
-    assert isinstance(checks["spawnBadNameDenied"], str)
-    assert isinstance(checks["spawnForkDenied"], str)
+    assert "does not parse to <role>-<n>" in checks["spawnBadNameDenied"]
+    assert "fork inherits the Lead conversation" in checks["spawnForkDenied"]
     assert checks["spawnFreshRoleAllowed"] is None
 
 
@@ -275,7 +398,7 @@ def test_a_late_preset_switch_to_rigorquant_installs_the_lead_composition(probe)
     """Once `agent-preset/selected` announces the switch (after the harness's
     own recompose already landed on agent.ctx), the Lead gets exactly what it
     would have gotten from a same-preset agent/created: the armed context and
-    its spawn_teammate guard — found missing live on the installed harness
+    its `subagent` guard — found missing live on the installed harness
     (Decision 24) before this second trigger existed."""
     after = probe["latePresetSelection"]["afterSwitch"]
     assert after["sections"] == []
@@ -285,6 +408,8 @@ def test_a_late_preset_switch_to_rigorquant_installs_the_lead_composition(probe)
     context = after["contexts"][0]
     assert context["name"] == "rq-team:guard-armed"
     assert context["text"] == "RigorQuant team guard: armed"
+    assert probe["latePresetSelection"]["setEnabledCalls"] == [
+        {"agent": "lead-late", "enabled": True, "signal": None}]
 
 
 def test_the_patch_registers_the_team_row():
@@ -376,6 +501,10 @@ def test_an_unknown_or_unloaded_teammate_is_a_clear_error(probe):
     assert "doublechecker-9" in escalation["unknownTeammate"]["error"]
     assert "offgrid-1" in escalation["unloadedTeammate"]["error"]
     assert "inactive" in escalation["unloadedTeammate"]["error"]
+    assert "error" in escalation["foreignTeammate"], (
+        "the lane resolved a teammate from another tree: %r"
+        % (escalation["foreignTeammate"],))
+    assert "doublechecker-2" in escalation["foreignTeammate"]["error"]
 
 
 def test_a_failed_connect_surfaces_as_an_error_and_can_be_retried(probe):

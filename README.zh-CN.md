@@ -120,6 +120,13 @@ RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到
 工作目录（简报指定的目录就是它写文件的地方）；只能读取或更新没有被其他队友占有的
 任务（也就是它简报指定的那一条，由它 claim）。
 
+编排者用标准 `subagent` 工具创建每位队友，并显式传 `<role>-<n>` 名字——名字即
+角色：它决定 persona、工具预算与模型层级；名字不符合 `<role>-<n>` 的 spawn 会被
+守卫拒绝，`subagent_fork` 也会被直接拒绝。编排者用
+`send_message({agent, message})` 给队友发消息，从 `list_agents` 的
+`{name, status, description}` 行读取花名册（`inactive` 不代表已完成），并从
+看板的 `owner` 名字读取任务归属。
+
 > **署名。** hero 横幅（`docs/figs/agent-team-hero.svg`）改自
 > [dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的 hero 图，作者
 > [NanmiCoder](https://github.com/NanmiCoder)（程序员阿江 / Relakkes）——
@@ -139,45 +146,79 @@ RigorQuant 会话运行期间，点开会话头部的团队动作，就能看到
 
 ## 安装
 
-需要 DSH `>=0.2.1-rc.2 <0.2.2-0`（决策 27，
-`docs/adr/0004-rigorquant-on-dsh-0.2.1.md`）。preset 是一个声明式的
-`@deepseek-ai/dsh-agent-preset` 行，路由是路由器那一行自己的 profile 配置，卡片
-通过宿主的配置表单编辑它们（设置里自成一栏 **RigorQuant**，插件页的 bundle 页面上也有同一张表单），无人值守的入口提问使用宿主 `ask_user_question` 的
-定时模式——更早的宿主上这些都不存在，安装脚本会直接拒绝。
-**0.7.0 是 0.2.0-rc.2 版 harness 的最后一个版本**：不做任何回移，暂时无法升级
-宿主的话，请留在 0.7.0。（0.6.1 曾是 0.1.7-rc.2 的最后一个版本，原因相同。）
+需要 DSH `>=0.2.2-rc.3`——**开放下限（open floor）**（决策 28，
+`docs/adr/0005-rigorquant-on-dsh-0.2.2.md`）。下限是本版本实际验证过的 core：
+等于或高于它的 core 都会被接受，只有在新 core 上验证过的版本才会抬高下限。
+**0.8.0 是 0.2.1-rc.2 版 harness 的最后一个版本**：不做任何回移，暂时无法升级
+宿主的话，请留在 0.8.0。（0.7.0 是 0.2.0-rc.2 的最后一个版本，0.6.1 是
+0.1.7-rc.2 的最后一个版本，原因相同。）
 
-这个版本范围不是走过场。上一个范围 `>=0.2.0-rc.2 <0.2.1` 看起来把 0.2.1 挡在
-门外，但兼容性闸门按预发布版参与比较，所以它其实**已经放行了 `0.2.1-rc.2`**：
-0.7.0 在从未声明支持的新 core 上挂载过。本版本就是那次验证，而上限写成
-`<0.2.2-0`，让 0.2.2 的 release candidate 也无法用同样的方式溜进来。
+下限不是走过场，但也不是上限。0.8.0 声明的是 `>=0.2.1-rc.2 <0.2.2-0`，其中
+`-0` 哨兵把每一个 0.2.2 预发布版都排除在外：DSH 的兼容性闸门把它读成
+"不兼容"，在 0.2.2-rc.3 上拒绝挂载本 bundle，直到操作者授予精确版本豁免并
+接受一条关于崩溃与数据丢失的警告。上限无法区分"这个 core 会让插件坏掉"与
+"发布时这个 core 还不存在"，于是它在未来每个 core 上重复同一条警告。本版本
+只保留一个边界——下限——并按策略取消上限。
 
-这个版本范围是预发布版，团队层还是**实验性**的：本版本只跑在宿主以 **Beta**
-卡片形式提供的 **Agent Teams** bundle 上——即 **插件 → 官方** 下带 **Beta**
-标记的 *智能体团队（Agent Teams）* 卡片。你可以在那里自行开启，也可以交给完整
-安装去做（见下）。
+Agent Teams 不再是一张需要你打开的卡片。DSH 0.2.2 由基础 bundle 挂载团队
+服务，插件在 RigorQuant 会话启动时为该会话开启 Team——你的其他 preset 不受
+影响。本版本不添加、钉住、启用或配置任何 Team bundle，也不迁移任何 profile
+（见下）。
 
-**从 0.7.0 升级**——或从任何 0.5.x、0.6.x 升级，安装脚本仍会处理那些版本留下的
-迁移（见下）——是一次性切换，要在 0.2.1-rc.2 第一次启动之前完成。先把进行中的
-RigorQuant 研究完成或归档：在 0.2.0-rc.2 宿主上开始的会话，不保证能在新版上恢复。然后：
+**安装**。插件管理器是唯一的安装机制（决策 29）：
+
+```sh
+dsh plugin add dsh-rigorquant
+# 或：dsh plugin --profile <name> add dsh-rigorquant   # 安装到其他 profile
+```
+
+同样的操作也可以在 **插件（Plugins）** 页完成。包声明了自己的 bundle、`rigorquant`
+preset 和一条启动同步行，因此这一条命令就是完整的发行方式：profile 下次启动时，
+同步行会把计算通道落盘（见下）。没有单独的安装脚本，没有第二种脚本，也没有第二条
+分发路径。
+
+**卸载**同样由插件管理器完成：
+
+```sh
+dsh plugin remove dsh-rigorquant
+```
+
+之后不会再运行任何东西：插件 CLI 没有卸载钩子。`$DSH_HOME/share/rigorquant`
+处的共享通道**会保留**——它是研究证据（study 的 `study.json` 记录了该路径），
+不是插件状态——所以卸载不会破坏已完成研究的记录。
+
+**从 0.8.0 升级**——或从任何更早版本升级——是一次性切换，要在 0.2.2-rc.3
+第一次启动之前完成。先把进行中的 RigorQuant 研究完成或归档：在旧 core 上开始
+的会话，不保证能在新版上恢复，因为 subagent 目录现在写入第 3 版载荷，而更早的
+版本无法打开升级后创建 subagent 的会话。然后：
 
 1. 停止 dsh（所有正在运行的进程，包括 web 应用）。
-2. 安装钉在本版本范围所测试版本上的宿主：
+2. 安装钉在验证下限上的宿主，务必写出具体版本或标签：
 
    ```sh
-   npm i -g @deepseek-ai/dsh@0.2.1-rc.2
+   npm i -g @deepseek-ai/dsh@0.2.2-rc.3
+   # 或：npm i -g @deepseek-ai/dsh@next
    ```
 
-   npm 的 `latest` 现在也指向 `0.2.1-rc.2`，所以不带版本的安装恰好会落到这个
-   core 上；钉住版本才是让它留在那里的保障。
-3. 在启动 dsh 之前运行 `./install.sh`（或 `npx dsh-rigorquant`）。它会把你在旧
-   `settings.yaml` 里保存的路由，以及保存过的 RigorQuant 默认 preset 迁移过来。
-   若 dsh 已经启动过一次，重新运行它会从 `settings.yaml.imported` 中找回它们。
+   不要不带版本安装：npm 的 `latest` 标签仍指向 `0.2.2-rc.1`，低于本版本的
+   下限，未写版本的安装会落在加载器拒绝本 bundle 的 core 上。
+3. **对 ≤0.8.0 的版本不执行任何迁移。** 用插件管理器升级——先
+   `dsh plugin remove dsh-rigorquant`，再 `dsh plugin add dsh-rigorquant`，
+   或在插件页上操作。0.8.0 留在 profile 用户补丁
+   （`$DSH_HOME/profiles/<profile>/cordis.patch.yml`）里的带标记配置块由你
+   自行清理：在首次启动之前，删掉 `BEGIN` 到 `END` 标记之间的内容，因为
+   0.2.2-rc.3 的团队服务会拒绝其中三个 `agent-team` 键。已退役的 Team bundle
+   由 core 从 profile 中移除。你在 0.8.0 profile 上保存的路由会留在 profile
+   补丁里；更早版本保存的路由不会被迁移——请在路由卡片上重新选择。
 4. 启动 web 应用，在新会话选择器里选 **RigorQuant**。若选择器不见了，请在通用
    设置中重新打开 **代码工作工具**（Coding Tools）：它是选择器唯一的开关，默认
    开启，只有你自己或桌面端引导把它关掉时才会关闭。
 
-bundle 卡片本身现在带有宿主的原生展示元数据：`locale/en.json` 与
+本发行版没有任何安装前版本检查：加载器自己的兼容性闸门读取 `engines.dsh`，
+拒绝低于下限的 core，并接受其上的每一个 core。本版本声明它实际验证过的 core
+（`0.2.2-rc.3`）；除此之外没有别的版本声明。
+
+bundle 卡片本身带有宿主的原生展示元数据：`locale/en.json` 与
 `locale/zh.json` 为插件页和设置里的插件清单提供标题与描述，`icon.svg` 提供图标
 ——这些都直接从 manifest 读取，无需激活插件。
 
@@ -186,51 +227,25 @@ preset 还钉死了五个宿主的原生上限（决策 27，`docs/token-efficie
 goal 的连续阻塞轮数 3，以及注入的工作区说明 8 KiB 且只读 `AGENTS.md`。它们全是
 行配置——背后没有一行自定义代码——而且都在进入 prompt 之前设界，而不是事后修剪。
 
-扇出受宿主限制：每个 root 同时最多 8 个存活子代理（`maxActiveSubagents`，
-**插件 → Subagent**）。文献密集的研究若要让 4 条文献线与探索者并行，可在那里调高。
+容量是一个 study 的**存活队友池**：**同时最多 12 个队友**，由 bundle patch 的
+`subagent` 覆盖行钉住（覆盖基础服务的 `maxActiveSubagents`），而且
+池子只约束同时运行的数量：队友结束后就释放名额。
+超过池容量时 spawn 会抛出 `ACTIVATION_LIMIT_REACHED`，除了队友结束没有任何
+东西能清除它——本轮存证并以 BUDGET 结果收尾，而不是循环重试。
 
-完整安装会打开那张 **Beta** bundle——即插件页 **官方** 分组下的
-*智能体团队（Agent Teams）* 卡片——条件是目标 profile 尚未启用它，且会钉到
-core 自身的版本上（若 profile 记录的是别的版本，则改钉回 core 的版本；你自己
-启用、没有记录版本号的 bundle 不会被碰）。它总会移除 0.5.0 的 profile 里那个
-独立的 *智能体团队 Web UI* bundle，并用一行说明原因：DSH 0.1.7 已把该面板并入
-唯一的 bundle，也没有为这个 core 发布 web bundle；移除失败则安装中止。它还会在
-profile 的用户补丁（`$DSH_HOME/profiles/<profile>/cordis.patch.yml`）中追加一段
-带 `dsh-rigorquant` 标记的配置块，把团队服务的成员数量上限提高到 64，并打印它
-写入的每一行。装好之后重复运行不会再有变化；`--uninstall` 只会移除它在该标记块里写入的那几行（之后宿主存进标记之间的设置会保留），
-并且只在该标记块记录了"是安装脚本启用的"时才关闭该 bundle——你自己手动启用的
-bundle 不受影响。若 PATH 上没有 `dsh`，这一步会打印警告后跳过，其余安装步骤
-照常进行——那张 Beta 卡片就留给你在插件页自行开关（参见
-docs/adr/0001-rigorquant-on-agent-teams.md）。
-
-两种安装形态：
-
-**Bundle（一条命令）**——仓库声明了 `dsh.bundle` manifest，它自己声明
-`rigorquant` preset，其中的 `rq-lane-sync` 行会在 profile 下次启动时，把计算通道
-落盘到 `$DSH_HOME/share/rigorquant/`，因此生态的 `dsh plugin add` 安装路径即可获得
-完整框架（设计记录：docs/architecture.md 决策 22 与 25）。这条路径既不开启
-Agent Teams，也不迁移保存过的路由；这两件事由安装脚本完成：
-
-```sh
-dsh --version                 # 必须 >= 0.2.1-rc.2 且 < 0.2.2-0
-dsh plugin --profile web add github:linxichen/dsh-rigorquant
-```
+包声明了 `dsh.bundle` manifest，它自己声明 `rigorquant` preset，其中的
+`rq-lane-sync` 行会在 profile 下次启动时，把计算通道落盘到
+`$DSH_HOME/share/rigorquant/`，因此 `dsh plugin add dsh-rigorquant` 一条命令即可
+获得完整框架（设计记录：docs/architecture.md 决策 22 与 25）。插件本身会为每个
+RigorQuant 会话开启 Team；它不迁移任何东西：从 0.8.0 或更早版本升级的操作者，
+先移除再添加插件，清理 0.8.0 留下的 profile 配置块（见上），再在路由卡片上
+重新选择旧版本留在 `settings.yaml` 里的路由。
 
 启动同步是幂等的（字节一致的目录不动；`.venv` 等派生状态既不复制也不清除）。
 它还会删除 0.6.0 之前的版本复制到 `$DSH_HOME` 下的目录式 preset，但仅当该目录
-的 `.rq-sync.json` 表明是本包放置的。DSH 的插件 CLI 没有卸载钩子，因此计算通道
-的移除始终是显式操作（`./install.sh --uninstall`）。
-
-**安装脚本（完整框架）**——计算通道，以及插件（声明式 preset、角色模型路由器及其
-设置里的路由卡片）：
-
-```sh
-git clone https://github.com/linxichen/dsh-rigorquant
-cd dsh-rigorquant
-./install.sh                    # 安装计算通道 + 插件，开启 Agent Teams，迁移保存的路由
-# ./install.sh --skill-only     # 或只安装技能（rigorquant、arxiv、academic-paper-search）
-# ./install.sh --uninstall      # 移除技能、共享通道与插件
-```
+的 `.rq-sync.json` 表明是本包放置的。DSH 的插件 CLI 没有卸载钩子，本发行版也
+不提供：`dsh plugin remove dsh-rigorquant` 就是完整的卸载，共享通道会保留
+（它是研究证据，不是插件状态）。
 
 启动一个新的 DSH 会话并选择 **RigorQuant** preset，然后说：
 
@@ -273,8 +288,8 @@ RigorQuant 也不会改变其中任何一件：
 
 ## 计算通道（一次性）
 
-每项研究都带着自己的固定 uv 通道。`install.sh` 或插件的 boot-sync 行会在
-`$DSH_HOME/share/rigorquant/env` 放一份**模板**（两者写入的字节一致；见
+每项研究都带着自己的固定 uv 通道。插件的 boot-sync 行会在
+`$DSH_HOME/share/rigorquant/env` 放一份**模板**（见
 [env/README.md](env/README.md)）。立项时，编排者把其中的 `pyproject.toml` 与
 `uv.lock` 复制到研究的 `env/`，随记录一起提交，并在研究的 `interim/`（已被
 gitignore）下一次性建好 venv——venv 与 uv 缓存都放在那里，这也是
@@ -292,7 +307,7 @@ gitignore）下一次性建好 venv——venv 与 uv 缓存都放在那里，这
 ## 角色模型路由（rq-model-router）
 
 内置插件为每个 RigorQuant 角色制定模型与推理强度策略，每个角色各有一个
-回退模型。角色身份来自 Team 成员的名字（`<role>-<n>`；Lead 即编排者）——
+回退模型。角色身份来自 subagent 树中的名字（`<role>-<n>`；Lead 即编排者）——
 路由器自身携带已发布的层级矩阵（DoubleChecker 与 adversary 默认使用
 `deepseek-v4-pro` @ `high`），并把保存过的路由覆盖在上层。
 配置入口：**插件 → dsh-rigorquant**
@@ -308,7 +323,7 @@ gitignore）下一次性建好 venv——venv 与 uv 缓存都放在那里，这
 
 主选路由遇到终止性失败（无适配器 / HTTP 4xx；包括官方额度响应
 `1308` / “Usage limit reached”）时，该角色降级到自己的回退模型并强制重试一次；下一次成功或 10 分钟后恢复主选。不属于 RigorQuant 团队的智能体
-（其他 preset，或完全没有 Team 成员身份）一律不受影响。
+（其他 preset、没有 subagent 树身份，或不在 RigorQuant 团队中）一律不受影响。
 
 **只用 DeepSeek 账号登录？** 宿主把 DeepSeek 拆成 `deepseek-official`
 （API key）与 `deepseek-account`（账号登录）。当官方路由不可路由（没有 API key）
@@ -363,8 +378,8 @@ uv run --frozen --project env python -m pytest tests/ -q
 ### 提交前覆盖率闸门（校验器 ≥95%）
 
 仓库内的 [`.githooks/pre-commit`](.githooks/pre-commit) 会在覆盖率模式下运行同一
-整套测试；已发布的校验器（`rq_check.py`）低于**95% 行覆盖率**时拒绝提交。`./install.sh`
-在 git checkout 中自动启用；已有 checkout 可显式执行：
+整套测试；已发布的校验器（`rq_check.py`）低于**95% 行覆盖率**时拒绝提交。请在
+git checkout 中显式启用一次：
 
 ```sh
 git config core.hooksPath .githooks

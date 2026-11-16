@@ -10,9 +10,14 @@
 // core actually reads. The probe therefore asks the installed gate two things
 // and prints them as JSON:
 //
+//   live        the gate's verdict for the core actually installed: the one
+//               the loader will judge this bundle with here and now.
 //   verdicts    one verdict per probed runtime version, for the manifest this
 //               package ships (package.json, or RQ_GATE_MANIFEST for a
-//               synthetic manifest a test writes).
+//               synthetic manifest a test writes). The band is an open floor
+//               (the 0.8.1 open floor: every core at or above the validated one), so
+//               the versions above the floor include a 0.3.0 the registry
+//               does not serve yet.
 //   gateReads   'engines' or 'peers', detected with a manifest whose
 //               `engines.dsh` is wide open and whose peer range matches
 //               nothing: only a gate that reads `engines.dsh` alone (0.2.1+)
@@ -32,7 +37,10 @@ const {
 
 const PREFIX = 'gate_probe'
 const PROBED_VERSIONS = [
-  '0.2.0-rc.2', '0.2.1-rc.2', '0.2.1', '0.2.2-rc.1', '0.2.2', '0.3.0',
+  // Below the validated floor: still refused, still naming the floor.
+  '0.2.1-rc.2', '0.2.2-rc.2',
+  // The validated floor, and every core above it — no ceiling.
+  '0.2.2-rc.3', '0.2.2', '0.3.0', '1.0.0',
 ]
 
 async function main() {
@@ -68,6 +76,15 @@ async function main() {
       : { verdict: 'refused', requirements: unmetRequirements(issue) }
   }
 
+  // The live core is the verdict that matters for the release: this is the
+  // gate the profile loader will run against this bundle on the machine it is
+  // installed on. An unmet requirement here is the incompatibility warning the
+  // open floor exists to eliminate.
+  const liveIssue = evaluate(manifest, {}, coreVersion)
+  const live = liveIssue === undefined
+    ? { verdict: 'accepted' }
+    : { verdict: 'refused', requirements: unmetRequirements(liveIssue) }
+
   // Which field decides: an open engines.dsh plus an impossible peer range is
   // accepted only by a gate that reads engines.dsh alone.
   const discriminator = {
@@ -78,7 +95,7 @@ async function main() {
   }
   const gateReads = evaluate(discriminator, {}, coreVersion) === undefined ? 'engines' : 'peers'
 
-  process.stdout.write(JSON.stringify({ coreVersion, gateReads, verdicts }))
+  process.stdout.write(JSON.stringify({ coreVersion, live, gateReads, verdicts }))
 }
 
 main().catch((error) => {

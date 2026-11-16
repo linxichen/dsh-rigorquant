@@ -2,9 +2,10 @@
 
 Decision 22, shrunk by Decision 25: the bundle row `rq-lane-sync` lands the
 compute lane (`env/`, plus the `mcp/` and `docs/` the skill cites) into
-$DSH_HOME/share/rigorquant at profile boot, so a `dsh plugin add` install has
-a lane without ever running install.sh. The preset is declared now, so the
-row copies no preset; it only removes the copy an older release landed.
+$DSH_HOME/share/rigorquant at profile boot, so `dsh plugin add` is the whole
+install and the lane needs nothing else (Decision 29). The preset is declared
+now, so the row copies no preset; it only removes the copy an older release
+landed.
 
 Pinned here against a real execution of the engine (via
 tests/lane_sync_probe.cjs, not by re-implementing it in Python):
@@ -89,18 +90,6 @@ def test_rerun_without_changes_writes_nothing(probe, tmp_path):
     sync(probe, src, dst, "0.6.0")
     again = sync(probe, src, dst, "0.6.0")
     assert again == {"status": "current", "copied": [], "pruned": 0}
-
-
-def test_an_unstamped_identical_lane_is_adopted_without_a_rewrite(probe, tmp_path):
-    """install.sh lands the lane without a stamp; the first boot adopts it."""
-    src, dst = tmp_path / "src", tmp_path / "dst"
-    make_lane(src)
-    sync(probe, src, dst, "0.6.0")
-    probe([{"op": "remove", "path": str(dst / ".rq-sync.json")}])
-    adopted = sync(probe, src, dst, "0.6.0")
-    assert adopted["status"] == "synced"
-    assert adopted["copied"] == [] and adopted["pruned"] == 0
-    assert exists(probe, dst / ".rq-sync.json")
 
 
 def test_changed_source_replaces_the_target(probe, tmp_path):

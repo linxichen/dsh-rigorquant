@@ -43,10 +43,10 @@ jobs:
           uv run --frozen --project env python -m coverage combine --rcfile .coveragerc
           uv run --frozen --project env python -m coverage report --rcfile .coveragerc --fail-under=95
 
-      # Ship-what-you-test: the installed layout must be the tested layout.
-      - name: Smoke-test install.sh
-        run: |
-          DSH_HOME="$RUNNER_TEMP/dsh" ./install.sh
-          test -f "$RUNNER_TEMP/dsh/share/rigorquant/env/pyproject.toml"
-          DSH_HOME="$RUNNER_TEMP/dsh" ./install.sh --uninstall
-          test ! -d "$RUNNER_TEMP/dsh/share/rigorquant"
+      # Distribution is the plugin manager (Decision 29): no installer, and no
+      # `dsh` on the runner is needed to prove the published package has the
+      # shape the plugin manager and the boot sync consume -- both patch
+      # files, every export, the lane templates, and no reference to a removed
+      # installer. Plain python3, so a machine with no DSH can run it too.
+      - name: Smoke-test the package shape (no DSH required)
+        run: python3 tests/package_shape_smoke.py

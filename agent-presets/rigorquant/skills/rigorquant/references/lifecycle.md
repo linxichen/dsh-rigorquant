@@ -249,11 +249,9 @@ stage-5 evidence is invalid, and the meta-validator
   non-identifiability / divergence). Record it as `unknown`; do not relabel it
   PASS or BLOCKED.
 - **BUDGET** — 3 orchestrator rounds reached without PASS or a stable block,
-  or `spawn_teammate` refused by the team's lifetime teammate cap
-  (`maxMembers`, which counts every teammate ever created, failed ones
-  included). Checkpoint registry.json + journal.md, deliver a status report
-  naming which budget tripped, halt; one human turn re-arms (after a cap trip
-  it may raise the override). Budget
+  or the live-teammate pool exhausted (all 12 slots live) when the round needs
+  a new teammate. Checkpoint registry.json + journal.md, deliver a status
+  report naming which budget tripped, halt; one human turn re-arms. Budget
   fields (`max_cost_usd`, `max_wall_minutes`) may be set to impose limits;
   unset means unbounded.
 
@@ -278,7 +276,7 @@ one teammate for the whole study, `lit-line-<n>` with `n` the line number
 (lines are numbered 1, 2, … in the order they are created, so the line number
 is the role's counter), and the study's one literature adversary is
 `lit-adversary-<n>`: a re-entry briefs the existing teammates by message (only
-while idle or inactive, protocol.md L3) rather than creating new ones, and a
+while `inactive`, protocol.md L3) rather than creating new ones, and a
 new line takes the next number. Its budget
 (`literature.budget`: `max_lines` / `max_depth` / `max_papers_per_line` /
 `max_rounds`) is the **default finish target, not a floor**: a line concludes

@@ -193,9 +193,9 @@ Every round the orchestrator returns; the goal-round driver relaunches it.
 Each study carries its own pinned uv lane, so a clone of the record can
 rebuild every result even after RigorQuant ships a newer lane. RigorQuant
 installs a **template** at `$DSH_HOME/share/rigorquant/env` (`$DSH_HOME`
-defaults to `~/.dsh`; `install.sh` and the plugin's boot sync place it
-there). Never run code against the template, and never build a venv inside
-it: the sandbox refuses the write, and a release replaces the template.
+defaults to `~/.dsh`; the plugin's boot sync places it there). Never run code
+against the template, and never build a venv inside it: the sandbox refuses
+the write, and a release replaces the template.
 
 1. **Adopt the lane (once, at intake).** If `env/pyproject.toml` and
    `env/uv.lock` are not already in the study root, copy those two files
@@ -249,9 +249,13 @@ owning decision: docs/architecture.md Decision 14.
 ## Step 3 — The round loop (orchestrator)
 
 A round is five moves: **Promise → Fan out → Ground-truth → Attack →
-Certify**. The study runs on Agent Teams: you create teammates with
-`spawn_teammate`, brief or wake them with `send_message`, and wait on them
-with `wait_agent`; each round is laid out as a task DAG on the shared board.
+Certify**. The study runs on Agent Teams: you create teammates with the
+standard `subagent` tool, passing an explicit `name` of the form
+`<role>-<n>`; brief or wake them with `send_message({agent, message})`,
+addressed by that `name`; and wait on them with `wait_agent`; each round is
+laid out as a task DAG on the shared board. `list_agents` rows are
+`{name, status, description}`, and a task board row's `owner` is a teammate's
+name, never an id; `inactive` means no turn is executing, not a done verdict.
 The board is coordination, never evidence — the study record
 (`registry.json`, `journal.md`, `derivations/`, `audits/`) is the only thing
 certification and `rq_check.py` read. (Owning decision: docs/architecture.md
@@ -264,10 +268,10 @@ increases within the study — a name is never reused, even for a teammate that
 failed. On resume, call `list_agents` first and continue each role's counter
 from the highest `n` on the roster. The name is the role: the team plugin
 gives a teammate its persona, tool budget and model from the name alone, and
-refuses a `spawn_teammate` whose name does not parse to a role. The
+refuses a `subagent` whose `name` does not parse to `<role>-<n>`. The
 `description` is the role label only (`DoubleChecker`, `Adversary`, …),
-never the brief; the brief goes in `prompt`. Always `context: fresh` — a fork
-inherits your conversation and is refused.
+never the brief; the brief goes in `prompt`. Create with `subagent`, never
+`subagent_fork` — a fork inherits your conversation and is refused.
 
 **Roster policy.** Explorer, OffGridThinker and DoubleChecker are **fresh per
 brief** (`explorer-<n>`, `offgrid-<n>`, `doublechecker-<n>`): blank context is
@@ -280,22 +284,22 @@ Document adversary and each literature line (`adversary-<n>`,
 `lit-adversary-<n>`, `doc-adversary-<n>`, `lit-line-<n>` with `n` = the line
 number) are **reused across rounds by message**: their accumulated knowledge
 is the job. A reused teammate receives a new hash-bound brief with
-`send_message` only while `list_agents` shows it idle or inactive — if it is
+`send_message` only while `list_agents` shows it `inactive` — if it is
 running, wait on it first (hard-lessons L3, protocol.md).
 
-**The pool and the cap bound every Fan out.** The host allows **eight** live
-teammates at a time (`maxActiveSubagents`, Plugins → Subagent, default 8), so
-Fan out is batched to at most eight live teammates: count before you create —
-four literature lines plus two explorers plus a second DoubleChecker is
-seven, one short of the ceiling. Over the bound `spawn_teammate` fails with
+**The live-teammate pool bounds every Fan out.** The bundle patch raises the
+`subagent` service's `maxActiveSubagents` to **12**: that is the study's live
+pool, and it bounds concurrency, never the study's lifetime count — a settled
+teammate frees its slot for the next one. Fan out is batched to at most twelve live teammates at a time:
+count before you create — four literature lines plus two explorers plus a
+second DoubleChecker is seven, comfortably inside the pool, but two rounds'
+worth of fresh teammates at once is not. Over the bound a spawn fails with
 `ACTIVATION_LIMIT_REACHED` — **wait for a teammate to settle, never retry in
 a loop**. Nothing clears that error but a teammate finishing, so a retry
-spends the budget on the error path and changes nothing. The team's teammate
-cap (`maxMembers`, 64 as `install.sh` writes it) is a **lifetime** cap that
-counts every teammate ever created, failed ones included. When
-`spawn_teammate` fails on that cap, it is a BUDGET-class outcome: checkpoint
-the study record, report the cap, end the turn; one human turn re-arms (and
-may raise the override). Never reuse an Explorer, OffGridThinker or
+spends the budget on the error path and changes nothing. If the pool stays
+exhausted when the round needs another teammate, that is a BUDGET-class
+outcome: checkpoint the study record, report the exhausted pool, end the
+turn; one human turn re-arms. Never reuse an Explorer, OffGridThinker or
 DoubleChecker to save a slot.
 
 **Waiting.** Between moves, wait natively: `wait_agent`, then re-list with
@@ -532,12 +536,13 @@ Triggers and the full approval-gated flow:
 
 PASS → auto-implement + proceed. BLOCKED (same exact gap, 3 consecutive
 rounds) → deliver strongest derivation + exact gap. BUDGET (3 orchestrator
-rounds, or the team's lifetime teammate cap) → checkpoint + report. Schema and rules:
+rounds, or the live-teammate pool exhausted when the round needs another
+teammate) → checkpoint + report. Schema and rules:
 [references/lifecycle.md](references/lifecycle.md).
 
 ## Anti-patterns (never do)
 
-- `context: fork` for a teammate (it inherits your conversation; the team
+- `subagent_fork` for a teammate (it inherits your conversation; the team
   plugin refuses it).
 - Reusing an Explorer, OffGridThinker or DoubleChecker for a second brief
   (blank context is the point; create a fresh `<role>-<n>`).
