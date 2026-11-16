@@ -71,21 +71,18 @@
     - id: rq-team
       name: 'dsh-rigorquant/team'
 
-# Decision 24 cap consistency pin (docs/adr/0001-rigorquant-on-agent-teams.md;
-# the key set follows Decision 27): the same `maxMembers` override ./install.sh
-# writes into the profile's user patch, restated here so a profile that enables
-# Agent Teams through this package's own bundle patch (rather than through
-# ./install.sh) still gets the raised lifetime cap. A non-insert, id-targeted
-# patch replaces the row's `config` wholesale
-# (`@deepseek-ai/cordis-plugin-include`'s `applyEntryPatches`), so this is a
-# no-op — not an error — everywhere the Team layer is absent, and effective only
-# when it precedes this bundle in the profile's `bundles` order; the loader's
-# own "entry not found" warning fires otherwise. `maxPendingMessagesPerMember`
-# is deliberately absent: 0.2.1-rc.2's agentTeams `Config` dropped the key and
-# silently ignores it (Decision 27, seam S3).
-- id: agent-team
+# Capacity (0.8.1; Decision 24's lifetime member cap is superseded): the
+# base bundle mounts the subagent service, which defaults to 8 live children
+# per root. A study delegates to up to 12 live teammates, and there is no
+# lifetime cap -- once a teammate settles, another may take its slot.
+#
+# A non-insert, id-targeted patch replaces the row's `config` WHOLE
+# (`@deepseek-ai/cordis-plugin-include`'s `applyEntryPatches`), so `maxDepth`
+# must be restated here: leaving it out would silently fall back to the core's
+# default instead of the preset's depth-one delegation. Keep this row in sync
+# with the loader warning: it is a no-op -- not an error -- only where the
+# base bundle is absent.
+- id: subagent
   config:
-    maxMembers: 64
-    maxTasks: 256
-    maxMessageBytes: 65536
-    disposalTimeoutMs: 5000
+    maxDepth: 1
+    maxActiveSubagents: 12

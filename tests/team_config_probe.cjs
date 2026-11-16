@@ -1,21 +1,29 @@
 #!/usr/bin/env node
 'use strict'
-// Validate the `agent-team` row config this package ships against the INSTALLED
-// Agent Teams service's own Config schema, and report whether the keys it
-// relies on still exist in that package.
+// Validate the two Agent Teams / delegation config surfaces this package ships
+// against the INSTALLED packages' own schemas, and report whether each key the
+// bundle patch relies on still exists in that package.
 //
-// Why not just validate: schemastery preserves unknown keys, so a Config that
-// DROPPED a key still accepts a row carrying it — silently inert (seam S3:
-// 0.2.1-rc.2 removed `maxPendingMessagesPerMember` exactly this way). The probe
-// therefore answers both questions: `validated` (Config accepts the config) and
-// `keysFound` / `deadKeysFound` (the installed package's own source still names
-// the key), so a future drop fails a test instead of disappearing.
+// Input (`argv[2]`, JSON): the `subagent` row config this package's bundle patch
+// overrides. The probe answers two questions about it:
+//
+//   `subagentValidated`  `@deepseek-ai/dsh-subagent`'s own Config accepts it.
+//   `subagentKeysFound`  that package's source still names `maxDepth` and
+//                        `maxActiveSubagents`, so a future rename fails a test
+//                        instead of silently going inert (schemastery preserves
+//                        unknown keys: a dropped key still "validates").
+//
+// The second half pins the retired `agent-team` row. 0.2.2-rc.3's TeamService
+// constructor throws TEAM_INVALID_CONFIG for `maxMembers`, `maxMessageBytes`
+// and `disposalTimeoutMs`; its Config schema keeps unknown keys, so the probe
+// scans the installed source for the removal marker AND for each key name.
+// `teamRowAccepted` proves the base bundle's `{maxTasks: 256}` still validates.
 //
 // Exit codes follow ./harness_locator.cjs: 0 = answered, 2 = the installed
 // core is refused (like every validating probe, it passes
 // `requireSupportedCore` first), 3 = nothing to validate against (no harness,
-// no Agent Teams package, no Config). The Python side skips on 2 and 3, never
-// on the wording.
+// no package, no Config). The Python side skips on 2 and 3, never on the
+// wording.
 
 const { readFileSync } = require('node:fs')
 const { pathToFileURL } = require('node:url')
@@ -26,24 +34,22 @@ const {
 } = require('./harness_locator.cjs')
 
 const PREFIX = 'team_config_probe'
-const TEAM_PACKAGE = '@deepseek-ai/dsh-experimental-agent-team'
-/** The row config ./install.sh writes and cordis.patch.yml restates. */
-const LIVE_KEYS = ['maxMembers', 'maxTasks', 'maxMessageBytes', 'disposalTimeoutMs']
-/** Keys earlier releases wrote that the installed service must no longer read. */
-const DEAD_KEYS = ['maxPendingMessagesPerMember']
+const SUBAGENT_PACKAGE = '@deepseek-ai/dsh-subagent'
+const TEAM_PACKAGE = '@deepseek-ai/dsh-agent-team'
+/** Keys the installed subagent Config must still declare. */
+const SUBAGENT_KEYS = ['maxDepth', 'maxActiveSubagents']
+/** Keys 0.8.0 shipped that the installed TeamService rejects. */
+const REMOVED_TEAM_KEYS = ['maxMembers', 'maxMessageBytes', 'disposalTimeoutMs']
+/** The base bundle's own Team row value; the bundle patch must not restate it. */
+const BASE_TEAM_CONFIG = { maxTasks: 256 }
 
-async function main() {
-  const harness = resolveHarness(undefined)
-  if (harness === undefined) exitNoHarness(PREFIX, 'cannot locate an installed harness')
-  const harnessRequire = harnessRequireFor(harness, PREFIX)
-  const coreVersion = await requireSupportedCore(harnessRequire, PREFIX)
-  if (coreVersion === undefined) exitNoHarness(PREFIX, `the harness at ${harness} has no @deepseek-ai/dsh`)
-
+/** Resolve, import and return one installed package plus its built source. */
+async function loadPackage(harnessRequire, spec) {
   let entry
   try {
-    entry = harnessRequire.resolve(TEAM_PACKAGE)
+    entry = harnessRequire.resolve(spec)
   } catch (error) {
-    exitNoHarness(PREFIX, `the installed harness has no ${TEAM_PACKAGE}: ${String(error?.message ?? error)}`)
+    exitNoHarness(PREFIX, `the installed harness has no ${spec}: ${String(error?.message ?? error)}`)
   }
   // The key scan reads the package's built source: <root>/lib/index.js is the
   // layout of every published build, and the entry resolves inside <root>/lib.
@@ -52,32 +58,56 @@ async function main() {
   try {
     source = readFileSync(join(packageRoot, 'lib', 'index.js'), 'utf8')
   } catch (error) {
-    exitNoHarness(PREFIX, `cannot read ${TEAM_PACKAGE}'s source: ${String(error?.message ?? error)}`)
+    exitNoHarness(PREFIX, `cannot read ${spec}'s source: ${String(error?.message ?? error)}`)
   }
-
   let mod
   try {
     mod = await import(pathToFileURL(entry).href)
   } catch (error) {
-    exitNoHarness(PREFIX, `cannot import ${TEAM_PACKAGE}: ${String(error?.message ?? error)}`)
+    exitNoHarness(PREFIX, `cannot import ${spec}: ${String(error?.message ?? error)}`)
   }
-  const Config = mod.Config ?? mod.default?.Config
-  if (typeof Config !== 'function') exitNoHarness(PREFIX, `${TEAM_PACKAGE} exports no Config`)
+  return { mod, source }
+}
+
+async function main() {
+  const harness = resolveHarness(undefined)
+  if (harness === undefined) exitNoHarness(PREFIX, 'cannot locate an installed harness')
+  const harnessRequire = harnessRequireFor(harness, PREFIX)
+  const coreVersion = await requireSupportedCore(harnessRequire, PREFIX)
+  if (coreVersion === undefined) exitNoHarness(PREFIX, `the harness at ${harness} has no @deepseek-ai/dsh`)
+
+  const subagent = await loadPackage(harnessRequire, SUBAGENT_PACKAGE)
+  const subagentConfig = subagent.mod.SubagentRuntime?.Config ?? subagent.mod.Config ?? subagent.mod.default?.Config
+  if (typeof subagentConfig !== 'function') exitNoHarness(PREFIX, `${SUBAGENT_PACKAGE} exports no Config`)
 
   const config = JSON.parse(process.argv[2] ?? '{}')
-  let validated = true
+  let subagentValidated = true
   try {
-    Config(config)
+    subagentConfig(config)
   } catch (error) {
-    validated = false
+    subagentValidated = false
+    process.stderr.write(`${PREFIX}: ${String(error?.message ?? error)}\n`)
+  }
+
+  const team = await loadPackage(harnessRequire, TEAM_PACKAGE)
+  const teamConfig = team.mod.TeamService?.Config ?? team.mod.Config ?? team.mod.default?.Config
+  if (typeof teamConfig !== 'function') exitNoHarness(PREFIX, `${TEAM_PACKAGE} exports no Config`)
+  let teamRowAccepted = true
+  try {
+    teamConfig(BASE_TEAM_CONFIG)
+  } catch (error) {
+    teamRowAccepted = false
     process.stderr.write(`${PREFIX}: ${String(error?.message ?? error)}\n`)
   }
 
   process.stdout.write(JSON.stringify({
     coreVersion,
-    validated,
-    keysFound: LIVE_KEYS.filter((key) => source.includes(key)),
-    deadKeysFound: DEAD_KEYS.filter((key) => source.includes(key)),
+    subagentValidated,
+    subagentKeysFound: SUBAGENT_KEYS.filter((key) => subagent.source.includes(key)),
+    teamRowAccepted,
+    removedTeamKeysFound: REMOVED_TEAM_KEYS.filter((key) => team.source.includes(key)),
+    removedTeamKeysRejected: team.source.includes('no longer supported')
+      && team.source.includes('TEAM_INVALID_CONFIG'),
   }))
 }
 
