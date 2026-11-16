@@ -47,8 +47,9 @@ Sessions that create subagents after upgrading. Then:
 3. **Upgrade the plugin with the plugin manager. No migration runs for
    releases ≤0.8.0**: `dsh plugin remove dsh-rigorquant` and then
    `dsh plugin add dsh-rigorquant`, or the same two actions on the
-   **Plugins** page. Nothing else executes on add or remove — the CLI has no
-   install hook beyond the bundle's own rows and no uninstall hook at all.
+   **Plugins** page. Nothing else executes on remove — the CLI has no
+   uninstall hook — and the plugin's work starts at the profile's next boot,
+   from the bundle's own rows.
 4. Clear a leftover 0.8.0 profile block yourself. When 0.8.0's installer
    wrote a marked block into `$DSH_HOME/profiles/<profile>/cordis.patch.yml`,
    delete everything between its `BEGIN` and `END` markers before starting
