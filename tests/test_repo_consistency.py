@@ -93,33 +93,25 @@ def test_the_package_and_lane_version_stamps_agree():
         "must bump both" % (manifest["version"], stamp.group(1)))
 
 
-def test_install_script_installs_everything_the_runtime_needs():
-    """The skill's scripts and schemas must survive a full install."""
-    install = (REPO / "install.sh").read_text()
-    for needed in ("agent-presets/rigorquant", "env", "mcp"):
-        assert needed in install, "install.sh never installs %s" % needed
-    assert "schemas" not in install or "agent-presets" in install
+def test_the_open_floor_is_declared_once_and_left_to_the_loaders_gate():
+    """One declared bound: `engines.dsh` is `>=0.2.2-rc.3`, with no ceiling.
 
+    The 0.8.1 open-floor policy. The manifest is the gate's only input: when a
+    manifest declares `engines.dsh`, the loader reads that field alone
+    (`includePrerelease` matching), skips a bundle whose floor the running core
+    does not satisfy, and admits every core at or above it. There is no
+    pre-flight version check anywhere else — the installer that carried one was
+    removed before the release shipped (Decision 29) — so a one-sided edit here
+    would change what the loader enforces with nothing left to disagree with
+    it.
 
-def test_the_open_floor_is_declared_once_and_enforced_before_copying():
-    """One enforced bound: refuse below the floor, advise above it, install.
-
-    The 0.8.1 open-floor policy: `engines.dsh` is `>=0.2.2-rc.3`. The manifest
-    is the gate's only input, and on 0.2.2-rc.3 the loader reads
-    `engines.dsh` alone, so the installer keeps one half of the old range: it
-    refuses a core below the validated floor before copying anything (the
-    loader would skip the bundle silently), and a core above it is a warning
-    that names the validated core, not a refusal. The exclusive ceiling is
-    gone, and `MAX_DSH_VERSION` with it.
-
-    The installer's floor and its validated-through constant are the same
-    version, and equal to the manifest's floor: a one-sided edit would change
-    what an operator is told without changing what the loader enforces. Both
-    READMEs and ADR 0005 restate the same floor and say it has no ceiling
-    (ticket #44 wrote the release record); a page that states the floor but
-    omits the open policy would send the next reader looking for the ceiling
-    this release deliberately removed.
+    Both READMEs and ADR 0005 restate the same floor and say it has no
+    ceiling; a page that states the floor but omits the open policy would send
+    the next reader looking for the ceiling this release deliberately removed.
+    The loader's verdict itself is probed against the installed gate in
+    `test_the_installed_gate_accepts_the_live_core_and_every_core_above_the_floor`.
     """
+    floor = "0.2.2-rc.3"
     for name in ("README.md", "README.zh-CN.md"):
         text = " ".join((REPO / name).read_text().split())
         assert ">=0.2.2-rc.3" in text, "%s does not state the open floor" % name
@@ -133,22 +125,10 @@ def test_the_open_floor_is_declared_once_and_enforced_before_copying():
     assert "`engines.dsh` is `>=0.2.2-rc.3`" in flat_adr, (
         "ADR 0005 does not state the open floor")
     assert "no ceiling" in flat_adr, "ADR 0005 does not retire the ceiling"
-    floor = "0.2.2-rc.3"
-    install = (REPO / "install.sh").read_text()
-    assert "MIN_DSH_VERSION=\"%s\"" % floor in install
-    assert "VALIDATED_DSH_VERSION=\"%s\"" % floor in install, (
-        "the validated-through constant must equal the floor")
-    assert "MAX_DSH_VERSION" not in install, (
-        "the exclusive ceiling is gone by policy; a MAX constant would "
-        "reintroduce a bound the release does not have")
-    # Both comparisons are consulted: the floor refusal and the above-floor
-    # advisory. The installer has no other runtime bound.
-    assert install.count("version_at_least \"$actual\"") == 2, (
-        "install.sh must check the floor and the validated core exactly once each")
     pkg = json.loads((REPO / "package.json").read_text())
     assert pkg["engines"]["dsh"] == ">=%s" % floor, (
-        "install.sh enforces the floor at %s while the manifest declares %s"
-        % (floor, pkg["engines"]["dsh"]))
+        "the manifest declares %s; the loader's gate is the only gate left"
+        % pkg["engines"]["dsh"])
     assert "peerDependencies" not in pkg or pkg["peerDependencies"] == {}, (
         "a restated peer range is a second band the gate does not read")
 
@@ -219,113 +199,11 @@ def test_every_prompt_variable_the_preset_uses_is_registered():
         % sorted(used - registered))
 
 
-FLOOR = "0.2.2-rc.3"
-
-
-def _stub_dsh_env(tmp_path, version=FLOOR):
-    """A `dsh` on PATH answering `--version`, and the env that finds it.
-
-    Every `dsh` subcommand other than `--version` prints nothing and exits 0,
-    which is what makes this a stub: `dsh plugin ... add` looks like it
-    worked, so the installer takes its normal path without a real harness.
-    Returns (env, dsh_home); dsh_home does not exist yet.
-    """
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir(parents=True)
-    fake_dsh = fake_bin / "dsh"
-    fake_dsh.write_text(
-        "#!/bin/sh\n"
-        "if [ \"$1\" = \"--version\" ]; then printf '%s\\n'; fi\n" % version
-    )
-    fake_dsh.chmod(0o755)
-    dsh_home = tmp_path / "dsh-home"
-    env = os.environ.copy()
-    env["PATH"] = "%s:%s" % (fake_bin, env.get("PATH", ""))
-    env["DSH_HOME"] = str(dsh_home)
-    return env, dsh_home
-
-
-def _install_full(env):
-    return subprocess.run(
-        [str(REPO / "install.sh"), "--profile", "upgrade-test"],
-        cwd=REPO, env=env, capture_output=True, text=True,
-    )
-
-
-def test_installer_rejects_an_older_dsh_before_copying_files(tmp_path):
-    """A CLI below the floor must not receive the preset at all.
-
-    The stub answers with the release candidate just below the floor: the
-    check has to reject the nearest harness this release cannot run on, not
-    merely some ancient tag.
-    """
-    env, dsh_home = _stub_dsh_env(tmp_path, version="0.2.2-rc.2")
-    result = _install_full(env)
-    assert result.returncode == 2
-    assert "requires dsh >= %s" % FLOOR in result.stderr
-    assert not dsh_home.exists(), "the old runtime guard must run before copying"
-
-
-def test_installer_accepts_the_validated_floor_without_an_advisory(tmp_path):
-    """The floor is supported by definition: the release is validated on it."""
-    env, dsh_home = _stub_dsh_env(tmp_path, version=FLOOR)
-    result = _install_full(env)
-    assert result.returncode == 0, (result.stdout, result.stderr)
-    assert "Installed compute lane" in result.stdout
-    assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file()
-    assert "validated through" not in result.stderr, (
-        "the validated floor is not a core above the validated one")
-
-
-def test_installer_advises_above_the_validated_core_and_continues(tmp_path):
-    """Above the floor the band is open: warn, name the validated core, go on.
-
-    The operator's choice is "install and watch the first session", not "pin
-    an old harness" or "grant a risk exemption". 0.3.0 is a core the registry
-    does not serve yet, which is the point: no future core may be refused.
-    """
-    for version in ("0.2.2", "0.3.0"):
-        env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
-        result = _install_full(env)
-        assert result.returncode == 0, (version, result.stdout, result.stderr)
-        assert "validated through" in result.stderr, (version, result.stderr)
-        assert FLOOR in result.stderr, (
-            "the advisory must name the validated core (%s)" % version)
-        assert "warning:" in result.stderr and "error:" not in result.stderr, (
-            version, result.stderr)
-        assert "Installed compute lane" in result.stdout
-        assert (dsh_home / "share/rigorquant/env/pyproject.toml").is_file(), (
-            "an above-floor core must still receive the lane (%s)" % version)
-
-
-def test_skill_only_bypasses_the_floor_and_the_advisory(tmp_path):
-    """`--skill-only` installs skill files, which do not compose with a core.
-
-    Shape is independent of core version: a CLI below the floor and one above
-    the validated core both install the skills, with no refusal and no
-    advisory.
-    """
-    for version in ("0.2.2-rc.2", "0.3.0"):
-        env, dsh_home = _stub_dsh_env(tmp_path / version, version=version)
-        result = subprocess.run(
-            [str(REPO / "install.sh"), "--profile", "upgrade-test", "--skill-only"],
-            cwd=REPO, env=env, capture_output=True, text=True,
-        )
-        assert result.returncode == 0, (version, result.stdout, result.stderr)
-        assert "Installed skills" in result.stdout, version
-        assert "requires dsh >=" not in result.stderr, version
-        assert "validated through" not in result.stderr, version
-        assert (dsh_home / "skills/rigorquant/SKILL.md").is_file(), version
-        assert not (dsh_home / "profiles").exists(), (
-            "--skill-only must not touch a profile (%s)" % version)
-
-
 # ── Agent Teams ownership is the base bundle's (0.8.1) ────────────────────
 #
 # The base bundle mounts `agent-team` (maxTasks: 256) and the subagent service;
 # this package no longer restates Team's key set. What remains in the bundle
-# patch is the study's capacity: an id-targeted `subagent` override. The full
-# installer coverage lives in tests/test_installer_agent_teams.py.
+# patch is the study's capacity: an id-targeted `subagent` override.
 
 
 def capacity_row_config():
@@ -338,8 +216,8 @@ def capacity_row_config():
 def test_the_capacity_override_ships_in_the_bundle_patch_too():
     """The study's live-teammate pool, restated because a patch is wholesale.
 
-    A profile that enables the base bundle by bundle order alone (no
-    ./install.sh run, e.g. a plugin-only install per Decision 22) still gets
+    A profile that enables the base bundle by bundle order alone (a
+    plugin-only install per Decision 22, and now the only install) still gets
     the study's capacity once dsh-rigorquant is mounted after the base layer.
     `maxDepth` must be restated because an id-targeted patch replaces the
     row's `config` wholesale -- omitting it would silently fall back to the
@@ -373,24 +251,6 @@ def test_architecture_record_matches_the_preset_composition():
     d8 = arch[arch.index("8. **Multi-agent mechanism**"):arch.index("9. **Model routing**")]
     assert "Amended by Decision 24" in d8 and "by construction" in d8, (
         "Decision 8 does not record the Decision 24 amendment")
-
-
-def test_installer_usage_states_the_floor_without_running_anything():
-    """`--help` is the one screen that states the floor to a human.
-
-    The usage text is an UNQUOTED heredoc, so a backtick in it is command
-    substitution: the line naming the floor used to run `--skill-only` as a
-    command, print "command not found" to stderr, and then state the floor
-    with a hole where the flag should be.
-    """
-    result = subprocess.run(
-        [str(REPO / "install.sh"), "--help"],
-        cwd=REPO, capture_output=True, text=True, check=True,
-    )
-    assert result.stderr == "", (
-        "install.sh --help writes to stderr: %r" % result.stderr)
-    assert FLOOR in result.stdout
-    assert "--skill-only does not" in result.stdout
 
 
 def test_the_disabled_workflow_row_names_a_package_that_exists():
@@ -1181,9 +1041,9 @@ def _section(text, heading, level=2):
     beside the new, is exactly the inconsistency this suite exists to catch.
 
     Headings are read OUTSIDE fenced code blocks. Both Install sections carry
-    column-0 `# npx dsh-rigorquant ...` comment lines inside a shell fence, and
-    a naive scan ends the section at the first of them -- pinning a prefix of
-    the section and passing while the rest drifts unchecked.
+    column-0 shell comment lines inside their command fences, and a naive scan
+    ends the section at the first of them -- pinning a prefix of the section
+    and passing while the rest drifts unchecked.
     """
     lines = text.splitlines()
     start = None
@@ -1283,8 +1143,8 @@ def test_both_readmes_describe_the_team_through_the_native_surface():
 def test_both_readmes_install_sections_carry_the_teams_ownership_and_the_pool():
     """Decision 28: the Install section answers "what will this do to my profile".
 
-    Team is no longer a Beta card an operator toggles and the installer no
-    longer enables or configures it: DSH 0.2.2 mounts the service from the base
+    Team is no longer a Beta card an operator toggles and the release enables
+    or configures no Team bundle: DSH 0.2.2 mounts the service from the base
     bundle, and the plugin arms it for a RigorQuant Session. The other
     operator-visible fact is capacity — a study's live-teammate pool is 12
     and bounds concurrency only — and the band is a prerelease open floor, so
@@ -1318,17 +1178,18 @@ def test_both_readmes_carry_the_0_2_2_operator_facts():
     for name, pins in (
         ("README.md", (
             ("Install", ("stop dsh", "npm i -g @deepseek-ai/dsh@0.2.2-rc.3",
-                         "npm's `latest`", "@next", "./install.sh", "Coding Tools",
-                         "0.8.0", "last release", "finish or archive",
-                         "not promised")),
+                         "npm's `latest`", "@next", "dsh plugin add dsh-rigorquant",
+                         "Coding Tools", "0.8.0", "last release",
+                         "finish or archive", "not promised")),
             ("Role-routed models", ("deepseek-account", "account quota")),
             ("Deployment notes", ("scheduled tasks",)),
             ("Compute lane", ("rq_escalate", "at runtime")),
         )),
         ("README.zh-CN.md", (
             ("安装", ("停止 dsh", "npm i -g @deepseek-ai/dsh@0.2.2-rc.3",
-                      "npm 的 `latest`", "@next", "./install.sh", "代码工作工具",
-                      "0.8.0", "最后一个版本", "完成或归档", "不保证")),
+                      "npm 的 `latest`", "@next", "dsh plugin add dsh-rigorquant",
+                      "代码工作工具", "0.8.0", "最后一个版本", "完成或归档",
+                      "不保证")),
             ("角色模型路由", ("deepseek-account", "账号额度")),
             ("部署须知", ("定时任务",)),
             ("计算通道", ("rq_escalate", "运行时")),
@@ -1342,6 +1203,29 @@ def test_both_readmes_carry_the_0_2_2_operator_facts():
         text = (REPO / name).read_text()
         unqualified = re.findall(r"npm i(?:nstall)? -g @deepseek-ai/dsh(?![@\w-])", text)
         assert not unqualified, "%s has an unqualified harness install" % name
+
+
+def test_both_readmes_state_that_distribution_is_the_plugin_manager():
+    """Decision 29: install and uninstall are the plugin manager's, and only its.
+
+    The installer is gone, so the two commands an operator runs are
+    `dsh plugin add dsh-rigorquant` (or the Plugins page) and `dsh plugin
+    remove dsh-rigorquant`. The shared lane at $DSH_HOME/share/rigorquant is
+    study evidence, not plugin state, so it stays after a remove -- stated
+    where an operator reads it, not only in the ADR -- and no migration runs
+    for releases through 0.8.0.
+    """
+    for name, heading, words in (
+        ("README.md", "Install", ("dsh plugin add dsh-rigorquant",
+                                  "dsh plugin remove dsh-rigorquant",
+                                  "shared lane", "remains", "study evidence",
+                                  "No migration runs")),
+        ("README.zh-CN.md", "安装", ("dsh plugin add dsh-rigorquant",
+                                    "dsh plugin remove dsh-rigorquant",
+                                    "共享通道", "会保留", "研究证据",
+                                    "不执行任何迁移")),
+    ):
+        _pin_section_words(name, heading, words)
 
 
 def test_the_0_8_0_release_record_is_present():
@@ -1400,6 +1284,33 @@ def test_the_0_8_1_release_record_is_present():
             in changelog), "the 0.8.1 entry omits the session-resumption corollary"
     assert "payload version 3" in changelog, (
         "the 0.8.1 entry does not say why session resumption is not promised")
+
+
+def test_the_0_8_1_installer_removal_is_recorded():
+    """Decision 29 is recorded where a reader looks for WHY there is no script.
+
+    The release contract: one Decision-29 section in the architecture record,
+    the ADR file, and a CHANGELOG `### Removed` entry naming the installer and
+    the lane-stays rule. The noun is assembled here so the repo-wide
+    retired-installer sweep does not match this file (the sweep runs over every
+    tracked file, history excepted).
+    """
+    retired = "".join(("install", ".sh"))
+    architecture = (REPO / "docs/architecture.md").read_text()
+    heading = "## Decision 29 \u2014 Distribution is the plugin manager"
+    assert heading in architecture, "docs/architecture.md has no Decision 29 heading"
+    adr = REPO / "docs/adr/0006-distribution-is-the-plugin-manager.md"
+    assert adr.is_file(), "the distribution ADR is missing"
+    flat_adr = " ".join(adr.read_text().split())
+    assert retired in flat_adr, "ADR 0006 never names what it removed"
+    entry = (REPO / "CHANGELOG.md").read_text().split("## [0.8.1]", 1)[1]
+    entry = entry.split("## [0.8.0]", 1)[0]
+    removed = entry.split("### Removed", 1)[1]
+    assert retired in removed, "the 0.8.1 Removed entry omits the installer"
+    assert "plugin manager" in removed, (
+        "the 0.8.1 Removed entry does not say what replaced the installer")
+    assert "study evidence" in removed, (
+        "the 0.8.1 Removed entry does not state the lane-stays rule")
 
 
 def test_both_readmes_carry_the_deployment_notes():
@@ -1998,29 +1909,35 @@ def test_pre_commit_hook_enforces_95_percent_validator_coverage():
     ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
     assert "RQ_COVERAGE=1" in ci and "--fail-under=95" in ci, (
         "CI must run the same coverage gate as pre-commit")
-    install = (REPO / "install.sh").read_text()
-    assert "core.hooksPath .githooks" in install, (
-        "install.sh must activate the checked-in hook for git checkouts")
 
 
-def test_install_script_installs_literature_skills():
-    """Decision 15: arxiv + academic-paper-search ship to $DSH_HOME/skills/."""
-    install = (REPO / "install.sh").read_text()
-    for skill in ("arxiv", "academic-paper-search"):
-        assert ('$DSH_HOME/skills/%s"' % skill) in install or \
-               ('$DSH_HOME/skills/%s ' % skill) in install, \
-               "install.sh never installs %s globally" % skill
+def test_the_bundle_ships_the_literature_skills():
+    """Decision 15, now through the bundle: the literature skills ship.
+
+    The skill provider's one custom root is this package's skills directory, so
+    every skill under it is served to the profile: rigorquant and the two
+    literature skills. A rename would leave the provider serving a directory
+    that is gone.
+    """
+    skills = REPO / "agent-presets" / "rigorquant" / "skills"
+    for name in ("rigorquant", "arxiv", "academic-paper-search"):
+        assert (skills / name / "SKILL.md").is_file(), (
+            "the package no longer ships the %s skill" % name)
+    patch = (REPO / "cordis.patch.yml").read_text()
+    assert "'agent-presets', 'rigorquant', 'skills'" in patch, (
+        "the bundle's skill provider no longer points at the package's skills")
 
 
 def test_bundle_patch_keeps_the_skill_provider_off_default_roots():
     """The custom root must stay a custom root, because its RANK is the contract.
 
     dsh ranks a custom skill root at 300 and $DSH_HOME/skills at 400, and the
-    lower rank wins a duplicate name. That is the only reason a machine which
-    also ran ./install.sh resolves rigorquant, arxiv, and academic-paper-search
-    to the copies shipped here rather than to whatever is in $DSH_HOME/skills.
-    Letting this provider include the default roots would put both copies in
-    one provider and make the winner registration order instead.
+    lower rank wins a duplicate name. That is why this package serves its own
+    copy of rigorquant, arxiv and academic-paper-search from the custom root:
+    on a machine that also has skills in $DSH_HOME/skills, the copy shipped
+    here wins deterministically. Letting this provider include the default
+    roots would put both copies in one provider and make the winner
+    registration order instead.
     """
     patch = (REPO / "cordis.patch.yml").read_text()
     assert "includeDefaultRoots: false" in patch, (
@@ -2059,72 +1976,15 @@ def test_boot_sync_manages_the_lane_only_and_never_derived_state():
     assert "agent-presets" not in managed, "sync.js still copies the preset"
     for derived in (".venv", "__pycache__"):
         assert f"'{derived}'" in sync, f"sync.js does not exclude {derived}"
-    assert "--uninstall" in sync, (
-        "sync.js must document that removal stays explicit (no uninstall hook)")
+    assert "dsh plugin remove" in sync and "study evidence" in sync, (
+        "sync.js must document that the lane stays on uninstall: it is study "
+        "evidence, not plugin state")
     assert "CANNOT enforce" not in sync, "peerDependencies enforce the floor now"
     behavioral = (REPO / "tests" / "test_lane_sync.py").read_text()
     assert ".venv" in behavioral, "no test executes the venv-survival contract"
 
 
-def test_every_globally_installed_skill_also_ships_in_the_package():
-    """install.sh copies skills into $DSH_HOME/skills; the package must have them.
-
-    These are the skills that end up supplied twice on a machine running both
-    the preset and the plugin. The duplication is deliberate and resolves by
-    rank, but it is only safe while the packaged copy actually exists -- a
-    rename here would leave install.sh copying a directory that is gone.
-    """
-    installed = re.findall(r"install_dir \"\$HERE/agent-presets/rigorquant/skills/([a-z-]+)\"",
-                           (REPO / "install.sh").read_text())
-    assert installed, "install.sh no longer installs any skill globally"
-    for name in set(installed):
-        assert (REPO / "agent-presets/rigorquant/skills" / name).is_dir(), (
-            "install.sh installs %s but the package does not ship it" % name)
-
-
-def test_the_package_is_executable_as_a_one_line_installer():
-    """`npx dsh-rigorquant` must reach install.sh.
-
-    The one-line install depends on three things holding together: a bin entry,
-    the script shipping in the npm files list, and its executable bit (npm
-    preserves mode, and npx runs the bin through its shebang).
-    """
-    manifest = json.loads((REPO / "package.json").read_text())
-    assert manifest.get("bin") == {"dsh-rigorquant": "./install.sh"}, manifest.get("bin")
-    assert "install.sh" in manifest["files"]
-    assert os.access(REPO / "install.sh", os.X_OK), "install.sh is not executable"
-
-
-def test_the_installer_installs_the_plugin_by_default():
-    """install.sh writing only to $DSH_HOME left the router silently absent."""
-    script = (REPO / "install.sh").read_text()
-    assert "install_plugin" in script, "install.sh no longer installs the plugin"
-    # The default (full) branch must call it -- not just define it.
-    full = script.split("if [ \"$mode\" = skill ]", 1)[1]
-    assert "install_plugin" in full, "the default install path does not install the plugin"
-
-
-def test_a_fetched_copy_installs_the_published_version():
-    """A checkout installs itself; an npx copy must not use a `file:` spec.
-
-    npx unpacks into a cache directory that disappears after the run, so a
-    `file:` spec would leave the profile pointing at nothing. A linked worktree
-    counts as a checkout — `.git` is a FILE there — because that is where this
-    repository's own agents install from, and reading it as a fetched copy is
-    how a worktree profile ended up holding the published 0.4.2 (issue #21).
-    """
-    script = (REPO / "install.sh").read_text()
-    assert re.search(
-        r"is_git_checkout\(\)\s*\{[^}]*\[ -d \"\$HERE/\.git\" \][^}]*\[ -f \"\$HERE/\.git\" \]",
-        script,
-    ), "install.sh no longer recognises a linked worktree (where `.git` is a file)"
-    assert "if is_git_checkout; then" in script, (
-        "install.sh no longer distinguishes checkout from fetched copy")
-    assert 'spec="dsh-rigorquant@${VERSION:-latest}"' in script, (
-        "the fetched-copy path must install the published version by name")
-
-
-# ── the stale-surface sweep (Decision 25, issue #32) ─────────────────────────
+# ── the stale-surface sweep (Decision 25, issue #32) ─────────────────────────# ── the stale-surface sweep (Decision 25, issue #32) ─────────────────────────
 
 # Every 0.1.6 surface the 0.6.0 migration removed. Assembled from parts so
 # this file does not match its own sweep.
@@ -2143,17 +2003,11 @@ STALE_SURFACES = tuple("".join(parts) for parts in (
 STALE_SURFACE_HISTORY = re.compile(r"^(CHANGELOG\.md|docs/architecture\.md|docs/adr/.*)$")
 # Code that cleans up after an older release has to name what it removes,
 # and the tests of that cleanup have to build it. Nothing else may.
-_DIRECTORY_PRESET, _WEB_BUNDLE, _ALPHA2 = STALE_SURFACES[2:5]
+_DIRECTORY_PRESET = STALE_SURFACES[2]
 STALE_SURFACE_CLEANUP = {
-    # --uninstall removes an old install's directory preset; a full install
-    # removes the retired web bundle from the profile.
-    "install.sh": {_DIRECTORY_PRESET, _WEB_BUNDLE},
     # rq-lane-sync removes the orphaned directory preset it owns.
     "dsh/sync.js": {_DIRECTORY_PRESET},
     "tests/test_lane_sync.py": {_DIRECTORY_PRESET},
-    # The installer tests seed a 0.5.0 profile: the web bundle pinned at the
-    # alpha.2 core, and the old directory preset.
-    "tests/test_installer_agent_teams.py": {_DIRECTORY_PRESET, _WEB_BUNDLE, _ALPHA2},
 }
 
 
@@ -2207,8 +2061,6 @@ DELEGATION_NAME_HISTORY = re.compile(
 # Code that cleans up after the retired Team config has to name the keys it
 # removes, and its tests have to build the old block to prove the migration.
 DELEGATION_NAME_CLEANUP = {
-    "install.sh": {"maxMembers"},
-    "tests/test_installer_agent_teams.py": {"maxMembers"},
     "tests/team_config_probe.cjs": {"maxMembers"},
     # The capacity-probe pin asserts that the installed Team service still
     # rejects the retired keys; the sweep's own assembled names do not match.
@@ -2265,6 +2117,44 @@ def test_the_delegation_name_exemptions_are_still_needed():
         for name in names:
             assert name in text, (
                 "%s no longer names %r; drop its exemption" % (rel, name))
+
+
+# The installer 0.8.1 removed before shipping (Decision 29). Assembled from
+# parts so this file is not its own offender.
+RETIRED_DISTRIBUTION = tuple("".join(parts) for parts in (
+    ("install", ".sh"),
+    ("--skill", "-only"),
+    ("installer-driven", " migration"),
+))
+# The historical record keeps the old names on purpose: the changelog, the
+# decision record and the ADRs say what shipped and why, in the words of the
+# time -- and the Decision-29 ADR must name what it retired.
+INSTALLER_HISTORY = re.compile(r"^(CHANGELOG\.md|docs/architecture\.md|docs/adr/.*)$")
+
+
+def test_no_current_file_references_the_removed_installer():
+    """No file but the record may point an operator at a removed installer.
+
+    With distribution on the plugin manager (Decision 29), a command, a bin
+    entry, a test or a comment that still names the installer is a door that
+    opens onto nothing. The changelog, the architecture record and the ADRs are
+    exempt: they are history, and the Decision-29 ADR must name what it
+    retired.
+    """
+    offenders = []
+    for rel in tracked_files():
+        if INSTALLER_HISTORY.match(rel) or rel.endswith((".png", ".pdf", ".lock")):
+            continue
+        try:
+            text = (REPO / rel).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            for name in RETIRED_DISTRIBUTION:
+                if name in line:
+                    offenders.append("%s:%d: %s" % (rel, number, line.strip()[:100]))
+    assert not offenders, (
+        "a current file still references the removed installer:\n" + "\n".join(offenders))
 
 
 # The `send_message` argument 0.2.2-rc.3 renamed. The English word "target"
