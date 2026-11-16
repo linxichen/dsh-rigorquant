@@ -192,14 +192,20 @@ const ROSTER_STATUS = {
   'lit-line-1': 'inactive',
 }
 
-// Fixture task board for the ownership guard: 'own-task' is owned by
-// doublechecker-1, 'foreign-task' by explorer-1, 'unowned-task' has no owner
-// yet (still claimable), and any other id is unknown (getTask throws, the
-// way the real service does for a bad id).
+// Fixture task board for the ownership guard, in the shapes the live board
+// actually carries: a row owned by a Session id alone (`ownerId`, optional
+// `ownerName` absent), by a name alone (history), or by both. 'own-task' and
+// 'own-task-both' belong to doublechecker-1 (agent id 'dc-1' / its name);
+// 'foreign-task' and 'foreign-task-both' belong to explorer-1; 'unowned-task'
+// has no owner yet (still claimable). Any other id is unknown (getTask throws,
+// the way the real service does for a bad id).
 const TASKS_BY_ID = new Map([
-  ['own-task', { id: 'own-task', ownerName: 'doublechecker-1' }],
-  ['foreign-task', { id: 'foreign-task', ownerName: 'explorer-1' }],
-  ['unowned-task', { id: 'unowned-task', ownerName: undefined }],
+  ['own-task', { id: 'own-task', ownerId: 'dc-1' }],
+  ['own-task-both', { id: 'own-task-both', ownerId: 'dc-1', ownerName: 'doublechecker-1' }],
+  ['foreign-task', { id: 'foreign-task', ownerId: 'ex-1' }],
+  ['foreign-task-named', { id: 'foreign-task-named', ownerName: 'explorer-1' }],
+  ['foreign-task-both', { id: 'foreign-task-both', ownerId: 'ex-1', ownerName: 'explorer-1' }],
+  ['unowned-task', { id: 'unowned-task', ownerId: undefined, ownerName: undefined }],
 ])
 
 const ARM_SIGNAL = 'signal:agent-created'
@@ -316,9 +322,14 @@ async function runPresentScenario(mod) {
     // Roster/board blindness: unconditional for every teammate.
     listAgentsDenied: drive(doublechecker1Guard, 'list_agents', {}),
     taskListDenied: drive(doublechecker1Guard, 'team_task_list', {}),
-    // Own-task-only board access, read live through the (fake) service.
+    // Own-task-only board access, read live through the (fake) service. The
+    // live row carries `ownerId` (a Session id) plus an OPTIONAL `ownerName`,
+    // so a task owned by id alone must still be recognised as foreign.
     ownTaskGetAllowed: drive(doublechecker1Guard, 'team_task_get', { task_id: 'own-task' }),
+    ownTaskBothAllowed: drive(doublechecker1Guard, 'team_task_get', { task_id: 'own-task-both' }),
     foreignTaskGetDenied: drive(doublechecker1Guard, 'team_task_get', { task_id: 'foreign-task' }),
+    foreignTaskNamedDenied: drive(doublechecker1Guard, 'team_task_get', { task_id: 'foreign-task-named' }),
+    foreignTaskBothDenied: drive(doublechecker1Guard, 'team_task_get', { task_id: 'foreign-task-both' }),
     unownedTaskClaimAllowed: drive(doublechecker1Guard, 'team_task_update', { task_id: 'unowned-task', action: 'claim' }),
     foreignTaskUpdateDenied: drive(doublechecker1Guard, 'team_task_update', { task_id: 'foreign-task', action: 'complete' }),
     // Bash network verbs: denied for a web-denied role (blind and

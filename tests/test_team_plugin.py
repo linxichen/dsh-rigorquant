@@ -304,9 +304,20 @@ def test_every_teammate_is_roster_and_board_blind(probe):
 
 
 def test_a_teammate_touches_only_its_own_task(probe):
+    """Ownership is read from both owner fields the live row can carry.
+
+    A Team task row carries `ownerId` — the owning Session's id — and an
+    optional `ownerName` that older or reconstructed rows may omit (or carry
+    alone). Reading only the name would let a task owned by an id pass as
+    unowned, so the guard compares its Session id and its name against the
+    row and treats either mismatch as foreign.
+    """
     checks = probe["guardChecks"]
     assert checks["ownTaskGetAllowed"] is None
+    assert checks["ownTaskBothAllowed"] is None
     assert isinstance(checks["foreignTaskGetDenied"], str)
+    assert isinstance(checks["foreignTaskNamedDenied"], str)
+    assert isinstance(checks["foreignTaskBothDenied"], str)
     assert checks["unownedTaskClaimAllowed"] is None, (
         "an unclaimed task must stay reachable, or team_task_update(action: "
         "'claim') could never succeed")
