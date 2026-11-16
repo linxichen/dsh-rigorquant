@@ -443,15 +443,16 @@ def test_no_delegation_row_offers_caller_selectable_models():
     assert "modelSelectionSettings" not in preset_children()
 
 
-def test_the_procedure_states_the_live_children_pool_rule():
-    """Fan-out is bounded by the host, and the bound has a retry trap.
+def test_the_procedure_states_the_live_teammate_pool_rule():
+    """Fan-out is bounded by the study's live pool, and the bound has a trap.
 
-    The host allows eight live children per root (`maxActiveSubagents`,
-    default 8). Over that, a spawn throws `ACTIVATION_LIMIT_REACHED` — which
-    reads like a transient error and is not one: nothing clears it but a
-    child settling. An orchestrator that retries burns the budget on the
-    error path, so both the step that fans out and the delegation discipline
-    say to wait instead.
+    The bundle patch raises the `subagent` service's `maxActiveSubagents` to
+    12 for a RigorQuant study, and there is no lifetime cap: a settled
+    teammate frees its slot. Over the bound a spawn throws
+    `ACTIVATION_LIMIT_REACHED` — which reads like a transient error and is
+    not one: nothing clears it but a teammate finishing. An exhausted pool is
+    a BUDGET-class outcome, so both the step that fans out and the delegation
+    discipline say to checkpoint and end the turn, never to retry.
     """
     documents = (("SKILL.md", SKILL_DIR / "SKILL.md"),
                  ("protocol.md", SKILL_DIR / "references/protocol.md"))
@@ -459,40 +460,51 @@ def test_the_procedure_states_the_live_children_pool_rule():
         # Prose wraps; the rule is what is pinned, not the line breaks.
         text = " ".join(path.read_text().split())
         assert "maxActiveSubagents" in text, (
-            "%s does not name the host setting that bounds fan-out" % name)
-        assert "eight" in text, "%s does not state the pool size" % name
+            "%s does not name the setting that bounds fan-out" % name)
+        assert re.search(r"\b12\b", text), (
+            "%s does not state the live-teammate pool of 12" % name)
+        assert "no lifetime cap" in text, (
+            "%s does not state that the lifetime cap is gone" % name)
+        assert "64" not in text, (
+            "%s still states the retired 64-member lifetime cap" % name)
         assert "ACTIVATION_LIMIT_REACHED" in text, (
             "%s does not name the error the bound raises" % name)
         assert "never retry in a loop" in text, (
             "%s does not forbid retrying the activation limit" % name)
+        assert "BUDGET" in text, (
+            "%s does not carry an exhausted pool to the BUDGET outcome" % name)
 
 
-def test_every_document_that_names_the_pool_states_the_same_bound():
-    """The number is the part that drifts, and it is now in five files.
+# The historical record and the pages ticket #44 owns still state the core's
+# default or the old lifetime cap. Their documentation pin lands with the
+# release record (the same deferral as the open-floor pin above).
+POOL_DOCS_OWNED_BY_THE_RELEASE_RECORD = {
+    "README.md", "README.zh-CN.md", "CHANGELOG.md", "docs/architecture.md",
+}
 
-    The same argument as the floor: a reader who finds "twelve" in the README
-    and "eight" in the skill has learned nothing. Any tracked file naming the
-    host setting has to state the bound, and the bound is one number.
 
-    Transition (0.8.1 ticket B1): the bundle patch now raises the live pool to
-    12, while the prose still states the core's default of eight. Both bounds
-    are admitted here until tickets B2/C move every document to 12; a file
-    that states neither still fails.
+def test_every_document_that_names_the_pool_states_twelve():
+    """The number is the part that drifts, and the study's pool is now 12.
+
+    A reader who finds "eight" in one document and "12" in another has
+    learned nothing. Every document that names the setting states the 0.8.1
+    live-teammate pool; the historical documents and the pages ticket #44
+    owns are excluded until the release record moves them.
     """
     offenders = []
     for name in tracked_files():
-        path = REPO / name
-        text = " ".join(path.read_text(errors="ignore").split())
+        if not name.endswith((".md", ".yml", ".yaml")):
+            continue
+        if name in POOL_DOCS_OWNED_BY_THE_RELEASE_RECORD:
+            continue
+        text = " ".join((REPO / name).read_text(errors="ignore").split())
         if "maxActiveSubagents" not in text:
             continue
-        # Written as a word in prose, as a digit in the setting's default and
-        # in the Chinese README's "8 个存活子代理"; 12 is the 0.8.1 pool.
-        if "eight" not in text and "twelve" not in text \
-                and not re.search(r"\b(?:8|12)\b", text):
+        if not re.search(r"\b(?:12|twelve)\b", text):
             offenders.append(name)
     assert not offenders, (
-        "these name maxActiveSubagents without stating the bound: %s"
-        % offenders)
+        "these name maxActiveSubagents without stating the study's bound of "
+        "12: %s" % offenders)
 
 
 def test_deprecated_synchronous_history_reads_are_fully_migrated():
@@ -1007,7 +1019,7 @@ def test_hard_lesson_l3_keeps_freeze_and_hash_and_adopts_the_brief_rule():
             "SHA-256.") in text, "L3 lost its freeze-and-hash half"
     assert ("a reused teammate only ever receives a new hash-bound brief, "
             "never a follow-up about an artifact under audit, and only while "
-            "the roster shows it idle or inactive") in text.lower(), (
+            "the roster shows it `inactive`") in text.lower(), (
         "L3 lacks the new-brief rule")
     assert "if it is running, wait on it first" in text
     # 0.2.1-rc.2's SendMessageTool returns `{sent:true}` (seam S14); the old
@@ -1033,25 +1045,68 @@ def test_hard_lesson_l3_keeps_freeze_and_hash_and_adopts_the_brief_rule():
 def test_the_brief_contract_names_task_snapshot_and_role_only_description():
     text = _protocol()
     contract = text[text.index("Brief contract"):]
-    for needle in ("task id", "snapshot", "SHA-256", "role label"):
+    for needle in ("task id", "snapshot", "SHA-256", "role label",
+                   "`subagent`", "`name: '<role>-<n>'`"):
         assert needle in contract, "the brief contract omits %r" % needle
 
 
-def test_the_skill_round_loop_runs_on_the_team_tools():
-    """SKILL Step 3: create / wait / message and the task DAG."""
+def test_the_skill_round_loop_runs_on_the_surviving_team_tools():
+    """SKILL Step 3: create with `subagent` + a name, then wait / message."""
     skill = (SKILL_DIR / "SKILL.md").read_text()
     step3 = " ".join(skill[skill.index("## Step 3"):skill.index("**Stage order")].split())
-    for needle in ("spawn_teammate", "wait_agent", "send_message",
+    for needle in ("subagent", "wait_agent", "send_message",
                    "team_task_create", "blocked_by", "`<role>-<n>`",
-                   "list_agents", "BUDGET", "lifetime", "eight"):
+                   "list_agents", "`owner`", "`inactive`", "BUDGET", "12",
+                   "no lifetime cap"):
         assert needle in step3, "SKILL Step 3 omits %r" % needle
-    for gone in ("subagent_", "settled agent"):
+    assert "send_message({agent, message})" in step3, (
+        "the message call must name its surviving `agent` argument")
+    for gone in ("subagent_explorer", "subagent_offgrid",
+                 "subagent_double_checker", "settled agent"):
         assert gone not in skill, "SKILL.md still names %r" % gone
+
+
+def test_the_skill_teaches_the_surviving_delegation_contract():
+    """0.2.2-rc.3: create with `subagent` + an explicit name, message by
+    `agent`, read the roster's `{name, status, description}` rows and the
+    board's `owner` name, and treat `inactive` as not-done.
+
+    The old call and its argument names are swept repo-wide by
+    test_no_current_document_teaches_a_removed_delegation_name; this pin
+    states the positive half so a deletion cannot pass for a rewrite.
+    """
+    skill = " ".join((SKILL_DIR / "SKILL.md").read_text().split())
+    for needle in ("standard `subagent` tool", "explicit `name`",
+                   "send_message({agent, message})",
+                   "{name, status, description}", "`owner`", "`inactive`",
+                   "never `subagent_fork`"):
+        assert needle in skill, "SKILL.md omits %r" % needle
+    protocol = _protocol()
+    for needle in ("`subagent`", "`name: '<role>-<n>'`", "`list_agents`",
+                   "`owner`", "`inactive`", "send_message"):
+        assert needle in protocol, "protocol.md omits %r" % needle
+
+
+def test_the_guard_names_the_surviving_delegation_calls():
+    """The skill's guard claims are the module's actual checks.
+
+    The prose says a `subagent` needs a parsable name, a `subagent_fork` is
+    refused, and `send_message` reads its `agent` argument. Those three
+    guards are `dsh/team.js`'s constants and argument read, not a story.
+    """
+    team = (REPO / "dsh" / "team.js").read_text()
+    assert "const SUBAGENT_TOOL = 'subagent'" in team
+    assert "const SUBAGENT_FORK_TOOL = 'subagent_fork'" in team
+    assert "execution.name === SUBAGENT_TOOL" in team
+    assert "execution.name === SUBAGENT_FORK_TOOL" in team
+    assert "if (execution.name === 'send_message')" in team
+    assert "const target = args.agent" in team, (
+        "the send_message guard must read the surviving `agent` argument")
 
 
 def test_the_roster_policy_is_stated_once_and_consistently():
     """Fresh blank-context roles per brief; audit and literature roles reused
-    by message, only while idle or inactive."""
+    by message, only while `inactive` (0.2.2 has no `idle` status)."""
     text = _protocol()
     policy = text[text.index("Roster policy"):]
     for fresh in ("explorer-<n>", "offgrid-<n>", "doublechecker-<n>"):
@@ -1059,7 +1114,9 @@ def test_the_roster_policy_is_stated_once_and_consistently():
             "%s is not listed as fresh per brief" % fresh)
     for reused in ("adversary-<n>", "lit-adversary-<n>", "doc-adversary-<n>", "lit-line-<n>"):
         assert reused in policy, "%s is not listed as reused" % reused
-    assert "idle or inactive" in policy
+    assert "only while `inactive`" in policy
+    assert "{name, status, description}" in policy, (
+        "the roster policy must state the `list_agents` row shape")
 
 
 def test_a_correction_to_a_fresh_role_goes_to_a_new_teammate():
@@ -1365,7 +1422,7 @@ def test_team_guard_enforces_the_same_hub_and_spoke_the_pillbox_map_draws():
     assert "tools.guard(" in team, (
         "dsh/team.js must register a per-call guard — tools.restrict cannot "
         "mask the scoped Team tools (send_message, list_agents, "
-        "team_task_list, team_task_get, team_task_update, spawn_teammate)")
+        "team_task_list, team_task_get, team_task_update)")
     hub_target = re.search(r"const LEAD_TARGET = '([a-z]+)'", team)
     assert hub_target, "the guard's one legal message target must be a named constant"
     assert hub_target.group(1) == "lead", (
@@ -2080,6 +2137,92 @@ def test_the_cleanup_exemptions_are_still_needed():
         for surface in surfaces:
             assert surface.lower() in text, (
                 "%s no longer names %r; drop its exemption" % (rel, surface))
+
+
+# The delegation names 0.2.2-rc.3 removed. Assembled from parts so this file
+# has no literal copy for its own sweep to find.
+REMOVED_DELEGATION_NAMES = tuple("".join(parts) for parts in (
+    ("spawn_", "teammate"),
+    ("agent", "_id"),
+    ("owner", "Id"),
+    ("max", "Members"),
+))
+# The historical record keeps the old names on purpose: the changelog, the
+# decision record and the ADRs say what shipped and why, in the words of the
+# time, and docs/token-efficiency.md is a measurement of the 0.2.1 host.
+DELEGATION_NAME_HISTORY = re.compile(
+    r"^(CHANGELOG\.md|docs/architecture\.md|docs/adr/.*|docs/token-efficiency\.md)$")
+# Code that cleans up after the retired Team config has to name the keys it
+# removes, and its tests have to build the old block to prove the migration.
+DELEGATION_NAME_CLEANUP = {
+    "install.sh": {"maxMembers"},
+    "tests/test_installer_agent_teams.py": {"maxMembers"},
+    "tests/team_config_probe.cjs": {"maxMembers"},
+    # The capacity-probe pin asserts that the installed Team service still
+    # rejects the retired keys; the sweep's own assembled names do not match.
+    "tests/test_repo_consistency.py": {"maxMembers"},
+}
+
+
+def test_no_current_document_teaches_a_removed_delegation_name():
+    """0.2.2-rc.3's delegation contract: the removed names do not survive.
+
+    The skill, the live composition comments and every other current file
+    name the surviving calls only — create with `subagent` + `name`, message
+    by `agent`, read `name`/`status` from `list_agents`, read `owner` on the
+    board. The historical record and the cleanup code are exempt by the same
+    rule as the 0.1.6 sweep: they describe or remove what is gone. Ticket #44
+    narrows this sweep to the READMEs and the decision record when it writes
+    the release's documentation pins.
+    """
+    offenders = []
+    for rel in tracked_files():
+        if DELEGATION_NAME_HISTORY.match(rel) or rel.endswith((".png", ".pdf", ".lock")):
+            continue
+        try:
+            text = (REPO / rel).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        allowed = DELEGATION_NAME_CLEANUP.get(rel, set())
+        for number, line in enumerate(text.splitlines(), 1):
+            for name in REMOVED_DELEGATION_NAMES:
+                # Whole-word matching: the surviving `subagent_identity`
+                # test name must not look like the removed argument key.
+                hit = re.search(r"\b%s\b" % re.escape(name), line, re.IGNORECASE)
+                if name not in allowed and hit:
+                    offenders.append("%s:%d: %s" % (rel, number, line.strip()[:100]))
+    assert not offenders, (
+        "a current file still teaches a removed delegation name:\n"
+        + "\n".join(offenders))
+
+
+def test_the_delegation_name_exemptions_are_still_needed():
+    """An exemption that matches nothing any more is a hole in the sweep."""
+    for rel, names in DELEGATION_NAME_CLEANUP.items():
+        assert set(names) <= set(REMOVED_DELEGATION_NAMES), rel
+        text = (REPO / rel).read_text()
+        for name in names:
+            assert name in text, (
+                "%s no longer names %r; drop its exemption" % (rel, name))
+
+
+# The `send_message` argument 0.2.2-rc.3 renamed. The English word "target"
+# is normal prose ("the check targets"); the backticked argument spelling is
+# what the skill must not teach again.
+REMOVED_MESSAGE_ARGUMENT = "".join(("`tar", "get`"))
+
+
+def test_no_teaching_document_names_the_removed_message_argument():
+    """`send_message` addresses a teammate by `agent`, never the old key."""
+    documents = [SKILL_DIR / "SKILL.md"] + sorted(
+        (SKILL_DIR / "references").glob("*.md"))
+    documents += [REPO / "cordis.patch.yml",
+                  REPO / "agent-presets/rigorquant.patch.yml"]
+    offenders = [str(path.relative_to(REPO)) for path in documents
+                 if REMOVED_MESSAGE_ARGUMENT in path.read_text()]
+    assert not offenders, (
+        "these teaching documents still name the removed message argument: %s"
+        % offenders)
 
 
 # Bare names, joined to docs/ at run time so this file is no reference to

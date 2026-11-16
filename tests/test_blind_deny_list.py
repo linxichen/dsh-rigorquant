@@ -5,7 +5,7 @@ Decision 24: the team plugin (`dsh/team.js`) reads a teammate's role from its
 name and denies the blind roles (OffGridThinker, DoubleChecker) web_search,
 web_fetch and `skill`, and the web-denied roles (the blind roles plus the
 Adversary and Document adversary) web_search and web_fetch. No teammate can
-create teammates at all (only the orchestrator holds `spawn_teammate`), so the
+create teammates at all (only the orchestrator holds `subagent`), so the
 per-row delegation deny lists the classic preset carried have nothing left to
 deny. The deny tables are pinned here against CONTEXT.md's glossary; what
 each role actually SEES is observed through the team probe
