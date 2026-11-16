@@ -1,24 +1,27 @@
 // Exercises dsh/team.js the way a host process would, without one.
 //
-// Mounts the plugin against a stub ctx (agentTeams membership, agents
-// backfill, agentPresets) and a per-agent stub scope (systemPrompt's
-// section()/context()/getSectionOrder(), tools' restrict()/guard()), then
-// drives these scenarios: agentTeams present (a lead + several teammates of
-// varying tiers, an unparseable name, a non-RigorQuant teammate), agentTeams
+// Mounts the plugin against a stub ctx (agentTeams arming/membership, the
+// subagents identity service, agents backfill, agentPresets) and a per-agent
+// stub scope (systemPrompt's section()/context()/getSectionOrder(), tools'
+// restrict()/guard()), then drives these scenarios: agentTeams present (a
+// lead + several teammates of varying tiers, an unparseable name, a
+// non-RigorQuant teammate, a non-RigorQuant ROOT that must never be armed), a
+// service that reports the selection still off (no armed context), agentTeams
 // absent (warning, no armed context), a resume-sourced re-creation (proves
 // composition is reapplied, not skipped as a no-op), and a guard drive that
 // fakes a call through every per-call rule (topology by guard: hub-and-spoke
 // messaging, roster/board blindness, own-task-only board access, the bash
 // network-verb denial for web-denied roles, and the orchestrator's
-// spawn_teammate name/fork refusal), plus a late preset switch and an
+// subagent/subagent_fork refusal), plus a late preset switch and an
 // unload/reload of the plugin over live agents (the Plugins-page toggle),
 // and the escalation lane: the Lead's `rq_escalate` tool mounting a stub
 // MCP client into the caller or a named teammate. Prints one JSON verdict.
 const { pathToFileURL } = require('node:url')
 
 /** One fake teammate/lead: its own agent.ctx scope recording every
- * section()/context()/restrict() call made against it. */
-function makeAgent(id, preset) {
+ * section()/context()/restrict() call made against it. `status` is what the
+ * harness's own roster projection reads (`running` vs `inactive`). */
+function makeAgent(id, preset, { status = 'running' } = {}) {
   const sections = []
   const contexts = []
   const restricts = []
@@ -52,6 +55,7 @@ function makeAgent(id, preset) {
   }
   const agent = {
     id,
+    status,
     ctx: {
       __preset: preset,
       get: (name) => {
@@ -77,6 +81,48 @@ function pick(recorder) {
   }
 }
 
+/** The 0.2.2 subagent identity service: `rootOf` and `namesOf`, keyed by the
+ * exact live Agent. A member absent from either map throws, the way the real
+ * service does for an agent outside a live tree. */
+function makeSubagents({ roots, names }) {
+  return {
+    rootOf: (agent) => {
+      const root = roots.get(agent)
+      if (root === undefined) throw new Error('agent has no active runtime owner')
+      return root
+    },
+    namesOf: (agent) => {
+      const entry = names.get(agent)
+      if (entry === undefined) throw new Error('agent is not a member of this subagent tree')
+      return entry
+    },
+  }
+}
+
+/** The Team service surface the plugin uses: the per-root selection plus the
+ * live task board. Every `setEnabled` call is recorded, including the signal. */
+function makeTeams({ tasks = new Map(), roster = [] } = {}) {
+  const enabled = new Set()
+  const calls = []
+  return {
+    calls,
+    service: {
+      setEnabled: async (agent, on, signal) => {
+        calls.push({ agent: agent.id, enabled: on, signal: signal === undefined ? null : String(signal) })
+        if (on) enabled.add(agent)
+        else enabled.delete(agent)
+      },
+      isEnabled: (agent) => enabled.has(agent),
+      getTask: (_agent, taskId) => {
+        const task = tasks.get(taskId)
+        if (task === undefined) throw new Error(`team-task-not-found: ${taskId}`)
+        return task
+      },
+      listMembers: () => roster,
+    },
+  }
+}
+
 /** Drive one fake call through a registered guard, returning the denial
  * reason or `null` when the guard allows it (JSON has no `undefined`). */
 function drive(guardFn, name, args) {
@@ -85,18 +131,21 @@ function drive(guardFn, name, args) {
   return reason === undefined ? null : reason
 }
 
-// Fixture roster the Lead's reuse guard reads live statuses from: a settled
+/** Let the async arming path (setEnabled/isEnabled) settle. */
+const flush = () => new Promise((resolve) => setImmediate(resolve))
+
+// Fixture roster statuses the Lead's reuse guard reads live: a settled
 // fresh-per-brief teammate (idle or inactive) must never get a new brief,
 // while a running one may be answered (a blocking question mid-turn), and
 // the reused roles may be briefed again once settled.
-const ROSTER = [
-  { name: 'lead', role: 'lead', status: 'running' },
-  { name: 'explorer-1', role: 'teammate', status: 'idle' },
-  { name: 'offgrid-1', role: 'teammate', status: 'inactive' },
-  { name: 'doublechecker-1', role: 'teammate', status: 'running' },
-  { name: 'adversary-1', role: 'teammate', status: 'idle' },
-  { name: 'lit-line-1', role: 'teammate', status: 'inactive' },
-]
+const ROSTER_STATUS = {
+  'lead': 'running',
+  'explorer-1': 'idle',
+  'offgrid-1': 'inactive',
+  'doublechecker-1': 'running',
+  'adversary-1': 'idle',
+  'lit-line-1': 'inactive',
+}
 
 // Fixture task board for the ownership guard: 'own-task' is owned by
 // doublechecker-1, 'foreign-task' by explorer-1, 'unowned-task' has no owner
@@ -108,19 +157,15 @@ const TASKS_BY_ID = new Map([
   ['unowned-task', { id: 'unowned-task', ownerName: undefined }],
 ])
 
+const ARM_SIGNAL = 'signal:agent-created'
+
 async function runPresentScenario(mod) {
   const listeners = new Map()
-  const membershipByAgent = new Map()
-  const agentsBackfill = []
-  const teamsService = {
-    tryMembership: (agent) => membershipByAgent.get(agent),
-    getTask: (_agent, taskId) => {
-      const task = TASKS_BY_ID.get(taskId)
-      if (task === undefined) throw new Error(`team-task-not-found: ${taskId}`)
-      return task
-    },
-    listMembers: () => ROSTER,
-  }
+  const roots = new Map()
+  const names = new Map()
+  const allAgents = []
+  const teams = makeTeams({ tasks: TASKS_BY_ID })
+  const subagents = makeSubagents({ roots, names })
   const ctx = {
     logger: { warn: () => {} },
     effect: () => {},
@@ -129,39 +174,76 @@ async function runPresentScenario(mod) {
       listeners.get(name).push(handler)
     },
     get: (name) => {
-      if (name === 'agents') return { list: () => agentsBackfill }
+      if (name === 'agents') return { list: () => allAgents }
       if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
-      if (name === 'agentTeams') return teamsService
+      if (name === 'agentTeams') return teams.service
+      if (name === 'subagents') return subagents
       return undefined
     },
   }
-  const emit = (name, ...args) => { for (const h of listeners.get(name) ?? []) h(...args) }
+  // The emit awaits listener promises, the way cordis awaits an async
+  // `agent/created` handler before creation settles.
+  const emit = async (name, ...args) => {
+    for (const h of listeners.get(name) ?? []) await h(...args)
+  }
 
-  const lead = makeAgent('lead-1', 'rigorquant')
-  membershipByAgent.set(lead.agent, { role: 'lead', name: 'lead' })
-  const doublechecker1 = makeAgent('dc-1', 'rigorquant')
-  membershipByAgent.set(doublechecker1.agent, { role: 'teammate', name: 'doublechecker-1' })
-  const explorer1 = makeAgent('ex-1', 'rigorquant')
-  membershipByAgent.set(explorer1.agent, { role: 'teammate', name: 'explorer-1' })
-  const adversary1 = makeAgent('ad-1', 'rigorquant')
-  membershipByAgent.set(adversary1.agent, { role: 'teammate', name: 'adversary-1' })
-  const unparseable = makeAgent('scout-1', 'rigorquant')
-  membershipByAgent.set(unparseable.agent, { role: 'teammate', name: 'scout-1' })
-  const nonRigorQuant = makeAgent('dc-2', 'standard')
-  membershipByAgent.set(nonRigorQuant.agent, { role: 'teammate', name: 'doublechecker-2' })
+  /** One tree member: register its identity. Whether it is already live at
+   * mount is decided by the caller — an agent already in `agents.list()` is
+   * backfilled, not re-created. */
+  const member = (id, preset, name, status = 'running') => {
+    const made = makeAgent(id, preset, { status })
+    names.set(made.agent, { self: name, parent: name === 'lead' ? undefined : 'lead' })
+    return made
+  }
 
-  // The lead is already live when the plugin mounts — exercises the backfill
-  // loop, not just agent/created.
-  agentsBackfill.push(lead.agent)
+  const lead = member('lead-1', 'rigorquant', 'lead')
+  roots.set(lead.agent, lead.agent)
+  const doublechecker1 = member('dc-1', 'rigorquant', 'doublechecker-1', 'running')
+  roots.set(doublechecker1.agent, lead.agent)
+  const explorer1 = member('ex-1', 'rigorquant', 'explorer-1', 'idle')
+  roots.set(explorer1.agent, lead.agent)
+  const adversary1 = member('ad-1', 'rigorquant', 'adversary-1', 'idle')
+  roots.set(adversary1.agent, lead.agent)
+  const unparseable = member('scout-1', 'rigorquant', 'scout-1')
+  roots.set(unparseable.agent, lead.agent)
+  const nonRigorQuant = member('dc-2', 'standard', 'doublechecker-2')
+  roots.set(nonRigorQuant.agent, lead.agent)
+  // Roster-only fixtures: the guard reads their names/statuses through the
+  // same agents.list()/namesOf pair, but they never fire agent/created.
+  const offgrid1 = member('og-1', 'rigorquant', 'offgrid-1', 'inactive')
+  roots.set(offgrid1.agent, lead.agent)
+  const litLine1 = member('lit-1', 'rigorquant', 'lit-line-1', 'inactive')
+  roots.set(litLine1.agent, lead.agent)
+  // A non-RigorQuant ROOT: Team must never be armed for it.
+  const standardRoot = makeAgent('std-root', 'standard')
+  names.set(standardRoot.agent, { self: 'lead' })
+  roots.set(standardRoot.agent, standardRoot.agent)
+  // A second RigorQuant root created AFTER mount (added to the live list
+  // below): proves the signal from agent/created reaches setEnabled and that
+  // arming is per root Session.
+  const secondRoot = makeAgent('lead-2', 'rigorquant')
+  names.set(secondRoot.agent, { self: 'lead' })
+  roots.set(secondRoot.agent, secondRoot.agent)
+
+  // Already live at mount: the Lead and the two roster-only fixtures.
+  allAgents.push(lead.agent, offgrid1.agent, litLine1.agent)
 
   let mountError = null
   try {
     mod.apply(ctx)
-    emit('agent/created', { agent: doublechecker1.agent, source: 'startup' })
-    emit('agent/created', { agent: explorer1.agent, source: 'startup' })
-    emit('agent/created', { agent: adversary1.agent, source: 'startup' })
-    emit('agent/created', { agent: unparseable.agent, source: 'startup' })
-    emit('agent/created', { agent: nonRigorQuant.agent, source: 'startup' })
+    await flush() // the live-lead backfill arms asynchronously
+    // Created after mount, through agent/created.
+    allAgents.push(
+      doublechecker1.agent, explorer1.agent, adversary1.agent, unparseable.agent,
+      nonRigorQuant.agent, standardRoot.agent, secondRoot.agent,
+    )
+    await emit('agent/created', { agent: doublechecker1.agent, source: 'startup', signal: ARM_SIGNAL })
+    await emit('agent/created', { agent: explorer1.agent, source: 'startup', signal: ARM_SIGNAL })
+    await emit('agent/created', { agent: adversary1.agent, source: 'startup', signal: ARM_SIGNAL })
+    await emit('agent/created', { agent: unparseable.agent, source: 'startup', signal: ARM_SIGNAL })
+    await emit('agent/created', { agent: nonRigorQuant.agent, source: 'startup', signal: ARM_SIGNAL })
+    await emit('agent/created', { agent: standardRoot.agent, source: 'startup', signal: ARM_SIGNAL })
+    await emit('agent/created', { agent: secondRoot.agent, source: 'startup', signal: ARM_SIGNAL })
   } catch (error) {
     mountError = `${error.name}: ${error.message}`
   }
@@ -172,9 +254,11 @@ async function runPresentScenario(mod) {
   const leadGuard = lead.recorder.guards[0]
 
   const guardChecks = {
-    // Hub-and-spoke: a sibling target is refused, the Lead is allowed.
-    siblingMessageDenied: drive(doublechecker1Guard, 'send_message', { target: 'explorer-1' }),
-    leadMessageAllowed: drive(doublechecker1Guard, 'send_message', { target: 'lead' }),
+    // Hub-and-spoke: a sibling target is refused, the Lead (by name or by
+    // its Session id) is allowed.
+    siblingMessageDenied: drive(doublechecker1Guard, 'send_message', { agent: 'explorer-1', message: 'x' }),
+    leadMessageAllowed: drive(doublechecker1Guard, 'send_message', { agent: 'lead', message: 'x' }),
+    leadSessionIdMessageAllowed: drive(doublechecker1Guard, 'send_message', { agent: 'lead-1', message: 'x' }),
     // Roster/board blindness: unconditional for every teammate.
     listAgentsDenied: drive(doublechecker1Guard, 'list_agents', {}),
     taskListDenied: drive(doublechecker1Guard, 'team_task_list', {}),
@@ -189,21 +273,21 @@ async function runPresentScenario(mod) {
     webDeniedBashWgetDenied: drive(adversary1Guard, 'bash', { command: 'wget https://example.com/file' }),
     openRoleBashCurlAllowed: drive(explorer1Guard, 'bash', { command: 'curl https://example.com' }),
     blindBashPlainAllowed: drive(doublechecker1Guard, 'bash', { command: 'ls -la' }),
-    // The orchestrator's spawn_teammate guard: bad name and fork are both
+    // The orchestrator's delegation guard: bad name and a fork are both
     // refused; a well-formed fresh spawn is allowed.
-    spawnBadNameDenied: drive(leadGuard, 'spawn_teammate', { name: 'scout-1', context: 'fresh' }),
-    spawnForkDenied: drive(leadGuard, 'spawn_teammate', { name: 'doublechecker-9', context: 'fork' }),
-    spawnFreshRoleAllowed: drive(leadGuard, 'spawn_teammate', { name: 'doublechecker-9', context: 'fresh' }),
+    spawnBadNameDenied: drive(leadGuard, 'subagent', { name: 'scout-1', description: 'x', prompt: 'p' }),
+    spawnForkDenied: drive(leadGuard, 'subagent_fork', { name: 'doublechecker-9', description: 'x', prompt: 'p' }),
+    spawnFreshRoleAllowed: drive(leadGuard, 'subagent', { name: 'doublechecker-9', description: 'x', prompt: 'p' }),
     // The orchestrator's reuse guard: a settled fresh-per-brief teammate is
     // never briefed again; a running one may be answered; reused roles may be
     // briefed once settled; a name the roster does not hold is left to the
     // tool's own error.
-    briefSettledExplorerDenied: drive(leadGuard, 'send_message', { target: 'explorer-1', message: 'erratum' }),
-    briefInactiveOffgridDenied: drive(leadGuard, 'send_message', { target: 'offgrid-1', message: 'erratum' }),
-    answerRunningDoublecheckerAllowed: drive(leadGuard, 'send_message', { target: 'doublechecker-1', message: 'answer' }),
-    briefSettledAdversaryAllowed: drive(leadGuard, 'send_message', { target: 'adversary-1', message: 'new brief' }),
-    briefInactiveLitLineAllowed: drive(leadGuard, 'send_message', { target: 'lit-line-1', message: 'new brief' }),
-    unknownTargetLeftToTheTool: drive(leadGuard, 'send_message', { target: 'doublechecker-99', message: 'x' }),
+    briefSettledExplorerDenied: drive(leadGuard, 'send_message', { agent: 'explorer-1', message: 'erratum' }),
+    briefInactiveOffgridDenied: drive(leadGuard, 'send_message', { agent: 'offgrid-1', message: 'erratum' }),
+    answerRunningDoublecheckerAllowed: drive(leadGuard, 'send_message', { agent: 'doublechecker-1', message: 'answer' }),
+    briefSettledAdversaryAllowed: drive(leadGuard, 'send_message', { agent: 'adversary-1', message: 'new brief' }),
+    briefInactiveLitLineAllowed: drive(leadGuard, 'send_message', { agent: 'lit-line-1', message: 'new brief' }),
+    unknownTargetLeftToTheTool: drive(leadGuard, 'send_message', { agent: 'doublechecker-99', message: 'x' }),
     // The escalation lane is the orchestrator's to grant: a teammate that
     // can see the Lead's scoped tool is still refused at the call.
     teammateEscalateDenied: drive(doublechecker1Guard, 'rq_escalate', {}),
@@ -213,6 +297,12 @@ async function runPresentScenario(mod) {
   return {
     mountError,
     guardChecks,
+    arming: {
+      setEnabledCalls: teams.calls,
+      standardRootContexts: standardRoot.recorder.contexts,
+      teammateContexts: doublechecker1.recorder.contexts,
+      nonRigorQuantTeammateSetEnabled: teams.calls.filter((call) => call.agent === 'dc-2'),
+    },
     present: {
       lead: pick(lead.recorder),
       doublechecker1: pick(doublechecker1.recorder),
@@ -220,8 +310,47 @@ async function runPresentScenario(mod) {
       adversary1: pick(adversary1.recorder),
       unparseableName: pick(unparseable.recorder),
       nonRigorQuantTeammate: pick(nonRigorQuant.recorder),
+      standardRoot: pick(standardRoot.recorder),
+      secondRoot: pick(secondRoot.recorder),
     },
   }
+}
+
+/** The service is present but reports the selection still off: no armed
+ * context, no persona, no guard — a guard the Team tools do not honor is
+ * worse than none. */
+async function runUnarmedServiceScenario(mod) {
+  const listeners = new Map()
+  const roots = new Map()
+  const names = new Map()
+  const lead = makeAgent('lead-unarmed', 'rigorquant')
+  roots.set(lead.agent, lead.agent)
+  names.set(lead.agent, { self: 'lead' })
+  const teamsService = {
+    setEnabled: async () => {}, // accepted but never takes effect
+    isEnabled: () => false,
+  }
+  const ctx = {
+    logger: { warn: () => {} },
+    effect: () => {},
+    on: (name, handler) => {
+      if (!listeners.has(name)) listeners.set(name, [])
+      listeners.get(name).push(handler)
+    },
+    get: (name) => {
+      if (name === 'agents') return { list: () => [] }
+      if (name === 'agentPresets') return { composedPreset: () => 'rigorquant' }
+      if (name === 'agentTeams') return teamsService
+      if (name === 'subagents') return makeSubagents({ roots, names })
+      return undefined
+    },
+  }
+  const emit = async (name, ...args) => {
+    for (const h of listeners.get(name) ?? []) await h(...args)
+  }
+  mod.apply(ctx)
+  await emit('agent/created', { agent: lead.agent, source: 'startup' })
+  return { lead: pick(lead.recorder) }
 }
 
 async function runAbsentScenario(mod) {
@@ -241,19 +370,28 @@ async function runAbsentScenario(mod) {
       return undefined
     },
   }
-  const emit = (name, ...args) => { for (const h of listeners.get(name) ?? []) h(...args) }
+  const emit = async (name, ...args) => {
+    for (const h of listeners.get(name) ?? []) await h(...args)
+  }
 
   const lead = makeAgent('lead-absent', 'rigorquant')
   mod.apply(ctx)
-  emit('agent/created', { agent: lead.agent, source: 'startup' })
+  await emit('agent/created', { agent: lead.agent, source: 'startup' })
 
   return { warnings, leadContexts: lead.recorder.contexts }
 }
 
 async function runResumeScenario(mod) {
   const listeners = new Map()
-  const membershipByAgent = new Map()
-  const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
+  const roots = new Map()
+  const names = new Map()
+  const dc = makeAgent('dc-resume', 'rigorquant')
+  const lead = makeAgent('lead-resume', 'rigorquant')
+  roots.set(dc.agent, lead.agent)
+  roots.set(lead.agent, lead.agent)
+  names.set(lead.agent, { self: 'lead' })
+  names.set(dc.agent, { self: 'doublechecker-1', parent: 'lead' })
+  const teams = makeTeams()
   const ctx = {
     logger: { warn: () => {} },
     effect: () => {},
@@ -264,19 +402,19 @@ async function runResumeScenario(mod) {
     get: (name) => {
       if (name === 'agents') return { list: () => [] }
       if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
-      if (name === 'agentTeams') return teamsService
+      if (name === 'agentTeams') return teams.service
+      if (name === 'subagents') return makeSubagents({ roots, names })
       return undefined
     },
   }
-  const emit = (name, ...args) => { for (const h of listeners.get(name) ?? []) h(...args) }
-
-  const dc = makeAgent('dc-resume', 'rigorquant')
-  membershipByAgent.set(dc.agent, { role: 'teammate', name: 'doublechecker-1' })
+  const emit = async (name, ...args) => {
+    for (const h of listeners.get(name) ?? []) await h(...args)
+  }
 
   mod.apply(ctx)
-  emit('agent/created', { agent: dc.agent, source: 'startup' })
+  await emit('agent/created', { agent: dc.agent, source: 'startup' })
   const firstSections = dc.recorder.sections.slice()
-  emit('agent/created', { agent: dc.agent, source: 'resume' })
+  await emit('agent/created', { agent: dc.agent, source: 'resume' })
   const disposedAfterResume = dc.recorder.disposedSections.slice()
   const secondSections = dc.recorder.sections.slice(firstSections.length)
 
@@ -295,9 +433,14 @@ async function runResumeScenario(mod) {
  */
 async function runLatePresetSelectionScenario(mod) {
   const listeners = new Map()
-  const membershipByAgent = new Map()
+  const roots = new Map()
+  const names = new Map()
   const agentsById = new Map()
-  const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
+  const lead = makeAgent('lead-late', 'standard')
+  roots.set(lead.agent, lead.agent)
+  names.set(lead.agent, { self: 'lead' })
+  agentsById.set(lead.agent.id, lead.agent)
+  const teams = makeTeams()
   const ctx = {
     logger: { warn: () => {} },
     effect: () => {},
@@ -308,25 +451,24 @@ async function runLatePresetSelectionScenario(mod) {
     get: (name) => {
       if (name === 'agents') return { list: () => [], get: (id) => agentsById.get(id) }
       if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
-      if (name === 'agentTeams') return teamsService
+      if (name === 'agentTeams') return teams.service
+      if (name === 'subagents') return makeSubagents({ roots, names })
       return undefined
     },
   }
-  const emit = (name, ...args) => { for (const h of listeners.get(name) ?? []) h(...args) }
-
-  const lead = makeAgent('lead-late', 'standard')
-  membershipByAgent.set(lead.agent, { role: 'lead', name: 'lead' })
-  agentsById.set(lead.agent.id, lead.agent)
+  const emit = async (name, ...args) => {
+    for (const h of listeners.get(name) ?? []) await h(...args)
+  }
 
   mod.apply(ctx)
-  emit('agent/created', { agent: lead.agent, source: 'startup' })
+  await emit('agent/created', { agent: lead.agent, source: 'startup' })
   const beforeSwitch = pick(lead.recorder)
 
   lead.agent.ctx.__preset = 'rigorquant'
-  emit('agent-preset/selected', lead.agent.id, 'rigorquant')
+  await emit('agent-preset/selected', lead.agent.id, 'rigorquant')
   const afterSwitch = pick(lead.recorder)
 
-  return { beforeSwitch, afterSwitch }
+  return { beforeSwitch, afterSwitch, setEnabledCalls: teams.calls }
 }
 
 /** One agent scope that keeps its registrations LIVE and refuses a second
@@ -359,7 +501,7 @@ function makeScopedAgent(id, preset) {
       },
     },
   }
-  const agent = { id, ctx: { __preset: preset, get: (name) => services[name] } }
+  const agent = { id, status: 'running', ctx: { __preset: preset, get: (name) => services[name] } }
   const snapshot = () => ({
     sections: [...live.sections], contexts: [...live.contexts], tools: [...live.tools],
     restricts: live.restricts, guards: live.guards,
@@ -380,15 +522,16 @@ function makeScopedAgent(id, preset) {
 async function runUnloadScenario(mod) {
   const lead = makeScopedAgent('lead-toggle', 'rigorquant')
   const dc = makeScopedAgent('dc-toggle', 'rigorquant')
-  const membershipByAgent = new Map([
-    [lead.agent, { role: 'lead', name: 'lead' }],
-    [dc.agent, { role: 'teammate', name: 'doublechecker-1' }],
+  const roots = new Map([[lead.agent, lead.agent], [dc.agent, lead.agent]])
+  const names = new Map([
+    [lead.agent, { self: 'lead' }],
+    [dc.agent, { self: 'doublechecker-1', parent: 'lead' }],
   ])
-  const teamsService = { tryMembership: (agent) => membershipByAgent.get(agent) }
+  const teams = makeTeams()
 
   // One plugin fiber: its listeners, and the effects it registered, which
   // cordis disposes in reverse order when the fiber unloads.
-  const mount = () => {
+  const mount = async () => {
     const disposers = []
     const ctx = {
       logger: { warn: () => {} },
@@ -397,13 +540,15 @@ async function runUnloadScenario(mod) {
       get: (name) => {
         if (name === 'agents') return { list: () => [lead.agent, dc.agent], get: () => undefined }
         if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
-        if (name === 'agentTeams') return teamsService
+        if (name === 'agentTeams') return teams.service
+        if (name === 'subagents') return makeSubagents({ roots, names })
         return undefined
       },
     }
     let error = null
     try {
       mod.apply(ctx)
+      await flush()
     } catch (e) {
       error = String((e && e.message) || e)
     }
@@ -412,11 +557,11 @@ async function runUnloadScenario(mod) {
   }
   const both = () => ({ lead: lead.snapshot(), doublechecker: dc.snapshot() })
 
-  const first = mount()
+  const first = await mount()
   const afterMount = both()
   first.unload()
   const afterUnload = both()
-  const second = mount()
+  const second = await mount()
   const afterRemount = both()
 
   return { firstError: first.error, afterMount, afterUnload, remountError: second.error, afterRemount }
@@ -451,7 +596,8 @@ function makeMountableAgent(id, preset, { failing = false } = {}) {
  */
 async function runEscalationScenario(mod) {
   const listeners = new Map()
-  const membershipByAgent = new Map()
+  const roots = new Map()
+  const names = new Map()
   const agentsById = new Map()
   const imports = []
   const stubClient = { name: 'mcp-client', Config: (config) => ({ ...config, validated: true }) }
@@ -464,14 +610,14 @@ async function runEscalationScenario(mod) {
     { id: 'ad-esc', name: 'adversary-1', role: 'teammate', status: 'running' },
     { id: 'og-esc', name: 'offgrid-1', role: 'teammate', status: 'inactive' },
   ]
-  membershipByAgent.set(lead.agent, { role: 'lead', name: 'lead' })
-  membershipByAgent.set(dc.agent, { role: 'teammate', name: 'doublechecker-1' })
-  membershipByAgent.set(broken.agent, { role: 'teammate', name: 'adversary-1' })
+  roots.set(lead.agent, lead.agent)
+  roots.set(dc.agent, lead.agent)
+  roots.set(broken.agent, lead.agent)
+  names.set(lead.agent, { self: 'lead' })
+  names.set(dc.agent, { self: 'doublechecker-1', parent: 'lead' })
+  names.set(broken.agent, { self: 'adversary-1', parent: 'lead' })
   for (const member of [lead, dc, broken]) agentsById.set(member.agent.id, member.agent)
-  const teamsService = {
-    tryMembership: (agent) => membershipByAgent.get(agent),
-    listMembers: () => roster,
-  }
+  const teams = makeTeams({ roster })
   const ctx = {
     logger: { warn: () => {} },
     effect: () => {},
@@ -482,7 +628,8 @@ async function runEscalationScenario(mod) {
     get: (name) => {
       if (name === 'agents') return { list: () => [], get: (id) => agentsById.get(id) }
       if (name === 'agentPresets') return { composedPreset: (agentCtx) => agentCtx.__preset }
-      if (name === 'agentTeams') return teamsService
+      if (name === 'agentTeams') return teams.service
+      if (name === 'subagents') return makeSubagents({ roots, names })
       if (name === 'loader') {
         return {
           import: async (spec) => { imports.push(spec); return { default: stubClient } },
@@ -492,10 +639,14 @@ async function runEscalationScenario(mod) {
       return undefined
     },
   }
-  const emit = (name, ...args) => { for (const h of listeners.get(name) ?? []) h(...args) }
+  const emit = async (name, ...args) => {
+    for (const h of listeners.get(name) ?? []) await h(...args)
+  }
 
   mod.apply(ctx)
-  for (const member of [lead, dc, broken]) emit('agent/created', { agent: member.agent, source: 'startup' })
+  for (const member of [lead, dc, broken]) {
+    await emit('agent/created', { agent: member.agent, source: 'startup' })
+  }
 
   const tool = lead.recorder.registered.find((definition) => definition.name === 'rq_escalate')
   const call = async (args, caller = lead.agent) => {
@@ -519,7 +670,7 @@ async function runEscalationScenario(mod) {
   // The Plugins page toggles rq-team off and on: the lane stays mounted on
   // the agent, so the reloaded plugin's tool must still see it.
   mod.apply(ctx)
-  emit('agent/created', { agent: lead.agent, source: 'startup' })
+  await emit('agent/created', { agent: lead.agent, source: 'startup' })
   const reloadedTool = lead.recorder.registered.filter((d) => d.name === 'rq_escalate').at(-1)
   let afterReload
   try {
@@ -551,7 +702,8 @@ async function main() {
   const [, , modulePath] = process.argv
   const mod = await import(pathToFileURL(modulePath).href)
 
-  const { mountError, present, guardChecks } = await runPresentScenario(mod)
+  const { mountError, present, guardChecks, arming } = await runPresentScenario(mod)
+  const unarmedService = await runUnarmedServiceScenario(mod)
   const absent = await runAbsentScenario(mod)
   const resume = await runResumeScenario(mod)
   const latePresetSelection = await runLatePresetSelectionScenario(mod)
@@ -559,7 +711,8 @@ async function main() {
   const escalation = await runEscalationScenario(mod)
 
   process.stdout.write(JSON.stringify({
-    mountError, present, guardChecks, absent, resume, latePresetSelection, unload, escalation,
+    mountError, present, guardChecks, arming, unarmedService, absent, resume,
+    latePresetSelection, unload, escalation,
   }))
 }
 

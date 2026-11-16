@@ -11,13 +11,13 @@ this module until a later issue removes them.
 
 `tools.restrict` cannot mask the scoped Team tools (`send_message`,
 `list_agents`, `team_task_list`, `team_task_get`, `team_task_update`,
-`spawn_teammate`), so topology-by-guard (docs/architecture.md, Decision 24)
-is `tools.guard`, registered per-agent alongside the restriction: hub-and-
-spoke messaging (a teammate may message only the Lead), roster/board
+`team_task_create`), so topology-by-guard (docs/architecture.md, Decision
+24) is `tools.guard`, registered per-agent alongside the restriction:
+hub-and-spoke messaging (a teammate may message only the Lead), roster/board
 blindness (`list_agents`/`team_task_list` denied outright), own-task-only
 board access (`team_task_get`/`team_task_update` read live ownership
 through the service), the bash network-verb denial for web-denied roles,
-and the orchestrator's `spawn_teammate` name/fork refusal.
+and the orchestrator's `subagent` name / `subagent_fork` refusal.
 
 These checks pin the load-bearing properties against a real execution of the
 module (via tests/team_probe.cjs, not by re-implementing it in Python):
@@ -44,8 +44,12 @@ module (via tests/team_probe.cjs, not by re-implementing it in Python):
 8. a session composed as rigorquant only AFTER its own `agent/created`
    already ran (found live on the harness 0.5.0 ran on, Decision 24 — a "New Session" switched to the RigorQuant
    preset in the picker, rather than created with it already selected)
-   still gets the Lead's guard-armed context and `spawn_teammate` guard,
+   still gets the Lead's guard-armed context and `subagent` guard,
    via a second trigger on `agent-preset/selected`.
+11. Team is armed per RigorQuant ROOT Session through `setEnabled`, with the
+    creation's own signal; a non-RigorQuant root and every teammate are
+    never armed, and a service that reports the selection still off leaves
+    this module disarmed.
 9. unloading the plugin (the Plugins-page row toggle) disposes every
    composition it installed on a live agent, and reloading it recomposes
    those agents exactly once (found live, Decision 24).
@@ -149,6 +153,42 @@ def test_the_lead_gets_the_armed_guard_line_as_a_context_not_a_section(probe):
     assert context["text"] == "RigorQuant team guard: armed"
 
 
+def test_team_is_armed_only_for_a_rigorquant_root(probe):
+    """Arming is per SESSION, through the service's own selection.
+
+    A root composed as rigorquant asks the Team service for `setEnabled`;
+    a non-RigorQuant root, a non-RigorQuant teammate and every RigorQuant
+    teammate are never armed. Installing the plugin must not turn Team on
+    for the operator's other presets.
+    """
+    arming = probe["arming"]
+    armed = {call["agent"] for call in arming["setEnabledCalls"]}
+    assert armed == {"lead-1", "lead-2"}, arming["setEnabledCalls"]
+    assert all(call["enabled"] is True for call in arming["setEnabledCalls"])
+    second = [call for call in arming["setEnabledCalls"] if call["agent"] == "lead-2"]
+    assert second[0]["signal"] == "signal:agent-created", (
+        "the creation's own cancellation signal must reach setEnabled")
+    assert arming["standardRootContexts"] == []
+    assert arming["teammateContexts"] == []
+    assert arming["nonRigorQuantTeammateSetEnabled"] == []
+    assert probe["present"]["standardRoot"] == {
+        "sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
+    assert probe["present"]["secondRoot"]["contexts"] == [{
+        "name": "rq-team:guard-armed", "order": 118,
+        "text": "RigorQuant team guard: armed"}]
+
+
+def test_a_service_that_reports_the_selection_off_leaves_the_guard_disarmed(probe):
+    """No armed line unless the service confirms the selection.
+
+    A guard the Team tools do not honor is worse than no guard: it would
+    tell the orchestrator to delegate into a session whose Team tools are
+    absent.
+    """
+    assert probe["unarmedService"]["lead"] == {
+        "sections": [], "contexts": [], "restricts": [], "guardCount": 0, "tools": []}
+
+
 def test_reapplication_on_a_resume_sourced_creation(probe):
     resume = probe["resume"]
     assert len(resume["firstSections"]) == 1
@@ -204,7 +244,11 @@ def test_every_composed_member_registers_exactly_one_guard(probe):
 def test_hub_and_spoke_denies_a_sibling_and_allows_the_lead(probe):
     checks = probe["guardChecks"]
     assert isinstance(checks["siblingMessageDenied"], str)
+    assert "only the Lead" in checks["siblingMessageDenied"]
+    assert "'lead'" in checks["siblingMessageDenied"], (
+        "a refused message must name the legal target")
     assert checks["leadMessageAllowed"] is None
+    assert checks["leadSessionIdMessageAllowed"] is None
 
 
 def test_every_teammate_is_roster_and_board_blind(probe):
@@ -232,10 +276,10 @@ def test_bash_network_verbs_are_denied_for_web_denied_roles_and_allowed_for_open
         "the guard must gate on the network verb, not deny bash outright")
 
 
-def test_the_orchestrator_spawn_teammate_guard_refuses_bad_names_and_fork(probe):
+def test_the_orchestrator_subagent_guard_refuses_bad_names_and_fork(probe):
     checks = probe["guardChecks"]
-    assert isinstance(checks["spawnBadNameDenied"], str)
-    assert isinstance(checks["spawnForkDenied"], str)
+    assert "does not parse to <role>-<n>" in checks["spawnBadNameDenied"]
+    assert "fork inherits the Lead conversation" in checks["spawnForkDenied"]
     assert checks["spawnFreshRoleAllowed"] is None
 
 
@@ -285,6 +329,8 @@ def test_a_late_preset_switch_to_rigorquant_installs_the_lead_composition(probe)
     context = after["contexts"][0]
     assert context["name"] == "rq-team:guard-armed"
     assert context["text"] == "RigorQuant team guard: armed"
+    assert probe["latePresetSelection"]["setEnabledCalls"] == [
+        {"agent": "lead-late", "enabled": True, "signal": None}]
 
 
 def test_the_patch_registers_the_team_row():

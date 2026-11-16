@@ -1,20 +1,32 @@
 // RigorQuant team composition — host half.
 //
 // Applies each teammate's role composition — persona, tool-tier budget, and
-// (on the orchestrator, the harness's `role: 'lead'` membership) a runtime
-// fact that the guard is armed — purely from the teammate's NAME (e.g.
-// `doublechecker-1`), resolved through the harness's native Agent Teams
-// service (docs/architecture.md, Decision 24;
+// (on the orchestrator, the harness's `lead` tree root) a runtime fact that
+// the guard is armed — purely from the teammate's NAME (e.g.
+// `doublechecker-1`), resolved through the harness's native subagent service
+// (docs/architecture.md, Decision 24;
 // docs/adr/0001-rigorquant-on-agent-teams.md). The preset carries no classic
 // delegation row any more, so this module is the ONLY place a teammate's
 // persona, tool budget and topology come from.
 //
-// The `agentTeams` service is OPTIONAL and reached duck-typed by service
-// name (`ctx.get('agentTeams')`) — this module never imports any of the
-// five `@deepseek-ai/dsh-experimental-agent-team*` packages. When the
-// service is absent (Agent Teams not enabled on the profile) this plugin
-// warns once and disarms: no persona, no tool restriction, and no armed
-// line for anyone, on any session.
+// Two harness services are involved, both OPTIONAL and reached duck-typed by
+// name: `agentTeams` (`ctx.get('agentTeams')`) for the per-Session Team
+// selection, and `subagents` for identity (the 0.2.2 contract replaced the
+// removed `agentTeams` membership/roster API with `subagents.rootOf` /
+// `namesOf` / `listDescendants`; upgrade guide v0.2.1-rc.2, "Agent Teams uses
+// subagents and Session ids"). This module never imports any of the
+// `@deepseek-ai/dsh-agent-team` packages. When `agentTeams` is absent this
+// plugin warns once and disarms: no persona, no tool restriction, and no
+// armed line for anyone, on any session.
+//
+// Arming is per SESSION, never for the whole profile: on `agent/created`
+// (and on the late `agent-preset/selected` switch), a ROOT Session composed as
+// rigorquant asks the Team service for `setEnabled(agent, true, signal)` and
+// publishes the guard-armed context only when `isEnabled` confirms the
+// selection. Teammates are never armed — they inherit the root's selection,
+// and the service itself refuses a descendant. A non-RigorQuant root is never
+// touched, so installing this plugin does not turn Team on for the operator's
+// other presets.
 //
 // Composition is applied per teammate on every `agent/created` — fresh
 // (`startup`), `resume`, `clear`, and `compact` all fire it, and none of
@@ -33,15 +45,16 @@
 // per-teammate via that teammate's own scope (`agent.ctx`). Per-call
 // enforcement — hub-and-spoke messaging, roster-blindness, own-task-only
 // board access, the bash network-verb denial for web-denied roles, and
-// `spawn_teammate` name/fork refusal on the orchestrator — is `tools.guard`
-// (docs/architecture.md, Decision 24; the ADR's "topology by guard"),
-// registered per-agent alongside the restriction above, never globally: a
-// guard registered through `agent.ctx` applies only to that agent's calls.
+// `subagent` name / `subagent_fork` refusal on the orchestrator — is
+// `tools.guard` (docs/architecture.md, Decision 24; the ADR's "topology by
+// guard"), registered per-agent alongside the restriction above, never
+// globally: a guard registered through `agent.ctx` applies only to that
+// agent's calls.
 //
 // A teammate whose name does not parse to a role is skipped silently: no
 // composition, no warning, no guard. Refusing an unparseable name at spawn
-// time is the orchestrator's own `spawn_teammate` guard below — by the time
-// an unparseable-named teammate exists, the Lead's guard already should have
+// time is the orchestrator's own `subagent` guard below — by the time an
+// unparseable-named teammate exists, the Lead's guard already should have
 // refused creating it; this module's own skip is defense in depth, not the
 // enforcement point.
 //
@@ -53,8 +66,8 @@
 // event and re-broadcast as the plain cordis event of the same name — found
 // live (Decision 24, ADR 0001) when a session created under "Standard
 // mode" then switched to RigorQuant in the picker left its Lead with no
-// "team guard: armed" line and no `spawn_teammate` guard for its entire
-// life, because `agent/created` had already run (and skipped, seeing the
+// "team guard: armed" line and no delegation guard for its entire life,
+// because `agent/created` had already run (and skipped, seeing the
 // still-default preset) before the switch. A spawned TEAMMATE does not have
 // this gap — it "joins its parent's composition in the creation window,
 // before `agent/created`" (confirmed live: the same session's teammate was
@@ -137,20 +150,74 @@ function denyListFor(role) {
   return [...EVERY_TEAMMATE_DENY]
 }
 
+// ── identity (the 0.2.2 subagent tree) ───────────────────────────────────────
+//
+// 0.2.2 removed the Team service's membership/roster API: a member's identity
+// is now its subagent-tree position. `rootOf` selects the tree root (identity
+// `lead`); `namesOf` returns the model-facing name (`lead`, a `<role>-<n>`
+// path, or a Session id for unnamed history). Both are synchronous and read
+// the live tree, so the Lead's guard can decide at call time without an async
+// catalog walk.
+
+/** The subagent tool the Orchestrator creates teammates with; the harness
+ * names it from the row config (`toolName: subagent`). */
+const SUBAGENT_TOOL = 'subagent'
+/** The fork variant: it inherits the Lead's conversation, so it is refused. */
+const SUBAGENT_FORK_TOOL = 'subagent_fork'
+
+/**
+ * One live agent's tree identity, through the optional `subagents` service.
+ * @returns `{ root, name, isRoot }`, or `undefined` when the service is
+ *   absent or the agent has no live tree owner (e.g. an externally resumed
+ *   child missing its root).
+ */
+function identityOf(subagents, agent) {
+  if (subagents === undefined) return undefined
+  try {
+    const root = subagents.rootOf(agent)
+    const names = subagents.namesOf(agent)
+    return { root, name: names.self, isRoot: root === agent }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The live roster the Lead's reuse guard reads: every registered agent's
+ * model-facing name and turn status. `agents.list()` holds the live Agents
+ * (an idle teammate is resident, an unloaded one simply absent), which is the
+ * same source the harness's own `list_agents` uses for `running`/`inactive`.
+ * A name that is not on the roster is left to the tool's own error.
+ */
+function liveRoster(subagents, agents) {
+  const roster = []
+  for (const member of agents?.list() ?? []) {
+    try {
+      const names = subagents.namesOf(member)
+      roster.push({ name: names.self, status: member.status ?? 'inactive' })
+    } catch {
+      // An agent whose tree link is gone cannot be named; leave it off.
+    }
+  }
+  return roster
+}
+
 // ── topology by guard (Decision 24; docs/adr/0001-rigorquant-on-agent-teams.md) ──
 //
 // `tools.restrict` (above) masks the GLOBAL catalog and cannot reach the
 // scoped Team tools `tool-agent-team` registers directly in each member's own
 // scope (`send_message`, `list_agents`, `team_task_list`, `team_task_get`,
-// `team_task_update`, `spawn_teammate`, …) — a restriction only filters what
-// a scope inherits from the global layer. `tools.guard` is the one API that
-// reaches a scoped registration: a monotonic per-call check, registered
-// through `agent.ctx` so it applies only to that one agent.
+// `team_task_update`, `team_task_create`), nor `list_agents`, which is
+// registered by `tool-subagent-control` outside the global restriction
+// universe on some cores. `tools.guard` is the one API that reaches a scoped
+// registration: a monotonic per-call check, registered through `agent.ctx` so
+// it applies only to that one agent.
 
 /** Hub-and-spoke's one legal `send_message` target for every teammate — the
- * literal name the Team tool's own prompt teaches callers to use for the
- * Lead (`tool-agent-team`'s `send_message` description: "Team member name,
- * or lead"). No other string is ever a legal teammate-to-teammate target. */
+ * literal name the harness gives the tree root (`ROOT_AGENT_NAME` in
+ * `@deepseek-ai/dsh-subagent`), which `send_message` resolves to the root's
+ * Session id. No other name is ever a legal teammate-to-teammate target; the
+ * root's own Session id is the equivalent spelling the tool accepts. */
 const LEAD_TARGET = 'lead'
 
 /** Every teammate is roster- and board-blind outright (ADR "Consequences"):
@@ -187,14 +254,21 @@ function argsOf(execution) {
  * @param membership - that teammate's resolved Team identity (`name`).
  * @param role - the parsed role, deciding whether bash network verbs apply.
  * @param teams - the `agentTeams` service, for the live ownership read.
+ * @param subagents - the `subagents` service, for the tree root's Session id.
  */
-function teammateGuard(agent, membership, role, teams) {
+function teammateGuard(agent, membership, role, teams, subagents) {
   const webDenied = WEB_DENIED_UNION.has(role)
   return (execution) => {
     const args = argsOf(execution)
     if (execution.name === 'send_message') {
-      if (args.target === LEAD_TARGET) return undefined
-      return `rq-team: hub-and-spoke — ${membership.name} may message only the Lead, not '${args.target}'`
+      let rootId
+      try {
+        rootId = subagents?.rootOf(agent).id
+      } catch {
+        rootId = undefined
+      }
+      if (args.agent === LEAD_TARGET || (rootId !== undefined && args.agent === rootId)) return undefined
+      return `rq-team: hub-and-spoke — ${membership.name} may message only the Lead ('${LEAD_TARGET}' or its Session id), not '${args.agent}'`
     }
     if (ROSTER_BLIND_TOOLS.has(execution.name)) {
       return `rq-team: ${membership.name} is roster-blind — ${execution.name} is denied`
@@ -239,39 +313,41 @@ function nextNameFor(role, roster) {
 }
 
 /**
- * The orchestrator's guard: `spawn_teammate` refuses a name that does not
- * parse to `<role>-<n>` (an unnamed teammate would run the orchestrator
- * persona with the full catalog — Decision 8's exact forbidden failure) and
- * refuses `context: 'fork'` (fork inherits the parent conversation).
+ * The orchestrator's guard: `subagent` refuses a name that does not parse to
+ * `<role>-<n>` (an unnamed teammate would run the orchestrator persona with
+ * the full catalog — Decision 8's exact forbidden failure) and `subagent_fork`
+ * is refused outright (a fork inherits the parent conversation).
  *
- * `send_message` refuses a new brief to a settled fresh-per-brief teammate
- * (Explorer, OffGridThinker, DoubleChecker) — found live in the 0.5.0
- * release run (Decision 24), where the orchestrator sent
- * "erratum briefs" back to the authors instead of briefing new teammates.
- * Settled is read live from the roster: a running teammate may still be
- * answered (a blocking question mid-turn), the reused roles are untouched,
- * and a name the roster does not hold is left to the tool's own error.
+ * `send_message` reads its `agent` argument (0.2.2 renamed the old `target`)
+ * and refuses a new brief to a settled fresh-per-brief teammate (Explorer,
+ * OffGridThinker, DoubleChecker) — found live in the 0.5.0 release run
+ * (Decision 24), where the orchestrator sent "erratum briefs" back to the
+ * authors instead of briefing new teammates. Settled is read live from the
+ * roster: a running teammate may still be answered (a blocking question
+ * mid-turn), the reused roles are untouched, and a name the roster does not
+ * hold is left to the tool's own error.
  */
-function leadGuard(agent, teams) {
+function leadGuard(agent, subagents, agents) {
   return (execution) => {
     const args = argsOf(execution)
-    if (execution.name === 'send_message') {
-      const role = roleFromName(args.target)
-      if (!FRESH_PER_BRIEF_ROLES.has(role)) return undefined
-      const roster = teams.listMembers(agent)
-      const member = roster.find((row) => row.name === args.target)
-      if (member === undefined || member.status === 'running' || member.status === 'provisioning') return undefined
-      return `rq-team: ${args.target} is fresh per brief and has settled (${member.status}) — ` +
-        `brief a new ${nextNameFor(role, roster)} with spawn_teammate instead of messaging it`
+    if (execution.name === SUBAGENT_FORK_TOOL) {
+      return `rq-team: ${SUBAGENT_FORK_TOOL} refused — a fork inherits the Lead conversation`
     }
-    if (execution.name !== 'spawn_teammate') return undefined
-    if (roleFromName(args.name) === null) {
-      return `rq-team: spawn_teammate refused — '${args.name}' does not parse to <role>-<n>`
+    if (execution.name === SUBAGENT_TOOL) {
+      if (roleFromName(args.name) === null) {
+        return `rq-team: ${SUBAGENT_TOOL} refused — '${args.name}' does not parse to <role>-<n>`
+      }
+      return undefined
     }
-    if (args.context === 'fork') {
-      return "rq-team: spawn_teammate refused — context 'fork' inherits the Lead conversation"
-    }
-    return undefined
+    if (execution.name !== 'send_message') return undefined
+    const target = args.agent
+    const role = roleFromName(target)
+    if (!FRESH_PER_BRIEF_ROLES.has(role)) return undefined
+    const roster = liveRoster(subagents, agents)
+    const member = roster.find((row) => row.name === target)
+    if (member === undefined || member.status === 'running') return undefined
+    return `rq-team: ${target} is fresh per brief and has settled (${member.status}) — ` +
+      `brief a new ${nextNameFor(role, roster)} with ${SUBAGENT_TOOL} instead of messaging it`
   }
 }
 
@@ -314,36 +390,22 @@ function apply(ctx, config = {}) {
     }
   }
 
-  const maybeInstall = (agent) => {
-    const teams = ctx.get('agentTeams')
-    if (teams === undefined) {
-      warnAbsentOnce()
-      return
-    }
-    const membership = teams.tryMembership(agent)
-    if (membership === undefined) return
-    // agent/created fires on every source (startup/resume/clear/compact) and
-    // none persists prior composition, so every firing disposes then
-    // reinstalls fresh rather than skipping a previously-seen agent.
-    disposeFor(agent)
-    const inRigorQuant = ctx.get('agentPresets')?.composedPreset(agent.ctx) === presetId
-    if (!inRigorQuant) return
-    const systemPrompt = agent.ctx.get('systemPrompt')
-    if (systemPrompt === undefined) return
-    const tools = agent.ctx.get('tools')
-    if (membership.role === 'lead') {
-      const disposeContext = systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT })
-      const disposeGuard = tools !== undefined ? tools.guard(leadGuard(agent, teams)) : () => {}
-      const disposeEscalate = tools !== undefined
-        ? tools.register(escalationTool(lane, agent, teams, ctx.get('agents')))
-        : () => {}
-      installed.set(agent, () => {
-        disposeContext()
-        disposeGuard()
-        disposeEscalate()
-      })
-      return
-    }
+  const installLead = (agent, systemPrompt, tools, teams) => {
+    const disposeContext = systemPrompt.context({ name: GUARD_CONTEXT_NAME, order: GUARD_CONTEXT_ORDER, text: GUARD_TEXT })
+    const disposeGuard = tools !== undefined
+      ? tools.guard(leadGuard(agent, ctx.get('subagents'), ctx.get('agents')))
+      : () => {}
+    const disposeEscalate = tools !== undefined
+      ? tools.register(escalationTool(lane, agent, teams, ctx.get('agents')))
+      : () => {}
+    installed.set(agent, () => {
+      disposeContext()
+      disposeGuard()
+      disposeEscalate()
+    })
+  }
+
+  const installTeammate = (agent, membership, systemPrompt, tools, teams) => {
     const role = roleFromName(membership.name)
     if (role === null) return // unparseable name: skip silently (see module header)
     const persona = personas.get(role)
@@ -351,12 +413,77 @@ function apply(ctx, config = {}) {
     const order = systemPrompt.getSectionOrder?.('DEPLOYMENT_PERSONA_PREFIX') ?? 0
     const disposePersona = systemPrompt.section({ name: PERSONA_PREFIX_SECTION, order, text: persona })
     const disposeTools = tools !== undefined ? tools.restrict({ deny: denyListFor(role) }) : () => {}
-    const disposeGuard = tools !== undefined ? tools.guard(teammateGuard(agent, membership, role, teams)) : () => {}
+    const disposeGuard = tools !== undefined
+      ? tools.guard(teammateGuard(agent, membership, role, teams, ctx.get('subagents')))
+      : () => {}
     installed.set(agent, () => {
       disposePersona()
       disposeTools()
       disposeGuard()
     })
+  }
+
+  const maybeInstall = async (agent, signal) => {
+    const teams = ctx.get('agentTeams')
+    if (teams === undefined) {
+      warnAbsentOnce()
+      return
+    }
+    const identity = identityOf(ctx.get('subagents'), agent)
+    if (identity === undefined) return
+    const inRigorQuant = ctx.get('agentPresets')?.composedPreset(agent.ctx) === presetId
+    if (!inRigorQuant) {
+      // Also the arm-off path: a session that switched away loses the armed
+      // line and every per-agent registration this module installed.
+      disposeFor(agent)
+      return
+    }
+    if (identity.isRoot) {
+      // Arming is per SESSION and only for a RigorQuant root; the service
+      // persists the selection on that Session. A failure (or a service that
+      // reports the selection still off) leaves this module disarmed rather
+      // than publishing a guard the Team tools do not honor.
+      try {
+        await teams.setEnabled(agent, true, signal)
+      } catch (error) {
+        ctx.logger.warn(`rq-team: could not arm Agent Teams for the RigorQuant session: ${String(error)}`)
+        disposeFor(agent)
+        return
+      }
+      let enabled = false
+      try {
+        enabled = teams.isEnabled(agent) === true
+      } catch {
+        enabled = false
+      }
+      if (!enabled) {
+        disposeFor(agent)
+        return
+      }
+    }
+    // agent/created fires on every source (startup/resume/clear/compact) and
+    // none persists prior composition, so every firing disposes then
+    // reinstalls fresh rather than skipping a previously-seen agent.
+    disposeFor(agent)
+    const systemPrompt = agent.ctx.get('systemPrompt')
+    if (systemPrompt === undefined) return
+    const tools = agent.ctx.get('tools')
+    if (identity.isRoot) {
+      installLead(agent, systemPrompt, tools, teams)
+      return
+    }
+    installTeammate(agent, { role: 'teammate', name: identity.name }, systemPrompt, tools, teams)
+  }
+
+  const install = (agent, signal) => {
+    const pending = maybeInstall(agent, signal)
+    // Event sources that do not await listeners must not leave an unhandled
+    // rejection: the failures this module can hit are the two guarded calls
+    // above, already logged; this is the last resort.
+    pending.catch((error) => {
+      ctx.logger.warn(`rq-team: composition failed for agent ${String(agent?.id ?? '?')}: ${String(error)}`)
+    })
+    return pending
   }
 
   // Every registration above goes through `agent.ctx`, so it belongs to the
@@ -371,8 +498,8 @@ function apply(ctx, config = {}) {
   // Belt-and-suspenders: warn even if no agent is ever created this boot.
   if (ctx.get('agentTeams') === undefined) warnAbsentOnce()
 
-  for (const agent of ctx.get('agents')?.list() ?? []) maybeInstall(agent)
-  ctx.on('agent/created', ({ agent }) => maybeInstall(agent))
+  for (const agent of ctx.get('agents')?.list() ?? []) install(agent)
+  ctx.on('agent/created', ({ agent, signal }) => install(agent, signal))
   ctx.on('agent/disposed', ({ agent }) => disposeFor(agent))
   // A session composed as rigorquant only AFTER its own agent/created already
   // ran (see module header) needs a second trigger, once the recompose that
@@ -381,7 +508,7 @@ function apply(ctx, config = {}) {
   // profile never tracked) is silently skipped — nothing to (re)install.
   ctx.on('agent-preset/selected', (sessionId) => {
     const agent = ctx.get('agents')?.get(sessionId)
-    if (agent !== undefined) maybeInstall(agent)
+    if (agent !== undefined) install(agent)
   })
 }
 
