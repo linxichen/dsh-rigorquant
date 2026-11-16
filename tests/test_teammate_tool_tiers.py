@@ -1,16 +1,17 @@
-"""The blind roles are tool-denied, not just prompt-asked.
+"""Teammate tool tiers: the allow classification, blind and web-denied.
 
 docs/architecture.md Decision 14 (C1, C2), carried onto Agent Teams by
-Decision 24: the team plugin (`dsh/team.js`) reads a teammate's role from its
-name and denies the blind roles (OffGridThinker, DoubleChecker) web_search,
-web_fetch and `skill`, and the web-denied roles (the blind roles plus the
-Adversary and Document adversary) web_search and web_fetch. No teammate can
-create teammates at all (only the orchestrator holds `subagent`), so the
-per-row delegation deny lists the classic preset carried have nothing left to
-deny. The tier tables are pinned here against CONTEXT.md's glossary; what
-each role actually SEES is observed through the team probe
-(tests/test_team_plugin.py), and the orchestrator-owned tools are pinned as
-absent from every tier in tests/test_role_tool_budgets.py.
+Decision 24 and restated as a classification by Decision 28: the team plugin
+(`dsh/team.js`) reads a teammate's role from its name and installs that
+tier's ALLOW set. The blind roles (OffGridThinker, DoubleChecker) get neither
+web nor `skill`; the web-denied roles (the blind roles plus the Adversary and
+Document adversary) get no web but keep the skill. There is no global deny
+list beside the tiers — the tiers are the scope — and the orchestrator-owned
+tools are pinned as absent from every tier in
+tests/test_role_tool_budgets.py. The tier tables are pinned here against
+CONTEXT.md's glossary; what each role actually SEES is observed through the
+team probe (tests/test_team_plugin.py), and the installed core's catalog is
+audited by tests/test_tool_catalog.py.
 
 Because `skill` is denied, a blind role cannot load the rigorquant skill: its
 persona file (`dsh/personas/<role>.md`) has to carry the derivation protocol

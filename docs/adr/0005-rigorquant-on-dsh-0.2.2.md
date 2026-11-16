@@ -152,7 +152,16 @@ exception. Recorded as Decision 28 in `docs/architecture.md`.
   "RigorQuant team guard: armed" line by name — and adds the per-Session
   `setEnabled` arming described above, on both `agent/created` and the late
   `agent-preset/selected` switch, with the armed context published only when
-  the service reports the selection enabled.
+  the service reports the selection enabled. Composition has a **third
+  trigger**: a teammate has no tree identity during its own `agent/created`
+  (the subagent manager records the activation only after the child is
+  created), so its persona, budget and guard are applied on
+  **`subagent/start`**, the creation edge published after that residency step
+  and after the child is a live Agent. Without it, every teammate mounted with
+  the root persona and the full catalog — the exact failure the framework
+  exists to prevent. A teammate does not need the Lead's
+  `agent-preset/selected` path: it joins its parent's composition in the
+  creation window.
 - **Delegation, by name.** The role-name guard hooks the standard `subagent`
   tool: a spawn whose `name` does not parse as `<role>-<n>` is refused, and
   `subagent_fork` is refused outright. The hub-and-spoke guard reads
@@ -175,7 +184,8 @@ exception. Recorded as Decision 28 in `docs/architecture.md`.
   Team tools, and two exported scope sources invite a reader or a test to audit
   the wrong one. `interrupt_agent` is absent from every tier, matching the
   shipped configurations. The tool-catalog probe pins the classification
-  against the installed core's shipped `docs/tool-catalog.md`, so a new
+  against the installed core's shipped `tool-catalog.md` page (under its
+  own `docs/`), so a new
   model-facing tool fails a test instead of widening a teammate's scope.
 - **The skill and the static pins.** `SKILL.md` and `references/` teach
   `subagent` + `name`, `send_message({agent, message})`, `list_agents` rows and

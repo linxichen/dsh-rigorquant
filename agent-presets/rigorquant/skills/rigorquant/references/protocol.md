@@ -144,7 +144,7 @@ unaudited. Decision 24 (docs/architecture.md) carries them onto Agent Teams.
   the `subagent` service's `maxActiveSubagents` to **12**, so a study runs at
   most twelve live teammates at a time. Teammates are depth-1 and a settled
   teammate frees its slot, so the pool bounds concurrency, not the study's
-  headcount: there is **no lifetime cap**. Batch Fan out to at most twelve
+  headcount. Batch Fan out to at most twelve
   live teammates — the literature lines, the method work and the ground-truth
   work go in waves rather than in one message. A spawn over the bound fails
   with `ACTIVATION_LIMIT_REACHED`, which reads like a transient error and is

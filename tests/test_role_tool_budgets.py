@@ -4,7 +4,7 @@ Under Decision 24 every role's budget is a `tools.restrict({ allow })` the team
 plugin (`dsh/team.js`) applies on the teammate's own scope, keyed by its name.
 What each role then SEES is observed through the team probe
 (tests/test_team_plugin.py); the tier tables are pinned against the glossary
-in tests/test_blind_deny_list.py. This module keeps the invariants that are
+in tests/test_teammate_tool_tiers.py. This module keeps the invariants that are
 about the composition around them:
 
 1. SPAWN SAFETY — an allow list may only name tools the preset or the

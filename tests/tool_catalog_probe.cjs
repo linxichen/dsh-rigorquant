@@ -9,7 +9,7 @@
 // tool the core newly mounts is invisible to a teammate — but nothing would
 // tell a maintainer that a new tool exists and nobody decided about it. This
 // probe reads the installed `@deepseek-ai/dsh` package's shipped
-// `docs/tool-catalog.md` (a generated page whose "Tool Package Map" lists every
+// `tool-catalog.md` under its `docs/` (a generated page whose "Tool Package Map" lists every
 // model-visible name a shipped tool package contributes), enumerates those
 // names, and requires each one to be in a tier or in the explicit exclusion
 // table below with its reason.
@@ -107,7 +107,7 @@ function installedCatalog(harnessRequire) {
     return { path, markdown: readFileSync(path, 'utf8') }
   } catch (error) {
     process.stderr.write(
-      `${PREFIX}: cannot read the installed ${CATALOG_PACKAGE}'s shipped docs/tool-catalog.md`
+      `${PREFIX}: cannot read the installed ${CATALOG_PACKAGE}'s shipped tool-catalog.md under docs/`
       + ` (${String(error?.message ?? error)}); the classification cannot be audited\n`)
     process.exit(EXIT_PROBLEM)
   }

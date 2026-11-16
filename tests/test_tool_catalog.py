@@ -4,7 +4,7 @@ The 0.8.1 specification (user story 24, #41) asks for structure, not memory: a
 Teammate's visible catalog is an explicit per-Role-tier classification, so a
 tool the core newly mounts is invisible until someone classifies it. That
 fail-safe only proves half the contract. This module proves the other half —
-every model-facing tool the INSTALLED core's shipped `docs/tool-catalog.md`
+every model-facing tool the INSTALLED core's shipped `tool-catalog.md` page
 lists has a decision: it is classified for a tier, or it is explicitly
 excluded in `tests/tool_catalog_probe.cjs` with the decision that excludes it.
 
@@ -56,7 +56,7 @@ def test_the_installed_catalog_was_actually_read(report):
     with it, not silently stop auditing.
     """
     assert report["catalogCount"] >= 70, report
-    assert report["catalogPath"].endswith("docs/tool-catalog.md"), report["catalogPath"]
+    assert report["catalogPath"].endswith("tool-catalog.md"), report["catalogPath"]
     assert report["coreVersion"], report
 
 

@@ -123,8 +123,11 @@ def test_the_open_floor_is_declared_once_and_enforced_before_copying():
     for name in ("README.md", "README.zh-CN.md"):
         text = " ".join((REPO / name).read_text().split())
         assert ">=0.2.2-rc.3" in text, "%s does not state the open floor" % name
-        assert "no upper bound" in text or "没有上限" in text, (
-            "%s does not state that the band has no ceiling" % name)
+        # The positive contract, not a negation of the avoided glossary term:
+        # every core at or above the floor is admitted.
+        assert ("every core at or above it is admitted" in text
+                or "等于或高于它的 core 都会被接受" in text), (
+            "%s does not state that every core at or above the floor is admitted" % name)
     adr = ((REPO / "docs/adr/0005-rigorquant-on-dsh-0.2.2.md").read_text())
     flat_adr = " ".join(adr.split())
     assert "`engines.dsh` is `>=0.2.2-rc.3`" in flat_adr, (
@@ -459,7 +462,7 @@ def test_the_procedure_states_the_live_teammate_pool_rule():
     """Fan-out is bounded by the study's live pool, and the bound has a trap.
 
     The bundle patch raises the `subagent` service's `maxActiveSubagents` to
-    12 for a RigorQuant study, and there is no lifetime cap: a settled
+    12 for a RigorQuant study, and the pool bounds concurrency only: a settled
     teammate frees its slot. Over the bound a spawn throws
     `ACTIVATION_LIMIT_REACHED` — which reads like a transient error and is
     not one: nothing clears it but a teammate finishing. An exhausted pool is
@@ -475,8 +478,9 @@ def test_the_procedure_states_the_live_teammate_pool_rule():
             "%s does not name the setting that bounds fan-out" % name)
         assert re.search(r"\b12\b", text), (
             "%s does not state the live-teammate pool of 12" % name)
-        assert "no lifetime cap" in text, (
-            "%s does not state that the lifetime cap is gone" % name)
+        assert "bounds concurrency" in text, (
+            "%s does not state that the pool bounds concurrency only (the "
+            "positive form of the retired lifetime cap)" % name)
         assert "64" not in text, (
             "%s still states the retired 64-member lifetime cap" % name)
         assert "ACTIVATION_LIMIT_REACHED" in text, (
@@ -1064,7 +1068,7 @@ def test_the_skill_round_loop_runs_on_the_surviving_team_tools():
     for needle in ("subagent", "wait_agent", "send_message",
                    "team_task_create", "blocked_by", "`<role>-<n>`",
                    "list_agents", "`owner`", "`inactive`", "BUDGET", "12",
-                   "no lifetime cap"):
+                   "bounds concurrency"):
         assert needle in step3, "SKILL Step 3 omits %r" % needle
     assert "send_message({agent, message})" in step3, (
         "the message call must name its surviving `agent` argument")
@@ -1283,15 +1287,15 @@ def test_both_readmes_install_sections_carry_the_teams_ownership_and_the_pool():
     longer enables or configures it: DSH 0.2.2 mounts the service from the base
     bundle, and the plugin arms it for a RigorQuant Session. The other
     operator-visible fact is capacity — a study's live-teammate pool is 12
-    with no lifetime cap — and the band is a prerelease open floor, so the
-    section states both.
+    and bounds concurrency only — and the band is a prerelease open floor, so
+    the section states both.
     """
     for name, heading, words in (
         ("README.md", "Install", ("base bundle", "arms Team for a", "12",
-                                  "no lifetime", "settled teammate frees its slot",
+                                  "bounds concurrency", "settled teammate frees its slot",
                                   "open floor", "0.2.2-rc.3")),
         ("README.zh-CN.md", "安装", ("基础 bundle", "为该会话开启 Team",
-                                    "12", "没有生命周期上限", "开放下限",
+                                    "12", "队友结束后就释放名额", "开放下限",
                                     "0.2.2-rc.3")),
     ):
         _pin_section_words(name, heading, words)
@@ -2208,7 +2212,15 @@ DELEGATION_NAME_CLEANUP = {
     "tests/team_config_probe.cjs": {"maxMembers"},
     # The capacity-probe pin asserts that the installed Team service still
     # rejects the retired keys; the sweep's own assembled names do not match.
-    "tests/test_repo_consistency.py": {"maxMembers"},
+    "tests/test_repo_consistency.py": {"maxMembers", "ownerId"},
+    # The own-task guard reads the LIVE task record, whose ownership fields
+    # are `ownerId` (the owning Session's id) plus an OPTIONAL `ownerName`.
+    # The model-facing board argument is the `owner` name, which is what this
+    # sweep protects; the guard and its fixtures must name the id-side field
+    # to refuse a task owned by a foreign Session id. Exempt only that name.
+    "dsh/team.js": {"ownerId"},
+    "tests/team_probe.cjs": {"ownerId"},
+    "tests/test_team_plugin.py": {"ownerId"},
 }
 
 

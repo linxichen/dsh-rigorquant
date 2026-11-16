@@ -184,7 +184,7 @@ the study's *conclusion* rests on escalates there before the study may rely on
 it.
 
 What is **enforced**, and where: the blind deny lists live in the composition
-(`tests/test_blind_deny_list.py`); the known-mark, routed-away-impossible +
+(`tests/test_teammate_tool_tiers.py`); the known-mark, routed-away-impossible +
 math-lane escalation, negative-export subset, completeness-checklist,
 refs-seed and fabricated-citation gates live in `rq_check.py`
 (`tests/test_literature_gate.py`, `tests/test_integration.py`). The lane's
@@ -1147,6 +1147,16 @@ never touched — installing the plugin does not turn Team on for the operator's
 other presets — a teammate is never armed, and the service stays optional and
 duck-typed, so a core without it disarms instead of failing.
 
+**Composition has a third trigger.** A teammate has no subagent-tree identity
+during its own `agent/created`: the manager records the activation (the
+`<role>-<n>` name) only after the child is created, so a composition read
+there fails and the teammate would mount the root persona with the full
+catalog. `subagent/start` is published after that residency step and after
+the child is a live Agent, so it is the creation edge on which the name is
+readable; the persona, tool budget and guard are applied there. A teammate
+needs no `agent-preset/selected` trigger — it joins its parent's composition
+in the creation window — and the Lead needs no `subagent/start` trigger.
+
 **Delegation is by name, and the router reads the same identity.** The
 role-name guard hooks the standard `subagent` tool: a spawn whose `name` does
 not parse as `<role>-<n>` is refused, and `subagent_fork` is refused outright.
@@ -1154,8 +1164,12 @@ The hub-and-spoke guard reads `send_message`'s `agent` argument, resolves it to
 the root `lead` through the subagent catalog, and refuses anything else with a
 message naming the legal target. Roster and board guards keep using names.
 `dsh/identity.js` is the one copy of the 0.2.2 tree reads for the router, the
-team module and the escalation lane, and the probes model the surviving
-service rather than stubbing the removed one.
+team module and the escalation lane. The behaviour probe requires the
+installed harness and asserts the real service surfaces before it exercises
+its stubs — `@deepseek-ai/dsh-agent-team`'s TeamService must still define
+`setEnabled`/`isEnabled`, `@deepseek-ai/dsh-subagent`'s SubagentRuntime must
+still define `rootOf`/`namesOf` — so a removed method fails the probe instead
+of hiding behind a friendly fake.
 
 **Capacity is a live-teammate pool.** The base subagent service defaults to 8
 live children per root; the preset's id-targeted `subagent` override sets
@@ -1174,7 +1188,7 @@ than kept beside them. The blind and web-denied tiers keep their semantics
 (`skill` denied only to blind roles; web denied to blind and adversary roles).
 The classification is data, so a Role or a tool is a one-line change, and the
 tool-catalog probe fails when the installed core's shipped
-`docs/tool-catalog.md` names a model-facing tool nobody classified and nobody
+its shipped `tool-catalog.md` page names a model-facing tool nobody classified and nobody
 explicitly excluded. `apply_patch` is not adopted — the filesystem package and
 the base both default it off.
 
