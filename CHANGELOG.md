@@ -8,6 +8,24 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-19
+
+Pins the one dependency this package imports at runtime. 0.8.1 published
+`@deepseek-ai/schemastery` as `*`, so every `dsh plugin add` resolved whatever
+the registry served that day: a breaking schemastery release would have broken
+new installs with no change here. The manifest now declares `^3.19.0`, the
+version this release is validated against, and a test keeps any runtime
+dependency from floating again.
+
+Nothing else changes: no runtime code, no configuration, no compatibility band
+(`>=0.2.2-rc.3` stays), no change to the compute lane or any study record.
+
+### Upgrading
+
+`dsh plugin add dsh-rigorquant@0.8.2`, or the Plugins page, replaces an
+installed 0.8.1 in place. The lane at `$DSH_HOME/share/rigorquant` and every
+study record are untouched.
+
 ## [0.8.1] - 2026-11-16
 
 RigorQuant on DSH 0.2.2-rc.3, and on the release that folds Agent Teams into

@@ -93,6 +93,30 @@ def test_the_package_and_lane_version_stamps_agree():
         "must bump both" % (manifest["version"], stamp.group(1)))
 
 
+def test_no_runtime_dependency_is_floating():
+    """A published install must not resolve `latest` at install time.
+
+    0.8.1 shipped `@deepseek-ai/schemastery` as `*`: every `dsh plugin add`
+    resolved whatever the registry served that day, so a breaking schemastery
+    release would have broken new installs with no change in this repository.
+    Every dependency is bounded -- a caret, tilde or exact range, never `*`,
+    `latest` or an empty string.
+    """
+    manifest = json.loads((REPO / "package.json").read_text())
+
+    def bounded(spec):
+        """A range that starts at a version: `^1.2.3`, `~1.2`, `>=1.2.3`, `1.2.3`."""
+        if not isinstance(spec, str):
+            return False
+        return bool(re.match(r"^(?:\^|~|>=|<=|>|<|=)?\d", spec.strip()))
+
+    floating = [name for name, spec in manifest["dependencies"].items()
+                if not bounded(spec)]
+    assert not floating, (
+        "package.json declares an unbounded runtime dependency: %s -- pin a "
+        "range so a published install cannot resolve a future major" % floating)
+
+
 def test_the_open_floor_is_declared_once_and_left_to_the_loaders_gate():
     """One declared bound: `engines.dsh` is `>=0.2.2-rc.3`, with no ceiling.
 
