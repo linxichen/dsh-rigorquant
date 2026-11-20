@@ -27,7 +27,7 @@ const { join } = require('node:path')
 const vm = require('node:vm')
 
 const {
-  EXIT_NO_HARNESS, EXIT_PROBLEM, REPO, inlineRelativeImports, requireSupportedCore, resolveHarness,
+  EXIT_NO_HARNESS, EXIT_PROBLEM, REPO, esmToCommonJs, requireSupportedCore, resolveHarness,
 } = require('./harness_locator.cjs')
 
 const harness = resolveHarness(process.argv[2])
@@ -45,10 +45,8 @@ const harnessRequire = createRequire(join(harness, '__probe__.cjs'))
  */
 function loadRouter(z) {
   const modulePath = join(REPO, 'dsh', 'index.js')
-  let source = inlineRelativeImports(readFileSync(modulePath, 'utf8'), modulePath)
+  let source = esmToCommonJs(readFileSync(modulePath, 'utf8'), modulePath)
   source = source.replace("import z from '@deepseek-ai/schemastery'", 'const z = schemaStub')
-  source = source.replace(/^export const /gm, 'const ')
-  source = source.replace(/^export \{ ([^}]+) \}$/m, 'module.exports = { $1 }')
   // ROUTE_KEYS and ROLE_LABELS are module-local: the plugin's public exports
   // are the Config and apply(). The probe asks the module for them instead of
   // restating either list.

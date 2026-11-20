@@ -60,31 +60,13 @@
 
 import z from '@deepseek-ai/schemastery'
 import { identityOf } from './identity.js'
+import { ROLES, roleFromName } from './roles.js'
 
 const name = 'rq-model-router'
 
-/** Every routable role, in card order. */
-export const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
-/** Every teammate role, i.e. `ROLES` minus the Lead-only `root` — the same
- *  set `dsh/team.js`'s `TEAMMATE_ROLES` names. Declared here rather than
- *  imported: `dsh/client.js`'s browser bundle carries the same set as a
- *  third independent copy and structurally cannot import either Node
- *  module, so every surface already owns its own copy pinned equal by
- *  tests/test_repo_consistency.py — importing here would leave two of
- *  three surfaces sharing source and one not, for no behavioural gain. */
-const TEAMMATE_ROLES = ROLES.filter((role) => role !== 'root')
-/** Teammate name convention: `<role>-<suffix>`, e.g. `doublechecker-1` — the
- *  same contract `dsh/team.js`'s `NAME_PATTERN` parses the tree name by. */
-const NAME_PATTERN = new RegExp(`^(${TEAMMATE_ROLES.join('|')})-.+$`)
-
-/** Parse a teammate's role from its subagent-tree name, or `null` when it
- *  doesn't parse (an unparseable name should already have been refused at
- *  `subagent` by `dsh/team.js`'s Lead guard; this is defense in depth, not
- *  the enforcement point). */
-function roleFromName(teammateName) {
-  const match = typeof teammateName === 'string' ? NAME_PATTERN.exec(teammateName) : null
-  return match !== null ? match[1] : null
-}
+/** The routable roles, one source with `dsh/team.js` (`dsh/roles.js`).
+ *  Re-exported here because this module is the package's router entry. */
+export { ROLES }
 
 const choiceSchema = z.object({
   provider: z.string().required(),
