@@ -90,6 +90,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ESCALATE_TOOL, createLane, escalationTool } from './lane.js'
 import { identityOf, liveRoster } from './identity.js'
+import { TEAMMATE_ROLES, roleFromName } from './roles.js'
 
 const name = 'rq-team'
 // `subagents` is a required base service on the 0.2.2 floor: every identity
@@ -101,14 +102,12 @@ const inject = ['agents', 'tools', 'systemPrompt', 'subagents']
 const PRESET_ID = 'rigorquant'
 
 /**
- * Every teammate role this module composes. No `root` entry: the
- * orchestrator's own persona stays in the preset's `@deepseek-ai/dsh-persona`
- * row, unchanged by this module.
+ * Every teammate role this module composes, from the vocabulary shared with
+ * the router (`dsh/roles.js`). No `root` entry: the orchestrator's own
+ * persona stays in the preset's `@deepseek-ai/dsh-persona` row, unchanged by
+ * this module.
  */
-export const TEAMMATE_ROLES = ['explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
-
-/** Teammate name convention: `<role>-<suffix>`, e.g. `doublechecker-1`. */
-const NAME_PATTERN = new RegExp(`^(${TEAMMATE_ROLES.join('|')})-.+$`)
+export { TEAMMATE_ROLES }
 
 /**
  * The persona slot's reserved section name (dsh-system-prompt contract) —
@@ -176,14 +175,6 @@ export const TEAMMATE_ALLOW_BY_TIER = {
   open: [...SHARED_TOOLS, 'web_search', 'web_fetch', 'skill'],
   webDenied: [...SHARED_TOOLS, 'skill'],
   blind: [...SHARED_TOOLS],
-}
-
-/**
- * Parse a teammate's role from its name, or `null` when it doesn't parse.
- */
-function roleFromName(teammateName) {
-  const match = typeof teammateName === 'string' ? NAME_PATTERN.exec(teammateName) : null
-  return match !== null ? match[1] : null
 }
 
 /** The classification tier a role belongs to (unknown roles are open). */

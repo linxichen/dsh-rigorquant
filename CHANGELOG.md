@@ -8,6 +8,60 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-20
+
+The PASS gate stops believing a disclaimer it was shown, stops crashing on a
+field whose JSON shape is wrong, and stops accepting a date as a frozen
+snapshot hash. The boot sync stops copying `docs/` into every profile, and the
+dead weight around it goes too. No study record, schema, role, route or
+harness band changes.
+
+### Fixed
+
+- **Overclaim.** The no-overclaim gate searched the whole serialized
+  `study.json` for an evidence-level phrase, so a claim's own disclaimer ('it
+  is not formally verified') authorised the paper to assert the level. It now
+  reads only the `evidence_level` values the record carries (study.json and
+  the parsed `registry.json`).
+- **A wrong-shaped field.** `deliverables`, `validity_stages`, `tolerances`
+  and the literature map can be valid JSON lists; several gates called
+  `.get()` on them, so a study with a diagnosable defect produced a traceback
+  with no gap list and no `--out` report. They now report the problem and the
+  study gets its report.
+- **A date is not a hash.** A status asserting a certification outcome needed
+  a frozen snapshot hash, tested as any six hex characters -- a date
+  (`20260815`) qualified, and so would a word like `facade`. It now needs 64
+  hex, or 16+ hex next to `frozen`/`snapshot`/`sha`.
+- **arXiv helper.** An old-style id (`solv-int/9901001v2`) was split at the
+  first 'v' and linked as `abs/sol`, and `--id` went into the query unquoted.
+  It now keeps the whole id and quotes the id list. The helper has tests.
+
+### Changed
+
+- The boot sync no longer copies `docs/` (3.9 MB) to
+  `$DSH_HOME/share/rigorquant/docs`; no shipped skill or persona reads it
+  there. A tree an earlier release already copied stays in place, unread.
+- The router and the team module share one role list (`dsh/roles.js`). The
+  settings card keeps its own copy: a classic browser bundle cannot import a
+  Node module.
+- The settings card drops the decorative per-role invocation-frequency pill
+  and its 16 locale strings.
+- The pre-commit gate and CI run the suite with `pytest-xdist -n auto`; the
+  serial TeX-heavy run was slow enough to invite `--no-verify`. Coverage is
+  unchanged (96.5%).
+
+### Removed
+
+- `docs/figs/binomial-tree.{png,tex}`, `utility-maximization.{png,tex}` and
+  `avatar-literature-adversary.png`, which nothing references.
+
+### Upgrading
+
+`dsh plugin add dsh-rigorquant@0.8.3`, or the Plugins page, replaces an
+installed 0.8.2 in place. The lane and every study record are untouched. A
+profile that received the old docs copy keeps it; deleting
+`$DSH_HOME/share/rigorquant/docs` is safe.
+
 ## [0.8.2] - 2026-11-19
 
 Pins the one dependency this package imports at runtime. 0.8.1 published

@@ -27,6 +27,23 @@ def test_overclaiming_formal_verification_is_refused(study, tex_available):
     assert "formally verified" in out
 
 
+def test_a_disclaimer_in_the_record_does_not_license_the_paper(study, tex_available):
+    """Issue #50: a level must be CARRIED by an evidence_level, not mentioned.
+
+    The old check grepped the serialized study.json, so a claim's own
+    disclaimer ("not formally verified") authorised the paper to assert the
+    level the claim said it does not have.
+    """
+    s = read_study(study)
+    s["notes"] = "The result is certificate-checked; it is not formally verified."
+    write_study(study, s)
+    edit_paper(study, "so nothing here is formally verified",
+               "and the result is formally verified end to end")
+    code, out = run_check(study)
+    assert code == 1
+    assert "overclaim" in out and "formally verified" in out
+
+
 def test_asserted_level_backed_by_the_record_is_allowed(study, tex_available):
     """'independently re-derived' IS carried by the golden study's record."""
     code, out = run_check(study)

@@ -63,14 +63,6 @@ const BADGE_ID = 'rq-model'
 const BADGE_ORDER = -30
 const ROLES = ['root', 'explorer', 'offgrid', 'doublechecker', 'adversary', 'lit-line', 'lit-adversary', 'doc-adversary']
 const SLOTS = ['Primary', 'Fallback']
-// Invocation frequency per role: the badge tone follows the level, the label
-// comes from the locale copy (`roleFreq.<role>`).
-const ROLE_FREQ = {
-  root: 'high', explorer: 'high', offgrid: 'low', doublechecker: 'medium',
-  adversary: 'medium', 'lit-line': 'low', 'lit-adversary': 'low',
-  'doc-adversary': 'low',
-}
-
 let react = null
 function React() {
   if (react === null) react = require('react')
@@ -167,14 +159,6 @@ const copy = {
     'roleDesc.lit-line': 'Traverses one research line (backward/forward citations) and writes a bounded dossier.',
     'roleDesc.lit-adversary': 'Independently re-retrieves and verifies load-bearing literature claims (validity and freshness).',
     'roleDesc.doc-adversary': 'Audits finished deliverables for self-completeness: every jargon term, symbol, and abbreviation used is defined.',
-    'roleFreq.root': 'Frequent',
-    'roleFreq.explorer': 'Frequent',
-    'roleFreq.offgrid': 'Rare',
-    'roleFreq.doublechecker': 'Common',
-    'roleFreq.adversary': 'Common',
-    'roleFreq.lit-line': 'Rare',
-    'roleFreq.lit-adversary': 'Rare',
-    'roleFreq.doc-adversary': 'Rare',
   },
   zh: {
     nav: 'RigorQuant',
@@ -211,14 +195,6 @@ const copy = {
     'roleDesc.lit-line': '遍历一条研究线（前向/后向引用）并产出有界档案。',
     'roleDesc.lit-adversary': '独立重新检索并核验关键文献论断（有效性与时效性）。',
     'roleDesc.doc-adversary': '审计最终交付物的自足性：所用的每个专业术语、符号与缩写都应有定义。',
-    'roleFreq.root': '频繁',
-    'roleFreq.explorer': '频繁',
-    'roleFreq.offgrid': '少见',
-    'roleFreq.doublechecker': '常见',
-    'roleFreq.adversary': '常见',
-    'roleFreq.lit-line': '少见',
-    'roleFreq.lit-adversary': '少见',
-    'roleFreq.doc-adversary': '少见',
   },
 }
 
@@ -578,29 +554,6 @@ function EffortSelect(props) {
   })
 }
 
-/** Invocation-frequency pill: label from the locale, tone by level (strong→dim). */
-function FrequencyBadge(props) {
-  const { t, role } = props
-  const level = ROLE_FREQ[role] ?? 'low'
-  const tone = level === 'high'
-    ? 'var(--dsw-alias-label-primary)'
-    : level === 'medium'
-      ? 'var(--dsw-alias-label-secondary)'
-      : 'var(--dsw-alias-label-tertiary)'
-  return React().createElement('span', {
-    style: {
-      alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5,
-      borderRadius: 999, padding: '0 8px', fontSize: 11, lineHeight: '16px',
-      background: 'var(--dsw-alias-bg-module-platform)',
-      color: 'var(--dsw-alias-label-secondary)',
-    },
-  },
-    React().createElement('span', {
-      style: { width: 6, height: 6, borderRadius: 999, background: tone, flex: 'none' },
-    }),
-    t(`roleFreq.${role}`))
-}
-
 function RoleRow(props) {
   const { t, role, fields, catalog, stage } = props
   const models = []
@@ -718,8 +671,7 @@ function RoleRow(props) {
       }, t(`role.${role}`)),
       React().createElement('span', {
         style: { fontSize: 12, lineHeight: 1.45, color: 'var(--dsw-alias-label-tertiary)' },
-      }, t(`roleDesc.${role}`)),
-      React().createElement(FrequencyBadge, { t, role })),
+      }, t(`roleDesc.${role}`))),
     React().createElement('div', { style: { display: 'grid', gap: 4, minWidth: 0 } },
       renderSlot('Primary'),
       renderSlot('Fallback')))

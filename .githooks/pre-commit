@@ -10,6 +10,12 @@
 # `coverage combine` + `coverage report --fail-under=95` decide. Config:
 # .coveragerc. The closing tests live in tests/test_gate_surface.py.
 #
+# Every test uses its own tmp_path, so the suite runs in parallel
+# (pytest-xdist): the TeX-enabled tests compile the same golden paper
+# independently, and the serial suite took long enough that people were
+# tempted to skip the gate. Coverage is still measured in the child
+# processes, so parallel workers change only the wall time.
+#
 # Bypass once: git commit --no-verify
 # Bypass always (not recommended): SKIP_RQ_HOOK=1
 set -eu
@@ -27,7 +33,7 @@ export UV_CACHE_DIR="${UV_CACHE_DIR:-$PWD/.uv-cache}"
 rm -f .coverage .coverage.*
 trap 'rm -f .coverage .coverage.*' EXIT
 
-RQ_COVERAGE=1 uv run --frozen --project env python -m pytest tests/ -q
+RQ_COVERAGE=1 uv run --frozen --project env python -m pytest tests/ -q -n auto
 
 uv run --frozen --project env python -m coverage combine --rcfile .coveragerc >/dev/null
 uv run --frozen --project env python -m coverage report --rcfile .coveragerc --fail-under=95

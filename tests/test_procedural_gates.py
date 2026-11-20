@@ -48,10 +48,20 @@ def test_status_claim_with_existing_verdict_file_passes(study, tex_available):
 def test_status_claim_with_frozen_hash_passes(study, tex_available):
     s = read_study(study)
     s["status"] = ("stage-3 certified on the round-4 certification "
-                   "of frozen hash 723662c7")
+                   "of frozen hash 0123456789abcdef")
     write_study(study, s)
     code, out = run_check(study)
     assert code == 0, out
+
+
+def test_a_date_in_the_status_is_not_a_frozen_hash(study, tex_available):
+    """Issue #50: 8 hex digits used to count, and a date is 8 hex digits."""
+    s = read_study(study)
+    s["status"] = "PASS - certified 20260815"
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "status asserts a certification outcome" in out
 
 
 def test_routine_status_without_certification_language_is_unaffected(study, tex_available):

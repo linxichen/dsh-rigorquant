@@ -111,6 +111,13 @@ def norm(s: str) -> str:
     return " ".join(str(s).split()).lower()
 
 
+def _as_dict(value):
+    """A record field that should be an object. Valid JSON can make any field a
+    list; the schema reports the wrong shape, and the semantic gates must not
+    crash before that report prints."""
+    return value if isinstance(value, dict) else {}
+
+
 def _names_special_body(text: str) -> bool:
     """True if the text names a special/reference body as a bare, non-negated term.
 
@@ -396,9 +403,9 @@ def check_record_present(study, root: Path, problems):
 def check_pass_evidence(study, root: Path, problems):
     if not claiming_pass(study):
         return
-    vs = study.get("validity_stages") or {}
-    s3 = vs.get("stage3_general_claim")
-    s5 = vs.get("stage5_domain_scale")
+    vs = _as_dict(study.get("validity_stages"))
+    s3 = _as_dict(vs.get("stage3_general_claim"))
+    s5 = _as_dict(vs.get("stage5_domain_scale"))
 
     def check_outputs(stage, label):
         outputs = stage.get("outputs")
@@ -578,7 +585,7 @@ def check_env_lane(study, root: Path, problems):
 
 def check_tolerance_reconciliation(study, root: Path, problems):
     """check-battery.md: a tolerance restated in an audit must match study.json."""
-    declared = study.get("tolerances") or {}
+    declared = _as_dict(study.get("tolerances"))
     text, paths = evidence_corpus(root)
     for p in paths:
         if p.suffix.lower() not in (".md", ".txt"):
@@ -589,7 +596,7 @@ def check_tolerance_reconciliation(study, root: Path, problems):
             continue
         for key, value in TOLERANCE_RE.findall(body):
             block, field = TOLERANCE_KEYS[key]
-            expected = (declared.get(block) or {}).get(field)
+            expected = _as_dict(declared.get(block)).get(field)
             if expected is None:
                 continue
             try:
@@ -653,6 +660,7 @@ def check_document_spec(text: str, spec, label: str, problems, is_beamer: bool =
     """Enforce the audience spec, plus the conditional symbol audit: every
     registered symbol that APPEARS in the document must have a defining witness
     in the Notation/Definitions block (references/deliverables.md)."""
+    spec = _as_dict(spec)
     source = strip_tex_comments(text)
     block = notation_block(source, is_beamer)
     if not block:
@@ -834,15 +842,35 @@ def compile_tex_artifact(engine: str, tex: Path, label: str, problems):
 # ------------------------------------------------------------- deliverables
 
 
+def _carried_levels(record, found=None):
+    """Every `evidence_level` VALUE anywhere in the record.
+
+    A level is carried by a claim, not mentioned in one: `notes` is free text
+    the schema says is never evidence, and a claim's own disclaimer names the
+    level it does not have.
+    """
+    found = set() if found is None else found
+    if isinstance(record, dict):
+        for key, value in record.items():
+            if key == "evidence_level":
+                found.add(str(value).strip().lower())
+            else:
+                _carried_levels(value, found)
+    elif isinstance(record, list):
+        for item in record:
+            _carried_levels(item, found)
+    return found
+
+
 def check_overclaim(text: str, study, root: Path, problems):
     """No evidence level may be asserted in prose unless some claim in the study
     record carries it. Applies to ALL four levels, not just formal verification."""
     low = strip_tex_comments(text).lower()
     try:
-        record = json.dumps(study) + (root / "registry.json").read_text(errors="replace")
-    except OSError:
-        record = json.dumps(study)
-    record = record.lower()
+        registry = json.loads((root / "registry.json").read_text(errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        registry = None
+    carried = _carried_levels(study) | _carried_levels(registry)
     for level in EVIDENCE_LEVELS:
         # Strip disclaimers ("nothing here is formally verified") before looking
         # for an assertion of the level. The negation must be adjacent to the
@@ -856,7 +884,7 @@ def check_overclaim(text: str, study, root: Path, problems):
         assertion = low
         for pattern in disclaimers:
             assertion = re.sub(pattern, " ", assertion)
-        if level in assertion and level not in record:
+        if level in assertion and level not in carried:
             problems.add(
                 "document.overclaim",
                 "PASS refused: the paper asserts %r but no claim in study.json / "
@@ -907,8 +935,8 @@ def check_deliverable_paths(root: Path, problems, slides_req: str):
 
 
 def check_deliverables(study, root: Path, problems):
-    d = study.get("deliverables") or {}
-    if not isinstance(d, dict) or "paper" not in d:
+    d = _as_dict(study.get("deliverables"))
+    if "paper" not in d:
         problems.add(
             "deliverables.declaration",
             "deliverables gate: study.json has no `deliverables` declaration "
@@ -933,7 +961,7 @@ def check_deliverables(study, root: Path, problems):
             "PASS refused: deliverables.consultation_pending is true -- the one-time "
             "audience consultation has not been completed; answer the checkpointed "
             "questionnaire before claiming PASS")
-    aud = d.get("audience") or {}
+    aud = _as_dict(d.get("audience"))
     paper_spec, slides_spec, web_spec = aud.get("paper"), aud.get("slides"), aud.get("web")
     if not isinstance(paper_spec, dict):
         problems.add("deliverables.audience",
@@ -989,8 +1017,8 @@ def check_deliverables(study, root: Path, problems):
             # slug must escape them for LaTeX (\_), so match against the
             # unescaped source.
             ref_source = source.replace(r"\_", "_")
-            for ref in (study.get("slug", ""), study.get("task_id", "")):
-                if ref and ref in ref_source:
+            for ref in (study.get("slug"), study.get("task_id")):
+                if isinstance(ref, str) and ref and ref in ref_source:
                     break
             else:
                 problems.add("deliverables.paper",
@@ -1104,7 +1132,7 @@ def check_deliverables(study, root: Path, problems):
 def check_document_adversary_reports(study, root: Path, problems):
     if not claiming_pass(study):
         return
-    d = study.get("deliverables") or {}
+    d = _as_dict(study.get("deliverables"))
     names = ["paper"]
     if str(d.get("slides", "")).lower().startswith("required"):
         names.append("slides")
@@ -1191,8 +1219,12 @@ def check_status_verdict_reference(study, root: Path, problems):
     hit = VERDICT_LANGUAGE.search(status)
     if hit is None:
         return
-    if re.search(r"(?i)\b[0-9a-f]{6,}\b", status) is not None:
-        return  # a frozen snapshot hash anchors the claim
+    # A frozen snapshot hash anchors the claim: 64 hex, or 16+ hex named as a
+    # hash. A date (8 digits) must not count (issue #50).
+    if re.search(r"(?i)\b[0-9a-f]{64}\b", status) or (
+            re.search(r"(?i)\b[0-9a-f]{16,}\b", status)
+            and re.search(r"(?i)\b(frozen|snapshot|sha(?:-?256)?)\b", status)):
+        return
     refs = re.findall(r"(?:audits|derivations|artifacts)/[\w./-]+", status)
     if any((root / ref).is_file() for ref in refs):
         return
@@ -1213,7 +1245,7 @@ def check_stage3_claim_digest(study, problems):
     after that certification and must be re-certified before it can carry
     evidence again.
     """
-    s3 = (study.get("validity_stages") or {}).get("stage3_general_claim") or {}
+    s3 = _as_dict(_as_dict(study.get("validity_stages")).get("stage3_general_claim"))
     recorded = s3.get("claim_sha256")
     claim = s3.get("claim")
     if not recorded or not claim:
@@ -1236,7 +1268,7 @@ def check_intake_pins(study, root: Path, problems):
     under those exact files; a reissue that changed them is a re-intake
     event, not an on-the-fly repair.
     """
-    pins = study.get("intake_pins") or {}
+    pins = _as_dict(study.get("intake_pins"))
     schema_pin = pins.get("schema_sha256")
     if schema_pin:
         current = sha256_hex(SCHEMA_DIR / "study.schema.json")
@@ -1284,7 +1316,7 @@ def _verified_source_ids(map_data):
     as a result on its authority.
     """
     ids = set()
-    for entries in (map_data or {}).values():
+    for entries in _as_dict(map_data).values():
         if not isinstance(entries, list):
             continue
         for entry in entries:

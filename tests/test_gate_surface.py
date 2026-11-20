@@ -480,6 +480,38 @@ def test_a_type_violation_is_reported(study):
     assert "expected type" in out
 
 
+@pytest.mark.parametrize("field,value", [
+    ("deliverables", [1]),
+    ("validity_stages", [1]),
+    ("tolerances", [{"a": 1}]),
+])
+def test_a_wrong_shaped_field_is_a_problem_not_a_traceback(study, field, value, tmp_path):
+    """Issue #50: valid JSON can make any field a list. The schema reports the
+    shape, and the semantic gates must still run -- a traceback loses both the
+    gap list and the --out report tooling parses."""
+    s = read_study(study)
+    s[field] = value
+    write_study(study, s)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "expected type" in out
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+def test_a_wrong_shaped_literature_map_is_a_problem_not_a_traceback(study, tmp_path):
+    """Issue #50: known-results.json = [1] crashed the verified-source walk."""
+    lit = _lit_declare(study)
+    (lit / "known-results.json").write_text("[1]\n")
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "expected type" in out
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
 # ── evidence and stage branches ────────────────────────────────────────────
 
 

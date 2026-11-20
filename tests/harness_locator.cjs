@@ -84,10 +84,30 @@ function inlineRelativeImports(source, modulePath) {
     /^import \{ ([^}]+) \} from '\.\/([^']+)'$/gm,
     (_, names, spec) => {
       let helper = readFileSync(join(dirname(modulePath), spec), 'utf8')
-      helper = helper.replace(/^export const /gm, 'const ')
-      helper = helper.replace(/^export \{ ([^}]+) \}$/m, '')
+      helper = helper.replace(/^export (const|function) /gm, '$1 ')
+      helper = helper.replace(/^export \{ [^}]+\}$/gm, '')
       return `const { ${names} } = (() => { ${helper}; return { ${names} } })()`
     },
+  )
+}
+
+/**
+ * Rewrite a host module (and its relative imports) into one CommonJS script,
+ * so a probe can evaluate the shipped source without npm install. Every
+ * `export const|function` becomes a declaration and every `export { ... }`
+ * list assigns on `module.exports`.
+ */
+function esmToCommonJs(source, modulePath) {
+  let out = inlineRelativeImports(source, modulePath)
+  out = out.replace(/^export (const|function) /gm, '$1 ')
+  return out.replace(
+    /^export \{ ([^}]+) \}$/gm,
+    (_, names) => names.split(',')
+      .map((name) => {
+        const id = name.trim()
+        return `module.exports[${JSON.stringify(id)}] = ${id}`
+      })
+      .join('\n'),
   )
 }
 
@@ -204,6 +224,7 @@ module.exports = {
   findHarnessModules,
   harnessRequireFor,
   installedCoreVersion,
+  esmToCommonJs,
   inlineRelativeImports,
   judgeCore,
   loadCompatibilityGate,

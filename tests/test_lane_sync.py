@@ -1,11 +1,10 @@
 """The boot-sync engine (dsh/sync.js) -- the compute lane under $DSH_HOME.
 
 Decision 22, shrunk by Decision 25: the bundle row `rq-lane-sync` lands the
-compute lane (`env/`, plus the `mcp/` and `docs/` the skill cites) into
-$DSH_HOME/share/rigorquant at profile boot, so `dsh plugin add` is the whole
-install and the lane needs nothing else (Decision 29). The preset is declared
-now, so the row copies no preset; it only removes the copy an older release
-landed.
+compute lane (`env/` and `mcp/`) into $DSH_HOME/share/rigorquant at profile
+boot, so `dsh plugin add` is the whole install and the lane needs nothing else
+(Decision 29). The preset is declared now, so the row copies no preset; it only
+removes the copy an older release landed.
 
 Pinned here against a real execution of the engine (via
 tests/lane_sync_probe.cjs, not by re-implementing it in Python):
