@@ -8,9 +8,10 @@
 // would churn). So this row lands the lane, and the files the skill cites
 // next to it, at the profile's boot. It is the whole of the lane's install:
 // distribution is the plugin manager (Decision 29), and `dsh plugin add` runs
-// this row at the next profile start.
+// this row at the next profile start. docs/ is not copied: no shipped skill or
+// persona reads it from the profile, and it is 3.9 MB per boot.
 //
-//   env/ mcp/ docs/ → $DSH_HOME/share/rigorquant/<same>
+//   env/ mcp/ → $DSH_HOME/share/rigorquant/<same>
 //
 // and removes the `$DSH_HOME/.agent-presets/rigorquant` an older release
 // (Decision 22) landed there, but only when that tree's marker says this
@@ -54,7 +55,6 @@ const MANAGER = 'dsh-rigorquant'
 const MANAGED_DIRS = [
   ['env', join('share', 'rigorquant', 'env')],
   ['mcp', join('share', 'rigorquant', 'mcp')],
-  ['docs', join('share', 'rigorquant', 'docs')],
 ]
 /** Where releases before 0.6.0 landed the preset, relative to $DSH_HOME. */
 const ORPHANED_PRESET = join('.agent-presets', 'rigorquant')

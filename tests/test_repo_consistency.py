@@ -1978,8 +1978,10 @@ def test_boot_sync_manages_the_lane_only_and_never_derived_state():
     """
     sync = (REPO / "dsh" / "sync.js").read_text()
     managed = sync[sync.index("const MANAGED_DIRS"):sync.index("const ORPHANED_PRESET")]
-    for tree in ("env", "mcp", "docs"):
+    for tree in ("env", "mcp"):
         assert f"['{tree}'" in managed, f"sync.js does not manage {tree}"
+    assert "'docs'" not in managed, (
+        "sync.js copies docs/ (3.9 MB) into a profile no skill reads it from")
     assert "agent-presets" not in managed, "sync.js still copies the preset"
     for derived in (".venv", "__pycache__"):
         assert f"'{derived}'" in sync, f"sync.js does not exclude {derived}"
