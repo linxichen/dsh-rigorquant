@@ -1,5 +1,7 @@
 """Stage-4 document gates: overclaim, structure, notation, audience spec."""
 
+import pytest
+
 from conftest import read_study, run_check, write_study
 
 
@@ -120,3 +122,42 @@ def test_validator_leaves_no_build_products_in_the_study(study, tex_available):
     run_check(study)
     after = {p.name for p in (study / "artifacts" / "paper").iterdir()}
     assert after == before, "validator dirtied the committed artifacts tree: %s" % (after - before)
+
+
+@pytest.mark.parametrize("assertion", [
+    "and the result is formally\nverified end to end",
+    "and the result is formally  verified end to end",
+    "and the result is formally~verified end to end",
+])
+def test_a_wrapped_formal_verification_claim_is_refused(study, assertion, tex_available):
+    """Issue #52: a phrase wrapped across a line (or joined with TeX's ~) is
+    still an assertion; the overclaim scan normalises whitespace first."""
+    edit_paper(study, "so nothing here is formally verified", assertion)
+    code, out = run_check(study)
+    assert code == 1
+    assert "overclaim" in out and "formally verified" in out
+
+
+@pytest.mark.parametrize("field", ["last_accepted", "consultation_record"])
+def test_a_verdict_record_does_not_license_an_overclaim(study, field, tex_available):
+    """Issue #52: only validity_stages and registry.json carry a claim; a
+    declaration in the deliverables record is not one."""
+    s = read_study(study)
+    s["deliverables"][field] = {"evidence_level": "formally verified"}
+    write_study(study, s)
+    edit_paper(study, "so nothing here is formally verified",
+               "and the result is formally verified end to end")
+    code, out = run_check(study)
+    assert code == 1
+    assert "overclaim" in out and "formally verified" in out
+
+
+def test_a_registry_claim_carries_an_evidence_level(study, tex_available):
+    """The documented claim locations include registry.json: a level carried by
+    a registry sub-problem licenses the paper's assertion of it."""
+    s = read_study(study)
+    s["validity_stages"]["stage3_general_claim"]["evidence_level"] = "falsification-surviving"
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 0, out
+

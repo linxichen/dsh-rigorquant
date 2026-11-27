@@ -8,47 +8,59 @@ This file starts at 0.2.0; earlier releases (0.1.0, 0.1.1) predate it.
 
 ## [Unreleased]
 
-## [0.8.3] - 2026-11-20
+## [0.8.3] - 2026-11-26
 
-The PASS gate stops believing a disclaimer it was shown, stops crashing on a
-field whose JSON shape is wrong, and stops accepting a date as a frozen
-snapshot hash. The boot sync stops copying `docs/` into every profile, and the
-dead weight around it goes too. No study record, schema, role, route or
-harness band changes.
+The PASS gate stops believing a disclaimer it was shown, stops letting a
+wrapped line or a verdict-record field license an overclaim, stops crashing on
+a field whose JSON shape is wrong (and reports an internal validator error with
+a report instead of a traceback), and stops accepting a date as a frozen
+snapshot hash. The boot sync stops copying `docs/` into every profile and
+retires the copy older releases landed. The dead weight around it goes too. No
+study record, schema, role, route or harness band changes.
 
 ### Fixed
 
 - **Overclaim.** The no-overclaim gate searched the whole serialized
   `study.json` for an evidence-level phrase, so a claim's own disclaimer ('it
   is not formally verified') authorised the paper to assert the level. It now
-  reads only the `evidence_level` values the record carries (study.json and
-  the parsed `registry.json`).
-- **A wrong-shaped field.** `deliverables`, `validity_stages`, `tolerances`
-  and the literature map can be valid JSON lists; several gates called
-  `.get()` on them, so a study with a diagnosable defect produced a traceback
-  with no gap list and no `--out` report. They now report the problem and the
-  study gets its report.
+  reads only the `evidence_level` values carried by `validity_stages` and the
+  parsed `registry.json` -- not `deliverables`, `notes` or the consultation
+  record -- normalises whitespace (a wrapped "formally\nverified" is the same
+  assertion), and runs on the slides and web artifact as well as the paper.
+- **A wrong-shaped field.** `deliverables`, `validity_stages`, `tolerances`,
+  `symbols`, `subproblems`, stage outputs, registry families/routes and the
+  literature files can be valid JSON of the wrong shape; several gates called
+  `.get()`, iterated or hashed them, so a study with a diagnosable defect
+  produced a traceback with no gap list and no `--out` report. Each gate now
+  guards what it reads, every gate is wrapped (an unexpected exception becomes
+  a `validator.internal` problem and exit 2), and the report is written even on
+  ERROR. A present-but-wrong-shaped container says "is not an object", not
+  "absent".
 - **A date is not a hash.** A status asserting a certification outcome needed
   a frozen snapshot hash, tested as any six hex characters -- a date
-  (`20260815`) qualified, and so would a word like `facade`. It now needs 64
-  hex, or 16+ hex next to `frozen`/`snapshot`/`sha`.
+  (`20260815`) and an all-digit 64-character token qualified. A hash now needs
+  at least one `a-f` letter, 8+ hex, and either 40+ characters (git SHA-1 /
+  SHA-256) or `frozen`/`snapshot`/`sha` next to it; the short 8-hex hash from
+  the hard-lessons run remains valid and a 40-hex commit is accepted.
 - **arXiv helper.** An old-style id (`solv-int/9901001v2`) was split at the
-  first 'v' and linked as `abs/sol`, and `--id` went into the query unquoted.
-  It now keeps the whole id and quotes the id list. The helper has tests.
+  first 'v' and linked as `abs/sol`; `--id` went into the query unquoted, and
+  so did `--category`/`--sort`. It now keeps the whole id and quotes the id
+  list and the category, and rejects an unknown sort. The helper has tests.
 
 ### Changed
 
 - The boot sync no longer copies `docs/` (3.9 MB) to
   `$DSH_HOME/share/rigorquant/docs`; no shipped skill or persona reads it
-  there. A tree an earlier release already copied stays in place, unread.
+  there. A tree this package landed is retired at the next boot (marker-gated);
+  a foreign tree under that path is left alone.
 - The router and the team module share one role list (`dsh/roles.js`). The
   settings card keeps its own copy: a classic browser bundle cannot import a
-  Node module.
+  Node module; a test now pins the two lists together.
 - The settings card drops the decorative per-role invocation-frequency pill
   and its 16 locale strings.
 - The pre-commit gate and CI run the suite with `pytest-xdist -n auto`; the
   serial TeX-heavy run was slow enough to invite `--no-verify`. Coverage is
-  unchanged (96.5%).
+  unchanged (97.0%), and the hook test now pins `-n auto`.
 
 ### Removed
 
@@ -58,9 +70,11 @@ harness band changes.
 ### Upgrading
 
 `dsh plugin add dsh-rigorquant@0.8.3`, or the Plugins page, replaces an
-installed 0.8.2 in place. The lane and every study record are untouched. A
-profile that received the old docs copy keeps it; deleting
-`$DSH_HOME/share/rigorquant/docs` is safe.
+installed 0.8.2 in place. The lane and every study record are untouched. The
+old docs copy this package landed is retired at the next boot; a foreign tree
+under that path is left alone. A status that used a bare date or timestamp as
+its frozen hash is now refused: name the actual digest (40/64 hex) or a verdict
+file.
 
 ## [0.8.2] - 2026-11-19
 

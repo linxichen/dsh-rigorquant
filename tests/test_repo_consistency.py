@@ -861,6 +861,25 @@ def test_the_router_and_the_card_name_the_same_roles_and_slots():
         % (card_slots, verdict["slots"]))
 
 
+def test_the_client_bundle_pins_the_shared_role_list():
+    """dsh/roles.js says the settings card's own copy is pinned by a test.
+
+    dsh/client.js is a classic <script> bundle, so it structurally cannot
+    import the Node module and carries its own `const ROLES`. A role added to
+    one list and not the other leaves a card row for a role the host refuses
+    (or a routable role with no row); this is that pin, and it also pins the
+    card order both surfaces render in.
+    """
+    client = (REPO / "dsh" / "client.js").read_text()
+    match = re.search(r"const ROLES = \[([^\]]*)\]", client)
+    assert match, "dsh/client.js no longer declares its ROLES copy"
+    card_roles = re.findall(r"'([a-z-]+)'", match.group(1))
+    host = host_roles()
+    assert card_roles == host, (
+        "the card's role copy drifted from dsh/roles.js: card=%s host=%s"
+        % (card_roles, host))
+
+
 def _persona_prefix():
     preset = preset_children()
     # The folded scalar runs until the first non-blank line at the key's own
@@ -1902,7 +1921,7 @@ def test_pre_commit_hook_enforces_95_percent_validator_coverage():
         "missing executable .githooks/pre-commit coverage gate")
     text = hook.read_text()
     for required in ("RQ_COVERAGE=1", "UV_CACHE_DIR", "coverage combine",
-                     "--fail-under=95", "rm -f .coverage .coverage.*"):
+                     "--fail-under=95", "rm -f .coverage .coverage.*", "-n auto"):
         assert required in text, "pre-commit hook lost %r" % required
     assert not re.search(r"^rm -f \.coverage\*$", text, re.MULTILINE), (
         "the broad cleanup glob deletes .coveragerc itself")

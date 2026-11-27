@@ -12,6 +12,8 @@ L7: schema/validator digests are pinned at intake — a reissued schema or
 import hashlib
 from pathlib import Path
 
+import pytest
+
 from conftest import RQ_CHECK, SKILL_DIR, read_study, run_check, write_study
 
 
@@ -130,3 +132,53 @@ def test_intake_pins_match_passes(study, tex_available):
     write_study(study, s)
     code, out = run_check(study)
     assert code == 0, out
+
+
+def test_a_short_frozen_hash_is_still_a_reference(study, tex_available):
+    """Issue #52: the hard-lessons run's 8-hex hash (723662c7) is a real frozen
+    hash; requiring 16+ characters broke the documented L4 workflow."""
+    s = read_study(study)
+    s["status"] = "PASS -- certified on the frozen hash 723662c7"
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 0, out
+
+
+def test_a_git_sha_in_the_status_is_accepted(study, tex_available):
+    """A 40-hex commit id is a hash, not a date."""
+    s = read_study(study)
+    s["status"] = "PASS -- certified at commit deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 0, out
+
+
+def test_a_sha256_in_the_status_is_accepted(study, tex_available):
+    s = read_study(study)
+    s["status"] = "PASS -- certified against sha256 " + "0123456789abcdef" * 4
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 0, out
+
+
+@pytest.mark.parametrize("timestamp", ["20260815", "20260815123456",
+                                     "2026081512345678"])
+def test_a_timestamp_in_the_status_is_not_a_frozen_hash(study, timestamp, tex_available):
+    """Issue #52: pure digits are a date or timestamp, never a hash -- including
+    a 16-digit timestamp that used to satisfy the 16+ hex branch."""
+    s = read_study(study)
+    s["status"] = "PASS - certified at " + timestamp
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "status asserts a certification outcome" in out
+
+
+def test_an_all_digit_sha256_is_not_a_frozen_hash(study, tex_available):
+    """Issue #52: '1' * 64 is 64 hex characters and still not a hash."""
+    s = read_study(study)
+    s["status"] = "PASS - certified against sha256 " + "1" * 64
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "status asserts a certification outcome" in out

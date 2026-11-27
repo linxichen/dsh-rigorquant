@@ -30,7 +30,7 @@ def search(query=None, author=None, category=None, ids=None, max_results=5, sort
         if author:
             parts.append(f'au:{urllib.parse.quote(author)}')
         if category:
-            parts.append(f'cat:{category}')
+            parts.append(f'cat:{urllib.parse.quote(category, safe="")}')
         if not parts:
             print("Error: provide a query, --author, --category, or --id")
             sys.exit(1)
@@ -39,7 +39,10 @@ def search(query=None, author=None, category=None, ids=None, max_results=5, sort
     params['max_results'] = str(max_results)
     
     sort_map = {"relevance": "relevance", "date": "submittedDate", "updated": "lastUpdatedDate"}
-    params['sortBy'] = sort_map.get(sort, sort)
+    if sort not in sort_map:
+        print(f"Error: unsupported --sort {sort!r}; choose relevance, date, or updated")
+        sys.exit(1)
+    params['sortBy'] = sort_map[sort]
     params['sortOrder'] = 'descending'
     
     url = "https://export.arxiv.org/api/query?" + "&".join(f"{k}={v}" for k, v in params.items())

@@ -77,3 +77,14 @@ def test_web_deliverable_with_an_unclosed_tag_is_refused(study, tex_available):
     code, out = run_check(study)
     assert code == 1
     assert "unclosed" in out and "<html>" in out
+
+
+def test_a_web_overclaim_is_refused(study, tex_available):
+    """Issue #52: the no-overclaim rule runs on the web deliverable too, not
+    only on the paper."""
+    _require_web(study, WEB_PAGE.replace(
+        "<h1>Minimum-variance weights</h1>",
+        "<h1>Minimum-variance weights</h1><p>The result is formally verified.</p>"))
+    code, out = run_check(study)
+    assert code == 1
+    assert "overclaim" in out and "formally verified" in out

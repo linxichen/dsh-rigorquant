@@ -75,9 +75,9 @@ test rather than an install.
 - **CI** runs `tests/package_shape_smoke.py`, a stdlib-only Python script that
   needs no `dsh`: every `dsh.bundle.patch` file exists, every `exports` entry
   resolves, the lane template directories the boot sync copies (`env/`,
-  `mcp/`, `docs/`, read from `dsh/sync.js`'s `MANAGED_DIRS`) are present with
-  the lane anchor, and no current package file references a removed
-  installer. The install smoke step is gone with the script.
+  `mcp/`, read from `dsh/sync.js`'s `MANAGED_DIRS`) are present with the
+  lane anchor, and no current package file references a removed installer.
+  The install smoke step is gone with the script.
 - **The static suite** pins the distribution claims: both READMEs state
   `dsh plugin add`/`remove` and the lane-stays rule, the changelog's `0.8.1`
   `### Removed` entry names the installer, the Decision-29 section and this ADR

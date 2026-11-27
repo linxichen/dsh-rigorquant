@@ -14,7 +14,9 @@ tests/lane_sync_probe.cjs, not by re-implementing it in Python):
    checkout's own `.venv` never leaks into a managed target;
 3. ownership marker -- `.rq-sync.json` names the manager and version;
 4. orphan removal -- the old `.agent-presets/rigorquant` goes only when its
-   marker says this package landed it.
+   marker says this package landed it;
+5. docs reclaim -- the `share/rigorquant/docs` tree releases before 0.8.3
+   copied goes on that same marker rule, and the lane beside it survives.
 """
 
 import json
@@ -178,3 +180,40 @@ def test_a_preset_directory_this_package_does_not_own_is_left_alone(probe, tmp_p
 
 def test_no_orphan_is_a_quiet_no_op(probe, tmp_path):
     assert remove_orphan(probe, tmp_path) == {"status": "absent"}
+
+
+def docs_tree(probe, home, marker):
+    """A `share/rigorquant/docs` tree as releases before 0.8.3 left it."""
+    root = home / "share" / "rigorquant" / "docs"
+    steps = [{"op": "write", "path": str(root / "architecture.md"), "data": "# record\n"}]
+    if marker is not None:
+        steps.append({"op": "write", "path": str(root / ".rq-sync.json"), "data": json.dumps(marker)})
+    probe(steps)
+    return root
+
+
+def remove_docs(probe, home):
+    [result] = probe([{"op": "removeOrphanedDocs", "home": str(home)}])
+    return result
+
+
+def test_the_docs_tree_an_earlier_release_copied_is_removed(probe, tmp_path):
+    lane = tmp_path / "share" / "rigorquant"
+    probe([{"op": "write", "path": str(lane / "env" / "pyproject.toml"), "data": "[project]\n"}])
+    root = docs_tree(probe, tmp_path, {"managedBy": "dsh-rigorquant", "version": "0.8.2"})
+    assert remove_docs(probe, tmp_path) == {"status": "removed"}
+    assert not exists(probe, root)
+    assert exists(probe, lane / "env" / "pyproject.toml"), \
+        "the docs reclaim must not touch the lane the boot sync still manages"
+
+
+def test_a_docs_tree_this_package_does_not_own_is_left_alone(probe, tmp_path):
+    for marker in (None, {"managedBy": "someone-else", "version": "0.8.2"}):
+        root = docs_tree(probe, tmp_path, marker)
+        assert remove_docs(probe, tmp_path) == {"status": "not-ours"}
+        assert exists(probe, root / "architecture.md")
+        probe([{"op": "remove", "path": str(root)}])
+
+
+def test_no_orphaned_docs_tree_is_a_quiet_no_op(probe, tmp_path):
+    assert remove_docs(probe, tmp_path) == {"status": "absent"}

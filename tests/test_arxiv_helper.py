@@ -6,6 +6,8 @@ faked; nothing here touches the network.
 
 import importlib.util
 
+import pytest
+
 from conftest import REPO
 
 SCRIPT = REPO / "agent-presets/rigorquant/skills/arxiv/scripts/search_arxiv.py"
@@ -69,3 +71,21 @@ def test_the_id_list_is_url_quoted(monkeypatch, capsys):
     calls = []
     load(monkeypatch, calls).search(ids="2402.03300&max_results=99")
     assert "id_list=2402.03300%26max_results%3D99" in calls[0]
+
+
+def test_the_category_is_url_quoted(monkeypatch, capsys):
+    """An unquoted `&` in --category used to inject a second query parameter."""
+    calls = []
+    load(monkeypatch, calls).search(category="cs.AI&max_results=99")
+    assert "cat:cs.AI%26max_results%3D99" in calls[0]
+    assert calls[0].count("max_results=") == 1
+
+
+def test_an_unknown_sort_is_rejected(monkeypatch, capsys):
+    """An unknown --sort used to be passed straight into sortBy."""
+    calls = []
+    module = load(monkeypatch, calls)
+    with pytest.raises(SystemExit):
+        module.search(query="GRPO", sort="newest")
+    assert calls == []
+    assert "unsupported --sort 'newest'" in capsys.readouterr().out
