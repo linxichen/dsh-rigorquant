@@ -602,12 +602,12 @@ stylistic:
   volatile (`pnpm remove/update` deletes a provisioned environment mid-study).
 
 Decision: ship a second host half, `rq-preset-sync` (`dsh/sync.js`, exported
-as `./sync`, mounted by a bundle row). Once per profile boot it lands files —
-the same work `install.sh` does, executed inside the host process:
+as `./sync`, mounted by a bundle row). Once per profile boot it lands the lane
+inside the host process — the same work `install.sh` did — and removes the
+trees older releases landed, only when their marker names this package:
 
 ```
-agent-presets/rigorquant → $DSH_HOME/.agent-presets/rigorquant
-env/ mcp/ docs/          → $DSH_HOME/share/rigorquant/<same>
+env/ mcp/                → $DSH_HOME/share/rigorquant/<same>
 ```
 
 Contract, each property pinned by tests:

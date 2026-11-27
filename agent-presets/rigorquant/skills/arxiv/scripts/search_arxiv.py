@@ -10,6 +10,7 @@ Usage:
     python search_arxiv.py --id 2402.03300
     python search_arxiv.py --id 2402.03300,2401.12345
 """
+import re
 import sys
 import urllib.request
 import urllib.parse
@@ -21,7 +22,7 @@ def search(query=None, author=None, category=None, ids=None, max_results=5, sort
     params = {}
     
     if ids:
-        params['id_list'] = ids
+        params['id_list'] = urllib.parse.quote(ids, safe="/,")
     else:
         parts = []
         if query:
@@ -29,7 +30,7 @@ def search(query=None, author=None, category=None, ids=None, max_results=5, sort
         if author:
             parts.append(f'au:{urllib.parse.quote(author)}')
         if category:
-            parts.append(f'cat:{category}')
+            parts.append(f'cat:{urllib.parse.quote(category, safe="")}')
         if not parts:
             print("Error: provide a query, --author, --category, or --id")
             sys.exit(1)
@@ -38,7 +39,10 @@ def search(query=None, author=None, category=None, ids=None, max_results=5, sort
     params['max_results'] = str(max_results)
     
     sort_map = {"relevance": "relevance", "date": "submittedDate", "updated": "lastUpdatedDate"}
-    params['sortBy'] = sort_map.get(sort, sort)
+    if sort not in sort_map:
+        print(f"Error: unsupported --sort {sort!r}; choose relevance, date, or updated")
+        sys.exit(1)
+    params['sortBy'] = sort_map[sort]
     params['sortOrder'] = 'descending'
     
     url = "https://export.arxiv.org/api/query?" + "&".join(f"{k}={v}" for k, v in params.items())
@@ -62,7 +66,7 @@ def search(query=None, author=None, category=None, ids=None, max_results=5, sort
         title = entry.find('a:title', NS).text.strip().replace('\n', ' ')
         raw_id = entry.find('a:id', NS).text.strip()
         full_id = raw_id.split('/abs/')[-1] if '/abs/' in raw_id else raw_id
-        arxiv_id = full_id.split('v')[0]  # base ID for links
+        arxiv_id = re.sub(r"v\d+$", "", full_id)  # base ID for links
         published = entry.find('a:published', NS).text[:10]
         updated = entry.find('a:updated', NS).text[:10]
         authors = ', '.join(a.find('a:name', NS).text for a in entry.findall('a:author', NS))

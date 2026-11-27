@@ -93,7 +93,7 @@ def env_manifest():
 
 
 def claiming_pass(study) -> bool:
-    status = str(study.get("status", ""))
+    status = str(study.get("status", "")) if isinstance(study, dict) else ""
     # A status that begins with PASS but is marked reopened is no longer claiming
     # that PASS (it re-entered active work), so the PASS gates must not fire.
     # Documented in references/lifecycle.md and the schema "status" description.
@@ -109,6 +109,41 @@ def strip_tex_comments(text: str) -> str:
 
 def norm(s: str) -> str:
     return " ".join(str(s).split()).lower()
+
+
+def _as_dict(value):
+    """A record field that should be an object. Valid JSON can make any field a
+    list; the schema reports the wrong shape, and the semantic gates must not
+    crash before that report prints."""
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value):
+    """A record field that should be an array. Same contract as _as_dict: the
+    schema reports a wrong shape, and the gate keeps running."""
+    return value if isinstance(value, list) else []
+
+
+def _kind(value) -> str:
+    """What a wrong-shaped JSON value actually is, for the problem line."""
+    if isinstance(value, dict):
+        return "an object"
+    if isinstance(value, list):
+        return "a list"
+    if isinstance(value, str):
+        return "a string"
+    if isinstance(value, bool):
+        return "a boolean"
+    if value is None:
+        return "null"
+    return "a number"
+
+
+def _path_field(record, key, default):
+    """A study-root-relative path field. A non-string value (valid JSON can make
+    one) falls back to the documented default; the schema reports the shape."""
+    value = record.get(key)
+    return value if isinstance(value, str) and value.strip() else default
 
 
 def _names_special_body(text: str) -> bool:
@@ -266,14 +301,21 @@ def load_schema(name):
     return json.loads(p.read_text())
 
 
-def check_against_schemas(study, registry, problems):
+def check_against_schemas(study, registry, problems, registry_present=True):
+    """Validate both state files against their shipped schemas.
+
+    study.json is ALWAYS checked: a root that is a list, a string or null must
+    get a schema line, never a traceback. registry.json is skipped only when it
+    was missing or unparsable -- there is then no instance to check, and the
+    registry.missing / registry.invalid problem already says so.
+    """
     for name, instance, label in (("study.schema.json", study, "study.json"),
                                   ("registry.schema.json", registry, "registry.json")):
+        if name == "registry.schema.json" and not registry_present:
+            continue
         schema = load_schema(name)
         if schema is None:
             problems.add("schema.missing", "shipped schema %s not found next to the validator" % name)
-            continue
-        if instance is None:
             continue
         for e in validate_json_schema(instance, schema):
             problems.add("schema", "%s does not match %s: %s" % (label, name, e))
@@ -283,7 +325,7 @@ def check_against_schemas(study, registry, problems):
 
 
 def check_coverage(study, problems):
-    subs = study.get("subproblems") or []
+    subs = _as_list(study.get("subproblems"))
     if not study.get("broad_criterion"):
         problems.add(
             "coverage.broad",
@@ -314,8 +356,8 @@ def check_registry_consistency(study, registry, root: Path, problems):
     reg_subs = registry.get("subproblems")
     if not isinstance(reg_subs, dict):
         return
-    study_ids = {sp["id"] for sp in study.get("subproblems", [])
-                 if isinstance(sp, dict) and "id" in sp}
+    study_ids = {sp["id"] for sp in _as_list(study.get("subproblems"))
+                 if isinstance(sp, dict) and isinstance(sp.get("id"), str)}
     if study_ids and set(reg_subs) != study_ids:
         only_reg = sorted(set(reg_subs) - study_ids)
         only_study = sorted(study_ids - set(reg_subs))
@@ -325,8 +367,10 @@ def check_registry_consistency(study, registry, root: Path, problems):
             "(only in registry: %s; only in study: %s)" % (only_reg, only_study))
 
     def routes_of(sp):
-        for fam in sp.get("families") or []:
-            for route in (fam.get("routes") or []) if isinstance(fam, dict) else []:
+        for fam in _as_list(sp.get("families")):
+            if not isinstance(fam, dict):
+                continue
+            for route in _as_list(fam.get("routes")):
                 if isinstance(route, dict):
                     yield route
 
@@ -340,7 +384,14 @@ def check_registry_consistency(study, registry, root: Path, problems):
                 "registry.json %s is marked passed but carries no passed route "
                 "(a sub-problem passes through a route, never by assertion)" % key)
         for route in passed_routes:
-            outputs = route.get("outputs") or []
+            outputs = route.get("outputs")
+            if not isinstance(outputs, list):
+                problems.add(
+                    "registry.passed-outputs",
+                    "registry.json %s route %r has `outputs` that is not a list "
+                    "(got %s); `passed` requires an audit reference (lifecycle.md)"
+                    % (key, route.get("routeId", "?"), _kind(outputs)))
+                continue
             if not outputs:
                 problems.add(
                     "registry.passed-outputs",
@@ -396,12 +447,26 @@ def check_record_present(study, root: Path, problems):
 def check_pass_evidence(study, root: Path, problems):
     if not claiming_pass(study):
         return
-    vs = study.get("validity_stages") or {}
-    s3 = vs.get("stage3_general_claim")
-    s5 = vs.get("stage5_domain_scale")
+    raw_vs = study.get("validity_stages")
+    if "validity_stages" in study and not isinstance(raw_vs, dict):
+        problems.add(
+            "stage.shape",
+            "PASS refused: validity_stages is not an object (got %s); the schema "
+            "reports the wrong shape and the stage gates cannot read it"
+            % _kind(raw_vs))
+        vs_ok, vs = False, {}
+    else:
+        vs_ok, vs = True, _as_dict(raw_vs)
 
     def check_outputs(stage, label):
         outputs = stage.get("outputs")
+        if not isinstance(outputs, list):
+            problems.add(
+                "stage.outputs",
+                "PASS refused: %s `outputs` is not a list of study-root-relative "
+                "paths (got %s); the schema reports the wrong shape."
+                % (label, _kind(outputs)))
+            return
         if not outputs:
             problems.add(
                 "stage.outputs",
@@ -419,47 +484,60 @@ def check_pass_evidence(study, root: Path, problems):
             problems.add("stage.outputs",
                          "PASS refused: %s outputs missing: %s" % (label, missing))
 
-    if not s3:
-        problems.add(
-            "stage3.absent",
+    def stage_of(key, absent_id, absent_message):
+        if key not in vs:
+            problems.add(absent_id, absent_message)
+            return None
+        raw = vs.get(key)
+        if not isinstance(raw, dict):
+            problems.add(
+                "stage.shape",
+                "PASS refused: validity_stages.%s is not an object (got %s); "
+                "the schema reports the wrong shape and the stage gate cannot "
+                "read it" % (key, _kind(raw)))
+            return None
+        return raw
+
+    if vs_ok:
+        s3 = stage_of(
+            "stage3_general_claim", "stage3.absent",
             "PASS refused: validity_stages.stage3_general_claim absent. "
             "A PASS needs the general validity claim with ALL hypotheses and an "
             "evidence level (%s)." % " / ".join(EVIDENCE_LEVELS))
-    else:
-        if s3.get("evidence_level") not in EVIDENCE_LEVELS:
-            problems.add("stage3.evidence-level",
-                         "PASS refused: stage3 evidence_level %r is not one of %s"
-                         % (s3.get("evidence_level"), list(EVIDENCE_LEVELS)))
-        if not s3.get("claim"):
-            problems.add("stage3.claim", "PASS refused: stage3_general_claim has no `claim` text")
-        check_outputs(s3, "stage3_general_claim")
+        if s3 is not None:
+            if s3.get("evidence_level") not in EVIDENCE_LEVELS:
+                problems.add("stage3.evidence-level",
+                             "PASS refused: stage3 evidence_level %r is not one of %s"
+                             % (s3.get("evidence_level"), list(EVIDENCE_LEVELS)))
+            if not s3.get("claim"):
+                problems.add("stage3.claim", "PASS refused: stage3_general_claim has no `claim` text")
+            check_outputs(s3, "stage3_general_claim")
 
-    if not s5:
-        problems.add(
-            "stage5.absent",
+        s5 = stage_of(
+            "stage5_domain_scale", "stage5.absent",
             "PASS refused: validity_stages.stage5_domain_scale absent. "
             "A PASS needs the full battery on a genuinely non-special instance.")
-    else:
-        inst = str(s5.get("instance", "")).lower()
-        if not inst:
-            problems.add("stage5.instance",
-                         "PASS refused: stage5_domain_scale does not name its instance")
-        else:
-            inst_norm = norm(inst)
-            simplified = [norm(c) for c in (study.get("simplified_cases") or [])
-                          if isinstance(c, str) and c.strip()]
-            restates = any(fam and (fam in inst_norm or inst_norm in fam)
-                           for fam in simplified)
-            if (not any(m in inst for m in NON_SPECIAL_MARKERS)
-                    and (_names_special_body(inst) or restates)):
-                problems.add(
-                    "stage5.instance",
-                    "PASS refused: stage5 instance %r names only a reference/special "
-                    "body or restates a simplified case; the domain-scale instance "
-                    "must be genuinely non-special (a diagonal or box/ball/simplex/"
-                    "ellipsoid body does not qualify; negated forms like non-diagonal "
-                    "are allowed)." % s5.get("instance"))
-        check_outputs(s5, "stage5_domain_scale")
+        if s5 is not None:
+            inst = str(s5.get("instance", "")).lower()
+            if not inst:
+                problems.add("stage5.instance",
+                             "PASS refused: stage5_domain_scale does not name its instance")
+            else:
+                inst_norm = norm(inst)
+                simplified = [norm(c) for c in _as_list(study.get("simplified_cases"))
+                              if isinstance(c, str) and c.strip()]
+                restates = any(fam and (fam in inst_norm or inst_norm in fam)
+                               for fam in simplified)
+                if (not any(m in inst for m in NON_SPECIAL_MARKERS)
+                        and (_names_special_body(inst) or restates)):
+                    problems.add(
+                        "stage5.instance",
+                        "PASS refused: stage5 instance %r names only a reference/special "
+                        "body or restates a simplified case; the domain-scale instance "
+                        "must be genuinely non-special (a diagonal or box/ball/simplex/"
+                        "ellipsoid body does not qualify; negated forms like non-diagonal "
+                        "are allowed)." % s5.get("instance"))
+            check_outputs(s5, "stage5_domain_scale")
 
     # Seeded/falsifiable evidence, read from the RECORD only (never study.json).
     text, _ = evidence_corpus(root)
@@ -578,7 +656,7 @@ def check_env_lane(study, root: Path, problems):
 
 def check_tolerance_reconciliation(study, root: Path, problems):
     """check-battery.md: a tolerance restated in an audit must match study.json."""
-    declared = study.get("tolerances") or {}
+    declared = _as_dict(study.get("tolerances"))
     text, paths = evidence_corpus(root)
     for p in paths:
         if p.suffix.lower() not in (".md", ".txt"):
@@ -589,7 +667,7 @@ def check_tolerance_reconciliation(study, root: Path, problems):
             continue
         for key, value in TOLERANCE_RE.findall(body):
             block, field = TOLERANCE_KEYS[key]
-            expected = (declared.get(block) or {}).get(field)
+            expected = _as_dict(declared.get(block)).get(field)
             if expected is None:
                 continue
             try:
@@ -636,15 +714,56 @@ DEFAULT_SYMBOLS = {
 }
 
 
-def symbol_registry(spec):
-    """Default cross-domain registry, extended by the audience spec's `symbols`."""
+def symbol_registry(spec, problems=None):
+    """Default cross-domain registry, extended by the audience spec's `symbols`.
+
+    The spec is schema-checked, but valid JSON can still make `symbols` a list
+    or an entry a bare number. The schema reports that; the audit must not crash
+    before the report prints, so a wrong-shaped registry is reported here and
+    the default registry is kept.
+    """
     registry = dict(DEFAULT_SYMBOLS)
-    for key, entry in ((spec or {}).get("symbols") or {}).items():
+    spec = _as_dict(spec)
+    symbols = spec.get("symbols")
+    if symbols is None:
+        return registry
+    if not isinstance(symbols, dict):
+        if problems is not None:
+            problems.add(
+                "document.symbol-registry",
+                "PASS refused: the audience spec's `symbols` is not an object "
+                "(got %s); it must be a map of symbol -> {pattern, witnesses} "
+                "or symbol -> witness list" % _kind(symbols))
+        return registry
+    for key, entry in symbols.items():
         if isinstance(entry, dict):
             pattern = entry.get("pattern") or re.escape(key)
             witnesses = entry.get("witnesses") or [key.lower()]
-        else:  # a bare list of witnesses
+        elif isinstance(entry, list):  # a bare list of witnesses
             pattern, witnesses = re.escape(key), list(entry)
+        else:
+            if problems is not None:
+                problems.add(
+                    "document.symbol-registry",
+                    "PASS refused: the audience spec's `symbols[%r]` is not an "
+                    "object or a witness list (got %s)" % (key, _kind(entry)))
+            continue
+        if not isinstance(pattern, str):
+            pattern = re.escape(key)
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            if problems is not None:
+                problems.add(
+                    "document.symbol-registry",
+                    "PASS refused: the audience spec's `symbols[%r].pattern` is "
+                    "not a valid regular expression (%s); the symbol cannot be "
+                    "audited" % (key, e))
+            pattern = re.escape(key)
+        if isinstance(witnesses, str):
+            witnesses = [witnesses]
+        elif not isinstance(witnesses, list):
+            witnesses = [key.lower()]
         registry[key] = (pattern, [str(w).lower() for w in witnesses])
     return registry
 
@@ -653,6 +772,7 @@ def check_document_spec(text: str, spec, label: str, problems, is_beamer: bool =
     """Enforce the audience spec, plus the conditional symbol audit: every
     registered symbol that APPEARS in the document must have a defining witness
     in the Notation/Definitions block (references/deliverables.md)."""
+    spec = _as_dict(spec)
     source = strip_tex_comments(text)
     block = notation_block(source, is_beamer)
     if not block:
@@ -679,10 +799,13 @@ def check_document_spec(text: str, spec, label: str, problems, is_beamer: bool =
             "the audience spec is authoritative (LaTeX comments do not count)"
             % (label, sentence))
 
-    registry = symbol_registry(spec)
+    registry = symbol_registry(spec, problems)
+    must_define = spec.get("must_define")
+    if not isinstance(must_define, list):
+        must_define = []
     for key, (pattern, witnesses) in sorted(registry.items()):
         used = re.search(pattern, body, re.IGNORECASE)
-        required = key in ((spec or {}).get("must_define") or [])
+        required = key in must_define
         if not (used or required):
             continue
         if not any(w in low_block for w in witnesses):
@@ -690,7 +813,12 @@ def check_document_spec(text: str, spec, label: str, problems, is_beamer: bool =
                 "document.symbol",
                 "PASS refused: %s uses %r but its Notation/Definitions block does "
                 "not define it (expected a witness among %s)" % (label, key, witnesses))
-    for key in (spec or {}).get("avoid", []):
+    avoid = spec.get("avoid")
+    if not isinstance(avoid, list):
+        avoid = []
+    for key in avoid:
+        if not isinstance(key, str):
+            continue  # the schema reports a non-string entry
         entry = registry.get(key)
         pattern = entry[0] if entry else re.escape(key)
         if re.search(pattern, body, re.IGNORECASE):
@@ -834,15 +962,46 @@ def compile_tex_artifact(engine: str, tex: Path, label: str, problems):
 # ------------------------------------------------------------- deliverables
 
 
+def _carried_levels(record, found=None):
+    """Every `evidence_level` VALUE anywhere in the record.
+
+    A level is carried by a claim, not mentioned in one: `notes` is free text
+    the schema says is never evidence, and a claim's own disclaimer names the
+    level it does not have.
+    """
+    found = set() if found is None else found
+    if isinstance(record, dict):
+        for key, value in record.items():
+            if key == "evidence_level":
+                found.add(str(value).strip().lower())
+            else:
+                _carried_levels(value, found)
+    elif isinstance(record, list):
+        for item in record:
+            _carried_levels(item, found)
+    return found
+
+
 def check_overclaim(text: str, study, root: Path, problems):
-    """No evidence level may be asserted in prose unless some claim in the study
-    record carries it. Applies to ALL four levels, not just formal verification."""
-    low = strip_tex_comments(text).lower()
+    """No evidence level may be asserted in prose unless a CLAIM in the study
+    record carries it. Applies to ALL four levels, not just formal verification.
+
+    Only the two documented claim locations count: `validity_stages` and
+    `registry.json`. A declaration anywhere else (deliverables.last_accepted,
+    the consultation_record, notes) is not a claim and cannot license an
+    assertion -- the flattening rule is "any claim", not "any mention".
+
+    Prose is normalised before matching: LaTeX comments are stripped, `~` (a
+    non-breaking space in TeX) becomes a space, and whitespace is collapsed, so
+    "formally\nverified" and "formally  verified" are the same assertion.
+    """
+    low = norm(strip_tex_comments(text).replace("~", " "))
     try:
-        record = json.dumps(study) + (root / "registry.json").read_text(errors="replace")
-    except OSError:
-        record = json.dumps(study)
-    record = record.lower()
+        registry = json.loads((root / "registry.json").read_text(errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        registry = None
+    carried = (_carried_levels(_as_dict(study.get("validity_stages")))
+               | _carried_levels(registry))
     for level in EVIDENCE_LEVELS:
         # Strip disclaimers ("nothing here is formally verified") before looking
         # for an assertion of the level. The negation must be adjacent to the
@@ -856,7 +1015,7 @@ def check_overclaim(text: str, study, root: Path, problems):
         assertion = low
         for pattern in disclaimers:
             assertion = re.sub(pattern, " ", assertion)
-        if level in assertion and level not in record:
+        if level in assertion and level not in carried:
             problems.add(
                 "document.overclaim",
                 "PASS refused: the paper asserts %r but no claim in study.json / "
@@ -907,13 +1066,21 @@ def check_deliverable_paths(root: Path, problems, slides_req: str):
 
 
 def check_deliverables(study, root: Path, problems):
-    d = study.get("deliverables") or {}
-    if not isinstance(d, dict) or "paper" not in d:
+    if "deliverables" not in study:
         problems.add(
             "deliverables.declaration",
             "deliverables gate: study.json has no `deliverables` declaration "
             "(paper/slides/web). Record it at intake (see references/deliverables.md).")
         return
+    raw_deliverables = study.get("deliverables")
+    if not isinstance(raw_deliverables, dict):
+        problems.add(
+            "deliverables.declaration",
+            "PASS refused: deliverables is not an object (got %s); the schema "
+            "reports the wrong shape and the deliverable gates cannot read it"
+            % _kind(raw_deliverables))
+        return
+    d = raw_deliverables
     slides_req = str(d.get("slides", "")).lower()
     web_req = str(d.get("web", "")).lower()
     if not slides_req.startswith("required") and not slides_req.startswith("not-required"):
@@ -933,16 +1100,38 @@ def check_deliverables(study, root: Path, problems):
             "PASS refused: deliverables.consultation_pending is true -- the one-time "
             "audience consultation has not been completed; answer the checkpointed "
             "questionnaire before claiming PASS")
-    aud = d.get("audience") or {}
-    paper_spec, slides_spec, web_spec = aud.get("paper"), aud.get("slides"), aud.get("web")
-    if not isinstance(paper_spec, dict):
+    aud, aud_ok = {}, True
+    if "audience" in d:
+        raw_aud = d.get("audience")
+        if isinstance(raw_aud, dict):
+            aud = raw_aud
+        else:
+            aud_ok = False
+            problems.add(
+                "deliverables.audience",
+                "PASS refused: deliverables.audience is not an object (got %s); "
+                "the schema reports the wrong shape and the audience gates "
+                "cannot read it" % _kind(raw_aud))
+    paper_spec = aud.get("paper") if aud_ok else None
+    slides_spec = aud.get("slides") if aud_ok else None
+    web_spec = aud.get("web") if aud_ok else None
+    if aud_ok and "paper" not in aud:
         problems.add("deliverables.audience",
                      "PASS refused: deliverables.audience.paper is missing -- the "
                      "paper's audience spec must be set by the post-research consultation")
-    if slides_req.startswith("required") and not isinstance(slides_spec, dict):
+    elif aud_ok and not isinstance(paper_spec, dict):
         problems.add("deliverables.audience",
-                     "PASS refused: deliverables.audience.slides is missing -- the "
-                     "slides' audience spec must be set by the post-research consultation")
+                     "PASS refused: deliverables.audience.paper is not an object "
+                     "(got %s); the schema reports the wrong shape" % _kind(paper_spec))
+    if slides_req.startswith("required") and aud_ok:
+        if "slides" not in aud:
+            problems.add("deliverables.audience",
+                         "PASS refused: deliverables.audience.slides is missing -- the "
+                         "slides' audience spec must be set by the post-research consultation")
+        elif not isinstance(slides_spec, dict):
+            problems.add("deliverables.audience",
+                         "PASS refused: deliverables.audience.slides is not an object "
+                         "(got %s); the schema reports the wrong shape" % _kind(slides_spec))
 
     # Core philosophy (references/reproducibility.md R4/R5): deliverables never
     # cite scratch, and every path they print resolves from the study root.
@@ -989,8 +1178,8 @@ def check_deliverables(study, root: Path, problems):
             # slug must escape them for LaTeX (\_), so match against the
             # unescaped source.
             ref_source = source.replace(r"\_", "_")
-            for ref in (study.get("slug", ""), study.get("task_id", "")):
-                if ref and ref in ref_source:
+            for ref in (study.get("slug"), study.get("task_id")):
+                if isinstance(ref, str) and ref and ref in ref_source:
                     break
             else:
                 problems.add("deliverables.paper",
@@ -1007,7 +1196,8 @@ def check_deliverables(study, root: Path, problems):
                     problems.add("deliverables.bibliography",
                                  "PASS refused: paper bibliography file(s) missing: %s"
                                  % missing_bib)
-            check_document_spec(text, paper_spec, "artifacts/paper/main.tex", problems)
+            if aud_ok and (isinstance(paper_spec, dict) or "paper" not in aud):
+                check_document_spec(text, paper_spec, "artifacts/paper/main.tex", problems)
             if engine is not None:
                 compile_tex_artifact(engine, sandbox / "paper" / "main.tex",
                                      "artifacts/paper/main.tex", problems)
@@ -1035,23 +1225,31 @@ def check_deliverables(study, root: Path, problems):
                         problems.add("deliverables.bibliography",
                                      "PASS refused: slides bibliography file(s) missing: %s"
                                      % missing_bib)
-                check_document_spec(t, slides_spec, "artifacts/slides/main.tex",
-                                    problems, is_beamer=True)
+                if aud_ok and (isinstance(slides_spec, dict) or "slides" not in aud):
+                    check_document_spec(t, slides_spec, "artifacts/slides/main.tex",
+                                        problems, is_beamer=True)
+                check_overclaim(t, study, root, problems)
                 if engine is not None:
                     compile_tex_artifact(engine, sandbox / "slides" / "main.tex",
                                          "artifacts/slides/main.tex", problems)
 
     if web_req == "required":
-        if not isinstance(web_spec, dict):
-            problems.add("deliverables.audience",
-                         "PASS refused: deliverables.audience.web is missing -- the web "
-                         "artifact's audience spec must be set by the consultation")
+        if aud_ok:
+            if "web" not in aud:
+                problems.add("deliverables.audience",
+                             "PASS refused: deliverables.audience.web is missing -- the web "
+                             "artifact's audience spec must be set by the consultation")
+            elif not isinstance(web_spec, dict):
+                problems.add("deliverables.audience",
+                             "PASS refused: deliverables.audience.web is not an object "
+                             "(got %s); the schema reports the wrong shape" % _kind(web_spec))
         web = root / "artifacts" / "web" / "index.html"
         if not web.exists() or web.stat().st_size < 50:
             problems.add("deliverables.web",
                          "PASS refused: artifacts/web/index.html missing (web declared required)")
         else:
             raw = web.read_text(errors="replace")
+            check_overclaim(raw, study, root, problems)
             if "<html" not in raw.lower():
                 problems.add("deliverables.web",
                              "PASS refused: artifacts/web/index.html is not an HTML document")
@@ -1073,17 +1271,18 @@ def check_deliverables(study, root: Path, problems):
                     problems.add("deliverables.web",
                                  "PASS refused: artifacts/web/index.html leaves tag(s) "
                                  "unclosed: %s" % ["<%s>" % t for t in parser.stack])
-                sentence = (web_spec or {}).get("sentence") if isinstance(web_spec, dict) else None
-                if not sentence:
-                    problems.add(
-                        "document.audience-sentence",
-                        "PASS refused: the audience spec for artifacts/web/index.html has "
-                        "no `sentence` -- a document that cannot say who it is for fails "
-                        "the gate")
-                elif norm(sentence) not in norm(raw):
-                    problems.add("document.audience-sentence",
-                                 "PASS refused: artifacts/web/index.html does not state its "
-                                 "confirmed audience sentence")
+                if isinstance(web_spec, dict):
+                    sentence = web_spec.get("sentence")
+                    if not sentence:
+                        problems.add(
+                            "document.audience-sentence",
+                            "PASS refused: the audience spec for artifacts/web/index.html has "
+                            "no `sentence` -- a document that cannot say who it is for fails "
+                            "the gate")
+                    elif norm(sentence) not in norm(raw):
+                        problems.add("document.audience-sentence",
+                                     "PASS refused: artifacts/web/index.html does not state its "
+                                     "confirmed audience sentence")
                 if not (re.search(r'id\s*=\s*["\']references["\']', raw, re.IGNORECASE)
                         or re.search(r"<h[1-6][^>]*>\s*references", raw, re.IGNORECASE)):
                     problems.add("deliverables.web",
@@ -1104,7 +1303,7 @@ def check_deliverables(study, root: Path, problems):
 def check_document_adversary_reports(study, root: Path, problems):
     if not claiming_pass(study):
         return
-    d = study.get("deliverables") or {}
+    d = _as_dict(study.get("deliverables"))
     names = ["paper"]
     if str(d.get("slides", "")).lower().startswith("required"):
         names.append("slides")
@@ -1179,6 +1378,26 @@ VERDICT_LANGUAGE = re.compile(
 )
 
 
+# A hash anchors a status claim only when it IS a hash, not a date or a
+# timestamp: at least one a-f letter, 8+ hex characters, and either 40+
+# characters (a git SHA / SHA-256) or named frozen/snapshot/sha next to it.
+# The 8-hex short hash from the hard-lessons run (723662c7) stays valid; a
+# pure-digit date (20260815) and an all-digit `'1'*64` do not (issue #50).
+HASH_TOKEN_RE = re.compile(r"(?i)\b([0-9a-f]{8,64})\b")
+HASH_CONTEXT_RE = re.compile(r"(?i)\b(frozen|snapshot|sha(?:-?256)?)\b")
+
+
+def _status_names_hash(status: str) -> bool:
+    has_context = HASH_CONTEXT_RE.search(status) is not None
+    for m in HASH_TOKEN_RE.finditer(status):
+        token = m.group(1).lower()
+        if not re.search(r"[a-f]", token):
+            continue  # pure digits: a date or timestamp, never a hash
+        if len(token) >= 40 or has_context:
+            return True
+    return False
+
+
 def check_status_verdict_reference(study, root: Path, problems):
     """L4: status is written from verdicts, never before them.
 
@@ -1191,8 +1410,8 @@ def check_status_verdict_reference(study, root: Path, problems):
     hit = VERDICT_LANGUAGE.search(status)
     if hit is None:
         return
-    if re.search(r"(?i)\b[0-9a-f]{6,}\b", status) is not None:
-        return  # a frozen snapshot hash anchors the claim
+    if _status_names_hash(status):
+        return
     refs = re.findall(r"(?:audits|derivations|artifacts)/[\w./-]+", status)
     if any((root / ref).is_file() for ref in refs):
         return
@@ -1213,10 +1432,10 @@ def check_stage3_claim_digest(study, problems):
     after that certification and must be re-certified before it can carry
     evidence again.
     """
-    s3 = (study.get("validity_stages") or {}).get("stage3_general_claim") or {}
+    s3 = _as_dict(_as_dict(study.get("validity_stages")).get("stage3_general_claim"))
     recorded = s3.get("claim_sha256")
     claim = s3.get("claim")
-    if not recorded or not claim:
+    if not recorded or not isinstance(claim, str) or not claim:
         return
     recorded = str(recorded).lower()
     current = sha256_text(claim)
@@ -1236,7 +1455,7 @@ def check_intake_pins(study, root: Path, problems):
     under those exact files; a reissue that changed them is a re-intake
     event, not an on-the-fly repair.
     """
-    pins = study.get("intake_pins") or {}
+    pins = _as_dict(study.get("intake_pins"))
     schema_pin = pins.get("schema_sha256")
     if schema_pin:
         current = sha256_hex(SCHEMA_DIR / "study.schema.json")
@@ -1284,16 +1503,14 @@ def _verified_source_ids(map_data):
     as a result on its authority.
     """
     ids = set()
-    for entries in (map_data or {}).values():
-        if not isinstance(entries, list):
-            continue
-        for entry in entries:
+    for entries in _as_dict(map_data).values():
+        for entry in _as_list(entries):
             if not isinstance(entry, dict) or entry.get("category") == "open":
                 continue
-            for src in entry.get("sources") or []:
+            for src in _as_list(entry.get("sources")):
                 if not isinstance(src, dict):
                     continue
-                if (src.get("adversarial_check") or {}).get("status") == "verified-current":
+                if _as_dict(src.get("adversarial_check")).get("status") == "verified-current":
                     ids.add(_norm_id(src.get("paper_id", "")))
     return ids
 
@@ -1337,7 +1554,7 @@ def _check_completeness(lit, root: Path, problems):
     The mandatory sweeps are read from the schema's own `required` list, so the
     validator never carries a second copy of them (Decision 13, rule 3).
     """
-    comp_file = lit.get("completeness_file") or COMPLETENESS_DEFAULT
+    comp_file = _path_field(lit, "completeness_file", COMPLETENESS_DEFAULT)
     comp_path = root / comp_file
     if not comp_path.exists():
         problems.add(
@@ -1365,10 +1582,12 @@ def _check_completeness(lit, root: Path, problems):
 
     mandatory = schema["definitions"]["sweeps"]["required"]
     swept = set()
-    for line in (data.get("lines") or []) if isinstance(data, dict) else []:
+    for line in _as_list(data.get("lines")) if isinstance(data, dict) else []:
         if not isinstance(line, dict):
             continue
-        swept.add(line.get("subproblem_id"))
+        sid = line.get("subproblem_id")
+        if isinstance(sid, str):
+            swept.add(sid)
         sweeps = line.get("sweeps")
         if not isinstance(sweeps, dict):
             continue
@@ -1391,7 +1610,8 @@ def check_literature_gate(study, root: Path, problems):
     # §10: the intake sweep is mandatory, skippable ONLY on an explicit user
     # assertion -- which must then be on the record, not in someone's memory.
     if lit.get("phase") == "skipped":
-        if not (lit.get("skip_reason") or "").strip():
+        skip_reason = lit.get("skip_reason")
+        if not (isinstance(skip_reason, str) and skip_reason.strip()):
             problems.add(
                 "literature.skip-unrecorded",
                 "literature gate: literature.phase is 'skipped' with no `skip_reason` -- "
@@ -1399,7 +1619,7 @@ def check_literature_gate(study, root: Path, problems):
                 "and that assertion has to be recorded to count")
         return
 
-    map_file = lit.get("map_file") or LITERATURE_MAP_DEFAULT
+    map_file = _path_field(lit, "map_file", LITERATURE_MAP_DEFAULT)
     map_path = root / map_file
     map_data = None
     if not map_path.exists():
@@ -1441,21 +1661,20 @@ def check_literature_gate(study, root: Path, problems):
     def verified_entries(spid):
         entries = (map_data or {}).get(spid) if isinstance(map_data, dict) else None
         out = []
-        if isinstance(entries, list):
-            for entry in entries:
-                if not isinstance(entry, dict):
-                    continue
-                for src in entry.get("sources") or []:
-                    if (isinstance(src, dict)
-                            and (src.get("adversarial_check") or {}).get("status") == "verified-current"):
-                        out.append(entry)
-                        break
+        for entry in _as_list(entries):
+            if not isinstance(entry, dict):
+                continue
+            for src in _as_list(entry.get("sources")):
+                if (isinstance(src, dict)
+                        and _as_dict(src.get("adversarial_check")).get("status") == "verified-current"):
+                    out.append(entry)
+                    break
         return out
 
     # (1) a 'known' mark must be backed by an independently verified record.
-    for sp in study.get("subproblems") or []:
-        if not isinstance(sp, dict):
-            continue
+    for sp in _as_list(study.get("subproblems")):
+        if not isinstance(sp, dict) or not isinstance(sp.get("id"), str):
+            continue  # the schema reports a non-string id
         if sp.get("status") == "known" and not verified_entries(sp.get("id")):
             problems.add(
                 "literature.known-unverified",
@@ -1492,9 +1711,11 @@ def check_literature_gate(study, root: Path, problems):
     #      escalation nobody can open is a claim, not a record.
     if isinstance(map_data, dict):
         for spid, entries in map_data.items():
-            for entry in entries if isinstance(entries, list) else []:
-                target = entry.get("escalation") if isinstance(entry, dict) else None
-                if target and not (root / target).exists():
+            for entry in _as_list(entries):
+                if not isinstance(entry, dict):
+                    continue
+                target = entry.get("escalation")
+                if isinstance(target, str) and target and not (root / target).exists():
                     problems.add(
                         "literature.escalation-missing",
                         "literature gate: the %s record for %s declares escalation %r, "
@@ -1505,7 +1726,8 @@ def check_literature_gate(study, root: Path, problems):
     swept = _check_completeness(lit, root, problems)
     if isinstance(map_data, dict):
         for spid, entries in map_data.items():
-            if not isinstance(entries, list):
+            entries = _as_list(entries)
+            if not entries:
                 continue
             if not any(isinstance(e, dict) and e.get("category") != "open" for e in entries):
                 continue
@@ -1517,17 +1739,17 @@ def check_literature_gate(study, root: Path, problems):
                     "that was never swept cannot produce a verified record" % (map_file, spid))
 
     # (2) every exported negative must trace to an 'impossible' verified entry.
-    exports_file = lit.get("negative_exports_file") or NEGATIVE_EXPORTS_DEFAULT
+    exports_file = _path_field(lit, "negative_exports_file", NEGATIVE_EXPORTS_DEFAULT)
     exports_path = root / exports_file
-    exports_data = None
+    exports = None
     if exports_path.exists():
         try:
-            exports_data = exports = json.loads(exports_path.read_text())
+            exports = json.loads(exports_path.read_text())
         except json.JSONDecodeError as e:
             problems.add("literature.exports-invalid",
                          "literature gate: %s is not valid JSON: %s" % (exports_file, e))
             exports = None
-        if isinstance(exports, dict):
+        if exports is not None:
             schema = load_schema("negative-exports.schema.json")
             if schema is None:
                 problems.add("schema.missing",
@@ -1538,20 +1760,23 @@ def check_literature_gate(study, root: Path, problems):
                     problems.add("literature.exports-schema",
                                  "%s does not match negative-exports.schema.json: %s"
                                  % (exports_file, e))
-            for ex in exports.get("exports") or []:
+        if isinstance(exports, dict):
+            for ex in _as_list(exports.get("exports")):
                 if not isinstance(ex, dict):
                     continue
                 spid = ex.get("subproblem_id")
+                if not isinstance(spid, str):
+                    continue  # the schema reports a non-string id
                 pid = _norm_id(ex.get("source_paper_id", ""))
                 ok = False
                 entries = (map_data or {}).get(spid) if isinstance(map_data, dict) else None
-                for entry in (entries or []):
+                for entry in _as_list(entries):
                     if not isinstance(entry, dict) or entry.get("category") != "impossible":
                         continue
-                    for src in entry.get("sources") or []:
+                    for src in _as_list(entry.get("sources")):
                         if (isinstance(src, dict)
                                 and _norm_id(src.get("paper_id", "")) == pid
-                                and (src.get("adversarial_check") or {}).get("status") == "verified-current"):
+                                and _as_dict(src.get("adversarial_check")).get("status") == "verified-current"):
                             ok = True
                 if not ok:
                     problems.add(
@@ -1564,16 +1789,19 @@ def check_literature_gate(study, root: Path, problems):
     # (2b) the map's negative_export flag and the exports file are one fact
     #      recorded twice; they may not disagree.
     exported_pairs = set()
-    if isinstance(exports_data, dict):
-        for ex in exports_data.get("exports") or []:
-            if isinstance(ex, dict):
-                exported_pairs.add((ex.get("subproblem_id"), _norm_id(ex.get("source_paper_id", ""))))
+    if isinstance(exports, dict):
+        for ex in _as_list(exports.get("exports")):
+            if not isinstance(ex, dict):
+                continue
+            sid = ex.get("subproblem_id")
+            if isinstance(sid, str):
+                exported_pairs.add((sid, _norm_id(ex.get("source_paper_id", ""))))
     if isinstance(map_data, dict):
         for spid, entries in map_data.items():
-            for entry in entries if isinstance(entries, list) else []:
+            for entry in _as_list(entries):
                 if not isinstance(entry, dict):
                     continue
-                pids = {_norm_id(s.get("paper_id", "")) for s in entry.get("sources") or []
+                pids = {_norm_id(s.get("paper_id", "")) for s in _as_list(entry.get("sources"))
                         if isinstance(s, dict)}
                 sent = any((spid, pid) in exported_pairs for pid in pids)
                 if entry.get("negative_export") and not sent:
@@ -1625,7 +1853,7 @@ def check_literature_gate(study, root: Path, problems):
 
     # (3) the verified refs.bib seed (§8): a concluded lane that verified any
     #     non-open result must leave a seed; if present, every entry must trace.
-    seed_file = lit.get("refs_seed_file") or REFS_SEED_DEFAULT
+    seed_file = _path_field(lit, "refs_seed_file", REFS_SEED_DEFAULT)
     seed_path = root / seed_file
     if phase == "concluded" and verified:
         if not seed_path.exists():
@@ -1652,41 +1880,98 @@ def check_literature_gate(study, root: Path, problems):
 # --------------------------------------------------------------------- main
 
 
+def _run_stamp():
+    return {
+        "id": time.strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:8],
+        "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+
+def _report(root: Path, result, claiming, problems, hashes=None):
+    return {
+        "schema": "rq-check-report",
+        "version": 2,
+        "study_root": str(root),
+        "run": _run_stamp(),
+        "result": result,
+        "claiming_pass": claiming,
+        "problems": list(problems),
+        "hashes": hashes or {},
+        "environment": env_manifest(),
+    }
+
+
+def _error_report(root: Path, message: str):
+    """An ERROR still writes the machine-readable report: tooling that parses
+    --out must not have to guess whether a run produced one."""
+    problems = Problems()
+    problems.add("validator.error", message)
+    return _report(root, "error", False, problems)
+
+
 def run(study_root: str):
+    """Run every gate. Returns (report, summary, exit_code).
+
+    Each gate is wrapped: an unexpected exception becomes a validator.internal
+    problem and turns the run into ERROR (exit 2) instead of a traceback, and
+    the --out report is still written. A study may be schema-valid JSON of the
+    wrong shape; every gate guards what it reads so the schema's own problem
+    line prints before any semantic gate looks at the field.
+    """
     root = Path(study_root).resolve()
     sp = root / "study.json"
     if not sp.exists():
-        return None, "ERROR: no study.json under %s" % root, 2
+        message = "ERROR: no study.json under %s" % root
+        return _error_report(root, message), message, 2
     try:
-        study = json.loads(sp.read_text())
+        raw_study = json.loads(sp.read_text())
     except json.JSONDecodeError as e:
-        return None, "ERROR: study.json invalid JSON: %s" % e, 2
-    registry = None
-    rp = root / "registry.json"
+        message = "ERROR: study.json invalid JSON: %s" % e
+        return _error_report(root, message), message, 2
+    study = _as_dict(raw_study)
+
     problems = Problems()
+    registry = None
+    registry_present = False
+    rp = root / "registry.json"
     if not rp.exists():
         problems.add("registry.missing", "registry.json missing")
     else:
         try:
             registry = json.loads(rp.read_text())
+            registry_present = True
         except json.JSONDecodeError as e:
             problems.add("registry.invalid", "registry.json invalid JSON: %s" % e)
 
-    check_against_schemas(study, registry, problems)
-    check_literature_gate(study, root, problems)
-    check_coverage(study, problems)
-    check_registry_consistency(study, registry or {}, root, problems)
-    check_record_present(study, root, problems)
-    check_deliverables(study, root, problems)
-    check_document_adversary_reports(study, root, problems)
-    check_pass_evidence(study, root, problems)
-    check_closeout_junk(study, root, problems)
-    check_env_lane(study, root, problems)
-    check_tolerance_reconciliation(study, root, problems)
-    check_declared_hashes(root, problems)
-    check_status_verdict_reference(study, root, problems)
-    check_stage3_claim_digest(study, problems)
-    check_intake_pins(study, root, problems)
+    gates = (
+        ("schema", check_against_schemas,
+         (raw_study, registry, problems, registry_present)),
+        ("literature", check_literature_gate, (study, root, problems)),
+        ("coverage", check_coverage, (study, problems)),
+        ("registry", check_registry_consistency, (study, registry or {}, root, problems)),
+        ("record", check_record_present, (study, root, problems)),
+        ("deliverables", check_deliverables, (study, root, problems)),
+        ("document-adversary", check_document_adversary_reports, (study, root, problems)),
+        ("pass-evidence", check_pass_evidence, (study, root, problems)),
+        ("closeout", check_closeout_junk, (study, root, problems)),
+        ("env-lane", check_env_lane, (study, root, problems)),
+        ("tolerance", check_tolerance_reconciliation, (study, root, problems)),
+        ("declared-hashes", check_declared_hashes, (root, problems)),
+        ("status", check_status_verdict_reference, (study, root, problems)),
+        ("stage3-digest", check_stage3_claim_digest, (study, problems)),
+        ("intake-pins", check_intake_pins, (study, root, problems)),
+    )
+    internal = False
+    for gate_id, gate, args in gates:
+        try:
+            gate(*args)
+        except Exception as e:  # the boundary must report, never traceback
+            internal = True
+            problems.add(
+                "validator.internal",
+                "internal validator error in the %s gate (%s: %s); the gate was "
+                "skipped and the rest of the report is still valid -- this is a "
+                "validator bug, not a study defect" % (gate_id, type(e).__name__, e))
 
     hashes = {}
     for name in ("study.json", "registry.json"):
@@ -1695,30 +1980,23 @@ def run(study_root: str):
             hashes[name] = sha256_hex(p)
 
     status = study.get("status", "")
-    result = "fail" if problems else "pass"
+    if internal:
+        result, code = "error", 2
+    elif problems:
+        result, code = "fail", 1
+    else:
+        result, code = "pass", 0
     if problems:
-        summary = "FAIL -- %d problem(s):\n" % len(problems) + "\n".join(
+        summary = "%s -- %d problem(s):\n" % (
+            "ERROR" if internal else "FAIL", len(problems)) + "\n".join(
             "  - " + p["message"] for p in problems)
     elif claiming_pass(study):
         summary = "PASS -- state valid; declared status %r has complete evidence." % status
     else:
         summary = "OK -- state valid; status %r (no PASS claimed)." % status
 
-    report = {
-        "schema": "rq-check-report",
-        "version": 2,
-        "study_root": str(root),
-        "run": {
-            "id": time.strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:8],
-            "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        },
-        "result": result,
-        "claiming_pass": claiming_pass(study),
-        "problems": list(problems),
-        "hashes": hashes,
-        "environment": env_manifest(),
-    }
-    return report, summary, (1 if problems else 0)
+    return (_report(root, result, claiming_pass(study), problems, hashes),
+            summary, code)
 
 
 def main(argv=None):
@@ -1726,9 +2004,14 @@ def main(argv=None):
     ap.add_argument("--study", required=True, help="path to the study root (contains study.json)")
     ap.add_argument("--out", help="also write the JSON report to this file")
     args = ap.parse_args(argv)
-    report, summary, code = run(args.study)
+    try:
+        report, summary, code = run(args.study)
+    except Exception as e:  # a report must still be written on an internal failure
+        root = Path(args.study).resolve()
+        summary = "ERROR: validator failed: %s: %s" % (type(e).__name__, e)
+        report, code = _error_report(root, summary), 2
     print(summary)
-    if args.out and report is not None:
+    if args.out:
         Path(args.out).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
         print("wrote report to", args.out)
     return code

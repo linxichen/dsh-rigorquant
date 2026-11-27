@@ -8,12 +8,14 @@
 // would churn). So this row lands the lane, and the files the skill cites
 // next to it, at the profile's boot. It is the whole of the lane's install:
 // distribution is the plugin manager (Decision 29), and `dsh plugin add` runs
-// this row at the next profile start.
+// this row at the next profile start. docs/ is not copied: no shipped skill or
+// persona reads it from the profile, and it is 3.9 MB per boot.
 //
-//   env/ mcp/ docs/ → $DSH_HOME/share/rigorquant/<same>
+//   env/ mcp/ → $DSH_HOME/share/rigorquant/<same>
 //
 // and removes the `$DSH_HOME/.agent-presets/rigorquant` an older release
-// (Decision 22) landed there, but only when that tree's marker says this
+// (Decision 22) landed there, plus the `$DSH_HOME/share/rigorquant/docs` tree
+// releases before 0.8.3 copied, but only when that tree's marker says this
 // package put it there.
 //
 // Semantics, per managed directory:
@@ -54,10 +56,11 @@ const MANAGER = 'dsh-rigorquant'
 const MANAGED_DIRS = [
   ['env', join('share', 'rigorquant', 'env')],
   ['mcp', join('share', 'rigorquant', 'mcp')],
-  ['docs', join('share', 'rigorquant', 'docs')],
 ]
 /** Where releases before 0.6.0 landed the preset, relative to $DSH_HOME. */
 const ORPHANED_PRESET = join('.agent-presets', 'rigorquant')
+/** Where releases before 0.8.3 copied the docs tree, relative to $DSH_HOME. */
+const ORPHANED_DOCS = join('share', 'rigorquant', 'docs')
 
 const pkgRoot = () => fileURLToPath(new URL('..', import.meta.url))
 
@@ -187,6 +190,19 @@ export function removeOrphanedPreset(home) {
   return { status: 'removed' }
 }
 
+/**
+ * Remove the docs tree releases before 0.8.3 copied under $DSH_HOME. Only a
+ * tree whose marker names this package goes; anything else there is the
+ * user's. Returns { status: 'removed' | 'not-ours' | 'absent' }.
+ */
+export function removeOrphanedDocs(home) {
+  const target = join(home, ORPHANED_DOCS)
+  if (!exists(target)) return { status: 'absent' }
+  if (readMarker(target)?.managedBy !== MANAGER) return { status: 'not-ours' }
+  rmSync(target, { recursive: true, force: true })
+  return { status: 'removed' }
+}
+
 /** Sync every managed directory; returns one outcome per pair. */
 export function runSync(home = dshHome()) {
   const root = pkgRoot()
@@ -221,6 +237,13 @@ export function apply(ctx, config) {
     }
   } catch (error) {
     ctx.logger?.warn?.(`${name}: orphaned preset removal failed: ${errorMessage(error)}`)
+  }
+  try {
+    if (removeOrphanedDocs(home).status === 'removed') {
+      ctx.logger?.info?.(`${name}: removed ${join(home, ORPHANED_DOCS)}, which the boot sync no longer copies`)
+    }
+  } catch (error) {
+    ctx.logger?.warn?.(`${name}: orphaned docs removal failed: ${errorMessage(error)}`)
   }
 }
 

@@ -10,8 +10,8 @@ consume:
 - every ``exports`` entry resolves (a wildcard entry resolves to at least one
   file);
 - the lane template directories the boot sync copies (``env/``, ``mcp/``,
-  ``docs/``, read from ``dsh/sync.js``) are present, with the compute lane's
-  anchor files;
+  read from ``dsh/sync.js``) are present, with the compute lane's anchor
+  files;
 - no current package file references the installer 0.8.1 removed -- the
   script, its skills-only mode, a migration performed by the installer, or its
   `npx` entry point. The changelog, the architecture record and the ADRs are

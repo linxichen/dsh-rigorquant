@@ -25,7 +25,7 @@
 const fs = require('node:fs')
 const vm = require('node:vm')
 
-const { inlineRelativeImports } = require('./harness_locator.cjs')
+const { esmToCommonJs } = require('./harness_locator.cjs')
 
 // The shipped tier matrix as the probe expects it. The router's own constants
 // are compared against these below, so a retarget of the fallback cannot pass
@@ -59,10 +59,8 @@ function equal(actual, expected, label) {
 // from its own file the same way, so the probe follows the shipped module
 // rather than restating it.
 function loadHostModule(modulePath) {
-  let source = inlineRelativeImports(fs.readFileSync(modulePath, 'utf8'), modulePath)
+  let source = esmToCommonJs(fs.readFileSync(modulePath, 'utf8'), modulePath)
   source = source.replace("import z from '@deepseek-ai/schemastery'", 'const z = schemaStub')
-  source = source.replace(/^export const /gm, 'const ')
-  source = source.replace(/^export \{ ([^}]+) \}$/m, 'module.exports = { $1 }')
   const schema = {
     required() { return this },
     default() { return this },

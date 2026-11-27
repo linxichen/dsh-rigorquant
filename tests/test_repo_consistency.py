@@ -861,6 +861,25 @@ def test_the_router_and_the_card_name_the_same_roles_and_slots():
         % (card_slots, verdict["slots"]))
 
 
+def test_the_client_bundle_pins_the_shared_role_list():
+    """dsh/roles.js says the settings card's own copy is pinned by a test.
+
+    dsh/client.js is a classic <script> bundle, so it structurally cannot
+    import the Node module and carries its own `const ROLES`. A role added to
+    one list and not the other leaves a card row for a role the host refuses
+    (or a routable role with no row); this is that pin, and it also pins the
+    card order both surfaces render in.
+    """
+    client = (REPO / "dsh" / "client.js").read_text()
+    match = re.search(r"const ROLES = \[([^\]]*)\]", client)
+    assert match, "dsh/client.js no longer declares its ROLES copy"
+    card_roles = re.findall(r"'([a-z-]+)'", match.group(1))
+    host = host_roles()
+    assert card_roles == host, (
+        "the card's role copy drifted from dsh/roles.js: card=%s host=%s"
+        % (card_roles, host))
+
+
 def _persona_prefix():
     preset = preset_children()
     # The folded scalar runs until the first non-blank line at the key's own
@@ -1055,6 +1074,14 @@ def test_skill_text_uses_the_glossary_vocabulary():
     step3 = flat[flat.index("## Step 3"):flat.index("**Stage order")]
     for move in ("Promise", "Fan out", "Ground-truth", "Attack", "Certify"):
         assert move in step3, "Step 3 does not name the %s move" % move
+
+
+def host_roles():
+    """The host modules' role vocabulary, from its one source (dsh/roles.js)."""
+    src = (REPO / "dsh" / "roles.js").read_text()
+    match = re.search(r"export const ROLES = \[([^\]]*)\]", src)
+    assert match, "dsh/roles.js no longer exports its ROLES list"
+    return re.findall(r"'([a-z-]+)'", match.group(1))
 
 
 def _section(text, heading, level=2):
@@ -1485,34 +1512,23 @@ def test_router_routes_live_on_its_own_volatile_config():
     assert "ROUTE_KEYS = ROLES.flatMap((role) => [`${role}Primary`, `${role}Fallback`])" in router
 
 
-def test_team_roles_pin_persona_files_the_name_regex_and_the_router_roles():
-    """dsh/team.js's TEAMMATE_ROLES, dsh/personas/*.md, and dsh/index.js's
-    ROLES (minus 'root') must name exactly the same seven roles.
+def test_the_role_vocabulary_matches_the_persona_files():
+    """dsh/roles.js's ROLES (minus 'root') and dsh/personas/*.md must name
+    exactly the same seven roles.
 
-    Drift in any one silently strands a teammate without composition (a
-    role dsh/team.js doesn't know) or a persona file nobody reads (a role
-    dsh/team.js knows but no file backs). This is also the router's own
-    identity contract since issue #11: role resolution comes from the
-    teammate NAME now, not a preset tag, so this name↔persona identity check
-    is what pins the router's ROLES list correct (replacing the former
-    tag↔row identity test against the preset's `[[rq:role=…]]` tags).
+    Drift silently strands a teammate without composition (a role the team
+    module doesn't know) or a persona file nobody reads (a role no file
+    backs). This is also the router's own identity contract since issue #11:
+    role resolution comes from the teammate NAME now, not a preset tag. One
+    file backs both host modules (issue #50), so this pins that single list
+    against the personas instead of comparing two copies.
     """
-    router = (REPO / "dsh" / "index.js").read_text()
-    router_match = re.search(r"export const ROLES = \[([^\]]*)\]", router)
-    assert router_match, "dsh/index.js no longer exports its ROLES list"
-    router_roles = set(re.findall(r"'([a-z-]+)'", router_match.group(1))) - {"root"}
-
-    team = (REPO / "dsh" / "team.js").read_text()
-    team_match = re.search(r"export const TEAMMATE_ROLES = \[([^\]]*)\]", team)
-    assert team_match, "dsh/team.js no longer exports TEAMMATE_ROLES"
-    team_roles = set(re.findall(r"'([a-z-]+)'", team_match.group(1)))
-
+    roles = set(host_roles()) - {"root"}
     persona_dir = REPO / "dsh" / "personas"
     persona_roles = {p.stem for p in persona_dir.glob("*.md")}
 
-    assert router_roles == team_roles == persona_roles, (
-        "role drift: router=%s team=%s personas=%s"
-        % (sorted(router_roles), sorted(team_roles), sorted(persona_roles)))
+    assert roles == persona_roles, (
+        "role drift: roles.js=%s personas=%s" % (sorted(roles), sorted(persona_roles)))
 
     for role in persona_roles:
         text = (persona_dir / f"{role}.md").read_text()
@@ -1627,37 +1643,25 @@ def test_bundle_patch_mounts_the_model_router():
         "the router row must load this package (name: dsh-rigorquant)")
 
 
-def test_every_role_has_a_description_and_frequency_in_both_locales():
-    """The settings card explains each role and how often it is invoked.
+def test_every_role_has_a_description_in_both_locales():
+    """The settings card explains each role.
 
-    A role that loses its copy row renders an empty left column (the badge
-    silently falls back to 'low'), which is exactly the drift this pins out.
+    A role that loses its copy row renders an empty left column, which is
+    exactly the drift this pins out.
     """
-    import pathlib
-
-    router = (pathlib.Path(__file__).resolve().parents[1] / "dsh" / "index.js").read_text()
-    match = re.search(r"export const ROLES = \[([^\]]*)\]", router)
-    assert match, "dsh/index.js no longer exports its ROLES list"
-    roles = re.findall(r"'([a-z-]+)'", match.group(1))
+    roles = host_roles()
     client = (REPO / "dsh" / "client.js").read_text()
     # The card's copy block lives inside the factory closure and must be
     # bilingual — a monolingual block is a language that silently falls back
     # to the other's strings.
     sections = re.findall(r"^\s{2}(en|zh): \{", client, re.MULTILINE)
     assert sections == ["en", "zh"], "the card copy sections moved; update this test"
-    vocabulary = {"en": {"Frequent", "Common", "Rare"}, "zh": {"频繁", "常见", "少见"}}
     for role in roles:
         for locale in ("en", "zh"):
             block = client[client.index(f"{locale}: {{"):]
             block = block[:block.index("\n  },")]
-            for key in (f"'roleDesc.{role}':", f"'roleFreq.{role}':"):
-                assert key in block, (
-                    "client.js %s copy lacks %s for role %s" % (locale, key, role))
-            label = re.search(r"'roleFreq\.%s': '([^']+)'" % role, block)
-            assert label is not None, "roleFreq.%s missing in %s copy" % (role, locale)
-            assert label.group(1) in vocabulary[locale], (
-                "roleFreq.%s in %s copy is %r; expected one of %s"
-                % (role, locale, label.group(1), sorted(vocabulary[locale])))
+            assert f"'roleDesc.{role}':" in block, (
+                "client.js %s copy lacks roleDesc.%s" % (locale, role))
 
 
 def test_no_document_claims_more_enforcement_tiers_than_it_lists():
@@ -1887,9 +1891,7 @@ def test_the_shipped_procedure_names_every_teammate_role():
     Teams the role is the teammate name, so the procedure must name each
     `<role>-<n>` it creates.
     """
-    team = (REPO / "dsh/team.js").read_text()
-    roles = re.findall(r"'([a-z-]+)'", re.search(
-        r"export const TEAMMATE_ROLES = \[([^\]]*)\]", team).group(1))
+    roles = [role for role in host_roles() if role != "root"]
     skills = REPO / "agent-presets/rigorquant/skills"
     corpus = "\n".join(p.read_text() for p in skills.rglob("*.md"))
     missing = [r for r in roles if "%s-<n>" % r not in corpus]
@@ -1919,7 +1921,7 @@ def test_pre_commit_hook_enforces_95_percent_validator_coverage():
         "missing executable .githooks/pre-commit coverage gate")
     text = hook.read_text()
     for required in ("RQ_COVERAGE=1", "UV_CACHE_DIR", "coverage combine",
-                     "--fail-under=95", "rm -f .coverage .coverage.*"):
+                     "--fail-under=95", "rm -f .coverage .coverage.*", "-n auto"):
         assert required in text, "pre-commit hook lost %r" % required
     assert not re.search(r"^rm -f \.coverage\*$", text, re.MULTILINE), (
         "the broad cleanup glob deletes .coveragerc itself")
@@ -1995,8 +1997,10 @@ def test_boot_sync_manages_the_lane_only_and_never_derived_state():
     """
     sync = (REPO / "dsh" / "sync.js").read_text()
     managed = sync[sync.index("const MANAGED_DIRS"):sync.index("const ORPHANED_PRESET")]
-    for tree in ("env", "mcp", "docs"):
+    for tree in ("env", "mcp"):
         assert f"['{tree}'" in managed, f"sync.js does not manage {tree}"
+    assert "'docs'" not in managed, (
+        "sync.js copies docs/ (3.9 MB) into a profile no skill reads it from")
     assert "agent-presets" not in managed, "sync.js still copies the preset"
     for derived in (".venv", "__pycache__"):
         assert f"'{derived}'" in sync, f"sync.js does not exclude {derived}"

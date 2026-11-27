@@ -54,7 +54,7 @@
     # Compute-lane sync (docs/architecture.md, Decisions 22 and 25). The
     # preset is declared in ./agent-presets/rigorquant.patch.yml; what a
     # declaration cannot serve is the uv lane, since node_modules cannot host
-    # it. This host half therefore lands env/, mcp/ and docs/ into
+    # it. This host half therefore lands env/ and mcp/ into
     # $DSH_HOME/share/rigorquant/ at boot (idempotent byte-compare; derived
     # state such as .venv never copied or pruned) and removes the directory
     # preset an older release landed, only when its .rq-sync.json names this

@@ -39,7 +39,7 @@ jobs:
       # exactly what the hook runs -- ship-what-you-test.
       - name: Run the test suite under the coverage gate
         run: |
-          RQ_COVERAGE=1 uv run --frozen --project env python -m pytest tests/ -q
+          RQ_COVERAGE=1 uv run --frozen --project env python -m pytest tests/ -q -n auto
           uv run --frozen --project env python -m coverage combine --rcfile .coveragerc
           uv run --frozen --project env python -m coverage report --rcfile .coveragerc --fail-under=95
 

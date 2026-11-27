@@ -33,6 +33,14 @@ This deck is for a working quantitative researcher. \cite{markowitz1952}
 """
 
 
+def _set_path(record, path, value):
+    """Set a nested value by key path (ints index lists)."""
+    node = record
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+
+
 def _require_slides(study, tex=SLIDES_TEX, spec=None):
     s = read_study(study)
     s["deliverables"]["slides"] = "required"
@@ -137,6 +145,28 @@ def test_required_slides_without_an_audience_spec_refuse_pass(study):
     assert "deliverables.audience.slides is missing" in out
 
 
+def test_a_wrong_shaped_slides_audience_spec_says_is_not_an_object(study):
+    s = read_study(study)
+    s["deliverables"]["slides"] = "required"
+    s["deliverables"]["audience"]["slides"] = "poets"
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "deliverables.audience.slides is not an object" in out
+    assert "deliverables.audience.slides is missing" not in out
+
+
+def test_a_wrong_shaped_web_audience_spec_says_is_not_an_object(study):
+    s = read_study(study)
+    s["deliverables"]["web"] = "required"
+    s["deliverables"]["audience"]["web"] = "poets"
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "deliverables.audience.web is not an object" in out
+    assert "deliverables.audience.web is missing" not in out
+
+
 # ── the slides-required block ──────────────────────────────────────────────
 
 
@@ -176,6 +206,17 @@ def test_a_deck_whose_bibliography_file_is_missing_is_refused(study, tex_availab
     code, out = run_check(study)
     assert code == 1
     assert "slides bibliography file(s) missing" in out
+
+
+def test_a_slides_overclaim_is_refused(study, tex_available):
+    """Issue #52: the no-overclaim rule runs on the slides deck too."""
+    _require_slides(study, tex=SLIDES_TEX.replace(
+        r"This deck is for a working quantitative researcher. \cite{markowitz1952}",
+        r"This deck is for a working quantitative researcher. The result is "
+        r"formally verified. \cite{markowitz1952}"))
+    code, out = run_check(study)
+    assert code == 1
+    assert "overclaim" in out and "formally verified" in out
 
 
 # ── the web-required block ─────────────────────────────────────────────────
@@ -480,6 +521,229 @@ def test_a_type_violation_is_reported(study):
     assert "expected type" in out
 
 
+@pytest.mark.parametrize("field,value", [
+    ("deliverables", [1]),
+    ("validity_stages", [1]),
+    ("tolerances", [{"a": 1}]),
+])
+def test_a_wrong_shaped_field_is_a_problem_not_a_traceback(study, field, value, tmp_path):
+    """Issue #50: valid JSON can make any field a list. The schema reports the
+    shape, and the semantic gates must still run -- a traceback loses both the
+    gap list and the --out report tooling parses."""
+    s = read_study(study)
+    s[field] = value
+    write_study(study, s)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "expected type" in out
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+def test_a_wrong_shaped_literature_map_is_a_problem_not_a_traceback(study, tmp_path):
+    """Issue #50: known-results.json = [1] crashed the verified-source walk."""
+    lit = _lit_declare(study)
+    (lit / "known-results.json").write_text("[1]\n")
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "expected type" in out
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+# ── issue #52: shape hardening beyond the four _as_dict sites ───────────────
+
+
+@pytest.mark.parametrize("symbols", [{"w": 3}, [1]])
+def test_wrong_shaped_symbols_are_a_problem_not_a_traceback(study, symbols, tmp_path):
+    """A schema-valid symbols map with a bare number, or a symbols list, used
+    to crash symbol_registry before the report could print."""
+    s = read_study(study)
+    s["deliverables"]["audience"]["paper"]["symbols"] = symbols
+    write_study(study, s)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert "symbols" in out
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+def test_an_invalid_symbol_pattern_is_a_problem_not_a_traceback(study, tmp_path):
+    """A schema-valid symbols entry whose pattern is not a valid regex used to
+    raise re.error inside document.symbol."""
+    s = read_study(study)
+    s["deliverables"]["audience"]["paper"]["symbols"] = {"w": {"pattern": "[bad"}}
+    write_study(study, s)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert "not a valid regular expression" in out
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+@pytest.mark.parametrize("payload", ["[1]", '"a study"', "null"])
+def test_a_wrong_shaped_root_study_is_a_problem_not_a_traceback(study, payload, tmp_path):
+    """study.json itself can be a list, a string or null: the schema must report
+    it and the --out report must still be written."""
+    (study / "study.json").write_text(payload)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert "expected type" in out
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+@pytest.mark.parametrize("path,value", [
+    (("subproblems",), {"SP1": {"id": "SP1"}}),
+    (("subproblems", 0, "id"), [1]),
+    (("simplified_cases",), 3),
+    (("validity_stages", "stage3_general_claim", "outputs"), 3),
+    (("validity_stages", "stage3_general_claim", "outputs"), {"a": 1}),
+    (("validity_stages", "stage5_domain_scale", "outputs"), True),
+    (("deliverables", "audience", "paper", "must_define"), 3),
+    (("deliverables", "audience", "paper", "avoid"), 3),
+])
+def test_a_wrong_shaped_study_field_is_a_problem_not_a_traceback(study, path, value,
+                                                                 tmp_path):
+    """The enumerated study.json fields a valid-JSON wrong shape can reach."""
+    s = read_study(study)
+    _set_path(s, path, value)
+    write_study(study, s)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+@pytest.mark.parametrize("path,value", [
+    (("subproblems", "SP1", "families"), 3),
+    (("subproblems", "SP1", "families", 0, "routes"), 3),
+    (("subproblems", "SP1", "families", 0, "routes", 0, "outputs"), 3),
+])
+def test_a_wrong_shaped_registry_field_is_a_problem_not_a_traceback(study, path, value,
+                                                                    tmp_path):
+    reg = json.loads((study / "registry.json").read_text())
+    _set_path(reg, path, value)
+    (study / "registry.json").write_text(json.dumps(reg))
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+@pytest.mark.parametrize("path,value,label", [
+    (("deliverables",), [1], "deliverables"),
+    (("deliverables",), None, "deliverables"),
+    (("deliverables", "audience"), [1], "deliverables.audience"),
+    (("deliverables", "audience", "paper"), "poets", "deliverables.audience.paper"),
+    (("validity_stages",), [1], "validity_stages"),
+    (("validity_stages", "stage3_general_claim"), [1],
+     "validity_stages.stage3_general_claim"),
+    (("validity_stages", "stage5_domain_scale"), "x",
+     "validity_stages.stage5_domain_scale"),
+])
+def test_wrong_shaped_containers_say_is_not_an_object(study, path, value, label):
+    """Issue #52: a container that is PRESENT but the wrong shape must say so;
+    it is not absent and has no declaration."""
+    s = read_study(study)
+    _set_path(s, path, value)
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "%s is not an object" % label in out
+    assert "has no `deliverables` declaration" not in out
+    assert "stage3_general_claim absent" not in out
+
+
+def test_non_string_symbol_entries_are_ignored_not_fatal(study, tex_available):
+    """An entry's pattern/witnesses can be any JSON; the audit falls back to the
+    symbol key instead of crashing."""
+    s = read_study(study)
+    s["deliverables"]["audience"]["paper"]["symbols"] = {
+        "w": {"pattern": 3, "witnesses": "weights"},
+        "eta": {"pattern": r"\\eta", "witnesses": 3},
+    }
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 0, out
+
+
+def test_a_non_string_avoid_entry_is_ignored(study, tex_available):
+    """A non-string avoid entry is schema-invalid; the semantic gate must skip
+    it rather than crash on re.escape(3)."""
+    s = read_study(study)
+    s["deliverables"]["audience"]["paper"]["avoid"] = ["lesssim", 3]
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "expected type" in out
+
+
+def test_a_non_string_stage3_claim_is_a_problem_not_a_traceback(study, tmp_path):
+    s = read_study(study)
+    s["validity_stages"]["stage3_general_claim"]["claim"] = 3
+    write_study(study, s)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "expected type" in out
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+def test_an_internal_error_is_reported_as_error_and_still_writes_out(study, tmp_path):
+    """Each gate is wrapped: an unexpected exception becomes a
+    validator.internal problem and an ERROR exit, never a traceback."""
+    (study / "code").mkdir()
+    (study / "code" / "gen.md").mkdir()  # a directory where the record says a file
+    battery = study / "audits" / "battery-results.md"
+    battery.write_text(battery.read_text()
+                       + "\nGenerator code/gen.md sha256: " + "0" * 64 + "\n")
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 2
+    assert "Traceback" not in out, out[-2000:]
+    assert "internal validator error" in out
+    data = json.loads(report.read_text())
+    assert data["result"] == "error"
+    assert any(p["id"] == "validator.internal" for p in data["problems"])
+
+
+def test_an_error_still_writes_the_out_report(tmp_path):
+    """Issue #52: --out is written on ERROR too, not only on a FAIL verdict."""
+    report = tmp_path / "report.json"
+    code, out = run_check(tmp_path, "--out", str(report))
+    assert code == 2
+    assert "no study.json" in out
+    data = json.loads(report.read_text())
+    assert data["result"] == "error"
+    assert data["problems"][0]["id"] == "validator.error"
+
+
+def test_a_study_file_that_cannot_be_read_is_an_error_with_a_report(tmp_path):
+    """The outer boundary catches a read failure too (study.json is a dir)."""
+    (tmp_path / "study.json").mkdir()
+    report = tmp_path / "report.json"
+    code, out = run_check(tmp_path, "--out", str(report))
+    assert code == 2
+    assert "Traceback" not in out
+    assert json.loads(report.read_text())["result"] == "error"
+
+
 # ── evidence and stage branches ────────────────────────────────────────────
 
 
@@ -490,6 +754,33 @@ def test_stage_outputs_with_absolute_paths_are_refused(study):
     code, out = run_check(study)
     assert code == 1
     assert "not study-root-relative" in out
+
+
+def test_a_missing_stage3_claim_is_refused(study):
+    s = read_study(study)
+    del s["validity_stages"]["stage3_general_claim"]
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "stage3_general_claim absent" in out
+
+
+def test_a_missing_stage5_battery_is_refused(study):
+    s = read_study(study)
+    del s["validity_stages"]["stage5_domain_scale"]
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "stage5_domain_scale absent" in out
+
+
+def test_a_stage_without_outputs_is_refused(study):
+    s = read_study(study)
+    s["validity_stages"]["stage3_general_claim"]["outputs"] = []
+    write_study(study, s)
+    code, out = run_check(study)
+    assert code == 1
+    assert "records no `outputs`" in out
 
 
 def test_a_special_body_domain_scale_instance_is_refused(study):
@@ -967,3 +1258,104 @@ def test_a_validator_without_its_schemas_reports_every_missing_schema(study, tmp
                  "negative-exports.schema.json not found",
                  "dossier.schema.json not found"):
         assert frag in out, frag
+
+
+# ── issue #52: literature-record shape hardening ───────────────────────────
+
+
+@pytest.mark.parametrize("field", ["map_file", "negative_exports_file",
+                                   "completeness_file", "refs_seed_file"])
+def test_a_wrong_shaped_literature_path_field_is_a_problem_not_a_traceback(
+        study, field, tmp_path):
+    """A non-string *_file field used to crash root / value; the gate falls
+    back to the documented default and the schema reports the shape."""
+    _lit_declare(study)
+    s = read_study(study)
+    s["literature"][field] = 3
+    write_study(study, s)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+def test_wrong_shaped_map_sources_are_a_problem_not_a_traceback(study, tmp_path):
+    lit = _lit_declare(study)
+    (lit / "known-results.json").write_text(json.dumps({
+        "SP1": [{"category": "settled", "claim": "c", "sources": 3}]}))
+    (lit / "negative-exports.json").write_text('{"exports": []}')
+    (lit / "completeness.json").write_text('{"lines": []}')
+    (lit / "refs-seed.bib").write_text("@misc{x, title={y}}\n")
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+@pytest.mark.parametrize("lines", [3, [{"line": "l1", "subproblem_id": [1],
+                                        "sweeps": {}, "frontier": [],
+                                        "stop_reason": "done"}]])
+def test_wrong_shaped_completeness_lines_are_a_problem_not_a_traceback(
+        study, lines, tmp_path):
+    lit = _lit_declare(study)
+    (lit / "known-results.json").write_text("{}")
+    (lit / "negative-exports.json").write_text('{"exports": []}')
+    (lit / "completeness.json").write_text(json.dumps({"lines": lines}))
+    (lit / "refs-seed.bib").write_text("@misc{x, title={y}}\n")
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+@pytest.mark.parametrize("exports", [
+    {"exports": 3},
+    {"exports": [{"subproblem_id": [1], "constraint": "c", "source_paper_id": "p"}]},
+])
+def test_wrong_shaped_negative_exports_are_a_problem_not_a_traceback(
+        study, exports, tmp_path):
+    lit = _lit_declare(study)
+    (lit / "known-results.json").write_text("{}")
+    (lit / "negative-exports.json").write_text(json.dumps(exports))
+    (lit / "completeness.json").write_text('{"lines": []}')
+    (lit / "refs-seed.bib").write_text("@misc{x, title={y}}\n")
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+def test_a_wrong_shaped_skip_reason_is_a_problem_not_a_traceback(study, tmp_path):
+    s = read_study(study)
+    s["literature"] = {"phase": "skipped", "skip_reason": 3}
+    write_study(study, s)
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert json.loads(report.read_text())["result"] == "fail"
+
+
+def test_a_wrong_shaped_escalation_is_a_problem_not_a_traceback(study, tmp_path):
+    lit = _lit_declare(study)
+    (lit / "known-results.json").write_text(json.dumps({
+        "SP1": [{"category": "settled", "claim": "c", "sources": [],
+                 "escalation": 3}]}))
+    (lit / "negative-exports.json").write_text('{"exports": []}')
+    (lit / "completeness.json").write_text('{"lines": []}')
+    (lit / "refs-seed.bib").write_text("@misc{x, title={y}}\n")
+    report = tmp_path / "report.json"
+    code, out = run_check(study, "--out", str(report))
+    assert code == 1
+    assert "Traceback" not in out, out[-2000:]
+    assert "validator.internal" not in out, out[-2000:]
+    assert json.loads(report.read_text())["result"] == "fail"
